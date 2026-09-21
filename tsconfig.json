@@ -1,0 +1,27 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "types": ["jest", "node"],
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "nativewind-env.d.ts"
+  ],
+  "exclude": [
+    "supabase",
+    "service-worker.js",
+    "dist",
+    "index.html",
+    "vite.config.ts",
+    "node_modules",
+    "src",
+    "scripts/test_batches"
+  ]
+}

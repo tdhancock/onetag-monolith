@@ -1,0 +1,94 @@
+{
+  "expo": {
+    "name": "OneTag",
+    "slug": "onetag",
+    "version": "1.0.8",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "onetag",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.onetag.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "OneTag needs camera access to take photos and stories.",
+        "NSPhotoLibraryUsageDescription": "OneTag needs photo library access to share images.",
+        "NSPhotoLibraryAddUsageDescription": "OneTag needs permission to save photos to your library."
+      }
+    },
+    "android": {
+      "versionCode": 8,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000000"
+      },
+      "package": "com.onetag.app",
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "onetag"
+            },
+            {
+              "scheme": "https",
+              "host": "onetag.app",
+              "pathPrefix": "/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
+      "softwareKeyboardLayoutMode": "pan",
+      "allowBackup": true,
+      "googleServicesFile": "./google-services.json",
+      "blockedPermissions": []
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#000000"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow OneTag to access your camera to take photos and stories."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow OneTag to access your photos to share images."
+        }
+      ],
+      "expo-media-library",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#3b82f6"
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ]
+  }
+}
