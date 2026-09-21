@@ -271,7 +271,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const [profileResult, likesResult, repostsResult, savedPostsResult, followingResult, myStoriesResult, storyLikesResult, unreadMessagesResult] = await Promise.all([
                 supabase
                     .from('profiles')
-                    .select('full_name, username, avatar_url, is_verified, bio')
+                    .select('full_name, username, avatar_url, is_verified, is_admin, bio')
                     .eq('id', user.id)
                     .maybeSingle(),
                 supabase.from('likes').select('post_id').eq('user_id', user.id),
@@ -308,7 +308,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     bio: profileData?.bio || prevState.userProfile.bio,
                 };
 
-                const isAdmin = newUserProfile.username === 'onetag';
+                const isAdmin = profileData?.is_admin === true;
 
                 const newLikedPosts = (likedPostsData && Array.isArray(likedPostsData))
                     ? new Set(likedPostsData.map(l => l.post_id))
