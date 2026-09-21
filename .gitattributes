@@ -1,0 +1,10 @@
+# Shell scripts must keep LF endings. Git on Windows converts to CRLF by
+# default, which breaks them when CI runs on Linux — trailing \r ends up inside
+# variable values and command names, producing failures that look unrelated to
+# line endings.
+*.sh text eol=lf
+
+# Same reasoning for anything else executed on Linux.
+*.yml text eol=lf
+*.yaml text eol=lf
+supabase/**/*.sql text eol=lf

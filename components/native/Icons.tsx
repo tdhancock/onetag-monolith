@@ -1,10 +1,13 @@
 
 
 import React from 'react';
+import type { ColorValue } from 'react-native';
 import Svg, { Path, Circle, G, Rect } from 'react-native-svg';
 
 export interface IconProps {
-  color?: string;
+  // ColorValue, not string: react-navigation hands tabBarIcon a ColorValue,
+  // which may be an OpaqueColorValue (e.g. PlatformColor) rather than a string.
+  color?: ColorValue;
   size?: number;
 }
 

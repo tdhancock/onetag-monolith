@@ -1,0 +1,71 @@
+name: Deploy migrations
+
+# Applies Supabase migrations to production when they land on main.
+#
+# WHY THIS EXISTS: without it, migrations reach production by someone running
+# `supabase db push` from a laptop that happens to be linked to the prod
+# project ref. Several OneTag migrations are not recoverable by reverting a
+# commit — ONE-21 drops a foreign key and rewrites 59 RLS policies. This makes
+# the path to production a single, reviewable, logged one.
+#
+# SETUP REQUIRED before this can run:
+#   1. Repository secrets:
+#        SUPABASE_ACCESS_TOKEN  — personal access token (Account > Access Tokens)
+#        SUPABASE_DB_PASSWORD   — production database password
+#        SUPABASE_PROJECT_ID    — production project ref
+#   2. A GitHub Environment named "production" with required reviewers set.
+#      This is the human gate. Do not remove it — it is the last thing standing
+#      between a bad migration and the live database.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-migrations
+  cancel-in-progress: false # never interrupt a migration mid-flight
+
+jobs:
+  deploy:
+    name: Apply to production
+    runs-on: ubuntu-latest
+    environment: production # gated on the reviewers configured for this environment
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link to production
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_ID }}"
+
+      # Prints what is about to be applied, in the job log, before it happens.
+      - name: Show pending migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase migration list
+
+      - name: Push migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase db push
+
+      # Supabase's own linter catches unindexed foreign keys, tables with RLS
+      # enabled but no policies, and SECURITY DEFINER functions with a mutable
+      # search_path. Worth seeing immediately after a schema change rather than
+      # discovering later.
+      - name: Post-deploy advisories
+        continue-on-error: true
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase inspect db lint --linked || true

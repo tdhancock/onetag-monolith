@@ -11,7 +11,14 @@
     "ios": "expo start --ios",
     "web:build": "rm -rf dist && mkdir -p dist/client && esbuild index.tsx --bundle --minify --sourcemap --outfile=dist/client/index.js && cp index.html manifest.json service-worker.js icon.svg _redirects dist/client/",
     "test": "jest --passWithNoTests",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm test && sh scripts/check-no-raw-hex.sh",
+    "db:start": "npx supabase start",
+    "db:stop": "npx supabase stop",
+    "db:status": "npx supabase status",
+    "db:reset": "npx supabase db reset",
+    "db:diff": "npx supabase db diff -f"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",

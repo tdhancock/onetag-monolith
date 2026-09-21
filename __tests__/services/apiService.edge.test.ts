@@ -110,7 +110,7 @@ describe('API Service - Data Validation', () => {
   it('converts search to lowercase for consistency', () => {
     const raw = 'OneTag';
     const lower = raw.toLowerCase();
-    expect(lower).toBe('onetag social');
+    expect(lower).toBe('onetag');
   });
 
   it('validates UUID format', () => {
