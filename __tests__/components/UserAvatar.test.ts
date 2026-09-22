@@ -12,40 +12,9 @@ import React from 'react';
 
 // ─── 1. Mock the native runtime ─────────────────────────────────────────
 
-jest.mock('react-native', () => {
-  const React = require('react');
-  const passthrough = (name: string) => {
-    const C: React.FC<Record<string, unknown>> = props =>
-      React.createElement(name, props, props.children as React.ReactNode);
-    C.displayName = name;
-    return C;
-  };
-  return { __esModule: true, View: passthrough('div'), Text: passthrough('span') };
-}, { virtual: true });
-
-jest.mock('expo-image', () => {
-  const React = require('react');
-  const Image: React.FC<Record<string, unknown>> = () => null;
-  Image.displayName = 'Image';
-  return { __esModule: true, Image };
-}, { virtual: true });
-
-jest.mock('react-native-svg', () => {
-  const makeStub = (name: string) => {
-    const Stub: React.FC<Record<string, unknown>> = () => null;
-    Stub.displayName = name;
-    return Stub;
-  };
-  return {
-    __esModule: true,
-    default: makeStub('Svg'),
-    Svg: makeStub('Svg'),
-    Path: makeStub('Path'),
-    Circle: makeStub('Circle'),
-    G: makeStub('G'),
-    Rect: makeStub('Rect'),
-  };
-}, { virtual: true });
+jest.mock('react-native', () => require('../support/reactNativeDom'), { virtual: true });
+jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
 
 import UserAvatar from '../../components/native/UserAvatar';
 import {

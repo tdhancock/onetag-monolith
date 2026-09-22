@@ -22,68 +22,12 @@
 
 // ─── 1. Mock react-native ────────────────────────────────────────────────
 // PostSkeleton needs View plus the Animated API (Value / loop / sequence /
-// timing / View). The mock renders to DOM nodes so react-dom can mount the
-// real component, and exposes the loop handle so the test can assert that
-// the animation is started on mount and stopped on unmount.
+// timing / View). The shared DOM-passthrough shim renders to DOM nodes so
+// react-dom can mount the real component, and exposes the loop handle so
+// the test can assert that the animation is started on mount and stopped
+// on unmount.
 
-jest.mock('react-native', () => {
-  const React = require('react');
-
-  const flattenStyle = (style: unknown): Record<string, unknown> => {
-    if (!style) return {};
-    if (Array.isArray(style)) {
-      return style.reduce<Record<string, unknown>>(
-        (acc, s) => ({ ...acc, ...flattenStyle(s) }),
-        {},
-      );
-    }
-    return style as Record<string, unknown>;
-  };
-
-  const passthroughProps = (props: Record<string, unknown>) => {
-    const { style, children, testID, className, ...rest } = props;
-    const domProps: Record<string, unknown> = { ...rest };
-    if (typeof testID === 'string') domProps['data-testid'] = testID;
-    if (typeof className === 'string') domProps.className = className;
-    const flat = flattenStyle(style);
-    // An Animated.Value lands here as an object; drop it so jsdom does not
-    // choke, but record that an opacity driver was wired up.
-    if (flat.opacity && typeof flat.opacity === 'object') {
-      domProps['data-has-opacity-driver'] = 'true';
-      delete flat.opacity;
-    }
-    domProps.style = flat;
-    return domProps;
-  };
-
-  const View: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props =>
-    React.createElement('div', passthroughProps(props), props.children);
-
-  const handles = { start: jest.fn(), stop: jest.fn() };
-
-  class AnimatedValue {
-    _value: number;
-    constructor(value: number) {
-      this._value = value;
-    }
-  }
-
-  const Animated = {
-    Value: AnimatedValue,
-    View: (props: React.PropsWithChildren<Record<string, unknown>>) =>
-      React.createElement(
-        'div',
-        { ...passthroughProps(props), 'data-animated': 'true' },
-        props.children,
-      ),
-    loop: jest.fn(() => handles),
-    sequence: jest.fn((animations: unknown[]) => ({ animations })),
-    timing: jest.fn((value: unknown, config: unknown) => ({ value, config })),
-    __handles: handles,
-  };
-
-  return { __esModule: true, View, Animated };
-}, { virtual: true });
+jest.mock('react-native', () => require('../support/reactNativeDom'), { virtual: true });
 
 // ─── 2. Imports ─────────────────────────────────────────────────────────
 import React from 'react';
