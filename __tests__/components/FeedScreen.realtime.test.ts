@@ -22,7 +22,7 @@
 //     timeline, must NOT trigger a re-render.
 //   - INSERT from a blocked author must NOT add the post to the feed.
 //
-// The reducer lives in `app/(tabs)/feed.utils.ts` as pure helpers
+// The reducer lives in `lib/screens/feed.ts` as pure helpers
 // (`applyRealtimeInsert`, `applyRealtimeUpdate`, `applyRealtimeDelete`).
 // Each takes the current timeline and an incoming Post / id and
 // returns the next timeline without mutating the input.
@@ -32,7 +32,7 @@ import {
   applyRealtimeUpdate,
   applyRealtimeDelete,
   type FeedPost,
-} from '../../app/(tabs)/feed.utils';
+} from '../../lib/screens/feed';
 
 // Minimal post shape for the reducer tests. The real `Post` type has
 // more fields; the reducer only reads `id` and (for blocked-author

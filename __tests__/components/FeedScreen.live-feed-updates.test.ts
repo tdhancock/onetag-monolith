@@ -8,7 +8,7 @@
 // Postgres Changes on the `posts` table. Every INSERT / UPDATE / DELETE
 // payload is delivered to `handlePostUpdates`, which delegates the
 // pure state-transition work to the reducer helpers in
-// `app/(tabs)/feed.utils.ts`:
+// `lib/screens/feed.ts`:
 //
 //   - `applyRealtimeInsert(current, incoming, isBlocked?)`
 //   - `applyRealtimeUpdate(current, incoming)`
@@ -71,7 +71,7 @@ import {
   applyRealtimeUpdate,
   applyRealtimeDelete,
   type FeedPost,
-} from '../../app/(tabs)/feed.utils';
+} from '../../lib/screens/feed';
 
 const channelMock = supabase.channel as unknown as jest.Mock;
 

@@ -149,14 +149,14 @@ describe('Block user flow — block action', () => {
 // 2. Blocked content hidden — a blocked author's post never reaches the feed.
 //
 // The block-list predicate is applied by `applyRealtimeInsert` in
-// app/(tabs)/feed.utils.ts, which is the reducer every feed screen pipes
+// lib/screens/feed.ts, which is the reducer every feed screen pipes
 // Postgres INSERT events through. Comment lists apply the same rule inline
 // (app/comments/[postId].tsx). There is no shared list-filter helper to
 // point at: the one that used to live in components/tabs/SearchTab.utils.ts
 // belonged to the orphaned web fork and went away with it.
 // ---------------------------------------------------------------------------
 
-import { applyRealtimeInsert, type FeedPost } from '../app/(tabs)/feed.utils';
+import { applyRealtimeInsert, type FeedPost } from '../lib/screens/feed';
 
 describe('Block user flow — blocked content is hidden', () => {
   beforeEach(() => {

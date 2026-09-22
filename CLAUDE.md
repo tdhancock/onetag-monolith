@@ -14,14 +14,15 @@ for someone without the app — never build full screen parity for web.
 ## Layout
 
 ```
-app/                       expo-router routes — every screen
+app/                       expo-router routes — every screen, nothing else
   (auth)/                  login, signup, forgot-password
-  (tabs)/                  tab bar screens (+ their *.utils.ts, which are live)
+  (tabs)/                  tab bar screens
   <route>.tsx              stack screens: compose, messages, settings, …
 components/native/         shared components
 components/native/ui/      shared visual primitives — token-only, no raw hex
 features/<domain>/         data domains: api, keys, queries, mutations, types, index
 lib/                       queryClient, QueryProvider, queryKeys
+lib/screens/               pure screen logic, extracted so it can be tested
 theme/tokens.ts            design tokens — the single source of truth for colour and type
 store/AppContext.native    global UI state
 services/                  supabase client, apiService, realtime, notifications, storage
@@ -30,6 +31,12 @@ __tests__/                 Jest
 types.ts                   shared domain types (repo root)
 scripts/                   CI gates
 ```
+
+**Every file under `app/` is a route.** expo-router registers `.ts` modules too, so a
+non-route helper there becomes a navigable blank screen and warns about its missing default
+export on every boot. Screen logic extracted for testing goes in `lib/screens/`; helpers that
+belong to a domain go with that domain (see `services/mediaPicker.ts`). Nothing else goes
+under `app/` (ONE-62).
 
 `store/AppContext.native.tsx` and `services/supabase.native.ts` keep a `.native` suffix left
 over from a web fork deleted in ONE-5. Neither has a non-native twin — import the `.native` one.

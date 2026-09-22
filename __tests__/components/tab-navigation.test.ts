@@ -182,12 +182,13 @@ describe('tab bar — structure is unchanged', () => {
     expect(visible[2]!.props.name).toBe('camera');
   });
 
-  it('keeps the three utility modules off the bar', () => {
-    // Without href: null, expo-router renders these .ts helpers as three
-    // extra meaningless tabs.
-    for (const name of ['feed.utils', 'home.utils', 'profile.utils']) {
-      expect(screenNamed(name).props.options.href).toBeNull();
-    }
+  it('declares nothing but real screens (ONE-62)', () => {
+    // The three .ts helpers used to live under (tabs)/, so expo-router
+    // registered them as routes and they needed href: null to stay off the
+    // bar. They now live in lib/screens/ and are not routes at all, so no
+    // hidden entries should remain — a new one means a non-screen crept back
+    // under app/.
+    expect(screens().filter((s) => s.props.options.href === null)).toHaveLength(0);
   });
 });
 

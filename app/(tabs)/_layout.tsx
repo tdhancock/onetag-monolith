@@ -135,12 +135,6 @@ export default function TabLayout() {
           tabBarIcon: ({ color: tint }) => <UserIcon color={tint} size={TAB_ICON_SIZE} />,
         }}
       />
-      {/* Utility modules are not screens — hide them from the tab bar.
-          Expo Router registers every file under (tabs)/ as a tab; .ts helpers
-          would otherwise appear as 3 extra meaningless icons. */}
-      <Tabs.Screen name="feed.utils" options={{ href: null }} />
-      <Tabs.Screen name="home.utils" options={{ href: null }} />
-      <Tabs.Screen name="profile.utils" options={{ href: null }} />
     </Tabs>
   );
 }

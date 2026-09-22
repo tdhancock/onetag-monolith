@@ -24,7 +24,7 @@ import {
     getStatCell,
     hasBio,
     resolveAvatarSource,
-} from '../../app/(tabs)/profile.utils';
+} from '../../lib/screens/profile';
 
 // ---------------------------------------------------------------------------
 // 1. Avatar rendering
