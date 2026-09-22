@@ -21,8 +21,13 @@ If the user named one (`ONE-12`), use it. Otherwise find the next available one:
 - **Discard anything with an unresolved `blockedBy`.** The graph is mostly a chain by
   design; starting blocked work means inventing the pieces that were supposed to come
   first, and those inventions are hard to unpick later.
-- Among what remains, prefer the lowest milestone (M0 before M1 before M2) and then the
-  highest priority.
+- **An Urgent `type/bug` comes first, whatever milestone it is in.** Milestones sequence
+  planned work. A bug found mid-flight sits wherever it was filed, and milestone order
+  has no opinion about it — so ordering by milestone alone will happily schedule a
+  cleanup chore ahead of a core flow that is completely broken.
+- Otherwise prefer the lowest milestone (M0 before M1 before M2) and then the highest
+  priority. Treat a ticket with no milestone as M0, and say so when you pick it — an
+  unscheduled ticket is usually an oversight worth flagging.
 
 Say which ticket you picked and why before you start.
 
