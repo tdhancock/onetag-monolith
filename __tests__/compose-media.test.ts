@@ -1,5 +1,5 @@
 //
-// target: app/compose.utils.ts
+// target: services/mediaPicker.ts (the compose-side transforms)
 //
 // The composer's media attachment rules (ONE-57). Covers the four
 // behaviours the ticket asks for:
@@ -11,8 +11,17 @@
 //   4. The poll and media paths do not interfere — the media fields are
 //      derived from the attachment alone.
 
-import { attachmentFromParams, buildPostMedia } from '../app/compose.utils';
-import type { PickedMedia } from '../services/mediaPicker';
+// The transforms under test are pure, but they live beside the picker
+// wrapper, so the native module has to be stubbed for the import to resolve.
+jest.mock('expo-image-picker', () => require('./support/expoImagePickerStub'), {
+  virtual: true,
+});
+
+import {
+  attachmentFromParams,
+  buildPostMedia,
+  type PickedMedia,
+} from '../services/mediaPicker';
 
 const picked = (overrides: Partial<PickedMedia> = {}): PickedMedia => ({
   uri: 'file:///tmp/photo.jpg',

@@ -11,17 +11,16 @@
 //   3. Camera capture requests permission first and reports a denial
 //      distinctly, rather than silently doing nothing.
 
-const launchImageLibraryAsync = jest.fn();
-const launchCameraAsync = jest.fn();
-const requestCameraPermissionsAsync = jest.fn();
+jest.mock('expo-image-picker', () => require('../support/expoImagePickerStub'), {
+  virtual: true,
+});
 
-jest.mock('expo-image-picker', () => ({
-  launchImageLibraryAsync: (...args: unknown[]) => launchImageLibraryAsync(...args),
-  launchCameraAsync: (...args: unknown[]) => launchCameraAsync(...args),
-  requestCameraPermissionsAsync: (...args: unknown[]) =>
-    requestCameraPermissionsAsync(...args),
-}));
-
+import {
+  launchImageLibraryAsync,
+  launchCameraAsync,
+  requestCameraPermissionsAsync,
+  resetImagePickerMocks,
+} from '../support/expoImagePickerStub';
 import {
   pickImageFromLibrary,
   captureImageWithCamera,
@@ -34,11 +33,7 @@ const anAsset = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-beforeEach(() => {
-  launchImageLibraryAsync.mockReset();
-  launchCameraAsync.mockReset();
-  requestCameraPermissionsAsync.mockReset();
-});
+beforeEach(resetImagePickerMocks);
 
 // ---------------------------------------------------------------------------
 // 1. Library

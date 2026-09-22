@@ -19,10 +19,11 @@ import { cleanHtml } from '../services/apiService';
 import {
   pickImageFromLibrary,
   captureImageWithCamera,
+  attachmentFromParams,
+  buildPostMedia,
   type PickedMedia,
   type MediaPickerResult,
 } from '../services/mediaPicker';
-import { attachmentFromParams, buildPostMedia } from './compose.utils';
 import UserAvatar from '../components/native/UserAvatar';
 import { ImageIcon, PollIcon, XIcon } from '../components/native/Icons';
 import type { Post } from '../types';
