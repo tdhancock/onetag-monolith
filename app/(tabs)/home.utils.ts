@@ -11,8 +11,8 @@
 // makes the "9+" unread-badge truncation testable in isolation.
 
 /**
- * Brand word rendered in the screen header. The header uses a custom
- * `DancingScript_700Bold` font but the literal string is just `"OneTag"`.
+ * Brand word rendered in the screen header. The header sets its own font
+ * from the type tokens, but the literal string is just `"OneTag"`.
  * Centralising the constant lets the test pin the brand to one place.
  */
 export const HOME_HEADER_BRAND = 'OneTag' as const;

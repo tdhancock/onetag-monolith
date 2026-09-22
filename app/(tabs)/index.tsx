@@ -30,6 +30,7 @@ import StoryCreator from '../../components/native/StoryCreator';
 import UserAvatar from '../../components/native/UserAvatar';
 import { VerifiedIcon, BellIcon, SendIcon } from '../../components/native/Icons';
 import type { Post, Story, SimpleUser } from '../../types';
+import { tokens } from '../../theme/tokens';
 
 const appendUniquePosts = (current: Post[], incoming: Post[]): Post[] => {
   if (incoming.length === 0) return current;
@@ -418,7 +419,7 @@ export default function HomeFeedScreen() {
     return (
       <SafeAreaView className="flex-1 bg-black">
         <View className="px-4 py-2 border-b border-gray-800 flex-row justify-between items-center">
-          <Text style={{ fontFamily: 'DancingScript_700Bold' }} className="text-2xl text-white">
+          <Text style={{ fontFamily: tokens.type.bodyBold }} className="text-2xl text-white">
             OneTag
           </Text>
           <View className="flex-row items-center" style={{ gap: 16 }}>
@@ -450,7 +451,7 @@ export default function HomeFeedScreen() {
   return (
     <SafeAreaView className="flex-1 bg-black">
       <View className="px-4 py-2 border-b border-gray-800 flex-row justify-between items-center">
-        <Text style={{ fontFamily: 'DancingScript_700Bold' }} className="text-2xl text-white">
+        <Text style={{ fontFamily: tokens.type.bodyBold }} className="text-2xl text-white">
           OneTag
         </Text>
         <View className="flex-row items-center" style={{ gap: 16 }}>

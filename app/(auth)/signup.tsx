@@ -16,6 +16,7 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase, checkUsernameExists, ensureCurrentUserProfile } from '../../services/apiService';
+import { tokens } from '../../theme/tokens';
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -207,7 +208,7 @@ export default function SignupScreen() {
           <View className="flex-1 justify-center py-8">
             <View className="items-center mb-8">
               <Text
-                style={{ fontFamily: 'DancingScript_700Bold' }}
+                style={{ fontFamily: tokens.type.bodyBold }}
                 className="text-4xl text-white"
                 numberOfLines={1}
                 adjustsFontSizeToFit

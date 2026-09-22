@@ -36,7 +36,7 @@ import {
 
 describe('HomeScreen – header brand', () => {
     it('renders the literal brand word "OneTag" in the header', () => {
-        // The component uses a custom DancingScript font but the
+        // The component sets its own font from the type tokens but the
         // displayed string is the same canonical brand word the rest
         // of the app uses.
         expect(HOME_HEADER_BRAND).toBe('OneTag');

@@ -8,10 +8,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   useFonts,
-  DancingScript_700Bold
-} from '@expo-google-fonts/dancing-script';
-import { Anton_400Regular } from '@expo-google-fonts/anton';
-import { Fredoka_500Medium } from '@expo-google-fonts/fredoka';
+  DMSans_400Regular,
+  DMSans_500Medium,
+  DMSans_700Bold,
+} from '@expo-google-fonts/dm-sans';
+import { DMMono_500Medium } from '@expo-google-fonts/dm-mono';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import { AppProvider, useApp } from '../store/AppContext.native';
@@ -23,6 +24,7 @@ import {
   setBadgeCount,
 } from '../services/notifications';
 import ToastContainer from '../components/native/Toast';
+import { color } from '../theme/tokens';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -34,9 +36,10 @@ function RootLayoutNav() {
   const notificationResponseListener = useRef<Notifications.EventSubscription | null>(null);
 
   const [fontsLoaded, fontError] = useFonts({
-    DancingScript_700Bold,
-    Anton_400Regular,
-    Fredoka_500Medium,
+    DMMono_500Medium,
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_700Bold,
   });
 
   useEffect(() => {
@@ -117,11 +120,11 @@ function RootLayoutNav() {
     <Stack
       screenOptions={{
         headerShown: false,
-        headerStyle: { backgroundColor: '#000' },
-        headerTintColor: '#fff',
+        headerStyle: { backgroundColor: color.bg },
+        headerTintColor: color.text,
         headerBackTitle: '',
         headerBackButtonDisplayMode: 'minimal',
-        headerTitleStyle: { color: '#fff', fontWeight: 'bold' },
+        headerTitleStyle: { color: color.text, fontWeight: 'bold' },
       }}
     >
       <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
@@ -137,10 +140,10 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: color.bg }}>
       <SafeAreaProvider>
         <AppProvider>
-          <StatusBar style="light" />
+          <StatusBar style="dark" />
           <RootLayoutNav />
           <ToastContainer />
         </AppProvider>

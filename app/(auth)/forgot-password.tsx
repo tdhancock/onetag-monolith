@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Link } from 'expo-router';
 import { supabase } from '../../services/supabase.native';
+import { tokens } from '../../theme/tokens';
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
@@ -91,7 +92,7 @@ export default function ForgotPasswordScreen() {
                 style={{ width: 88, height: 88, borderRadius: 44, marginBottom: 12 }}
                 resizeMode="cover"
               />
-              <Text style={{ fontFamily: 'DancingScript_700Bold' }} className="text-5xl text-white" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+              <Text style={{ fontFamily: tokens.type.bodyBold }} className="text-5xl text-white" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                 OneTag
               </Text>
               <Text className="text-gray-400 mt-2 text-lg">Reset your password</Text>
