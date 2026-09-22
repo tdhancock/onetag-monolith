@@ -41,7 +41,10 @@ export interface Post {
     media?: string;
     media_preview_url?: string;
     media_type: 'text' | 'image';
-    media_aspect_ratio?: number;
+    // Nullable, not merely optional: the column is nullable, every row
+    // written before ONE-55 holds null, and features/posts/api.ts maps that
+    // straight through. PostCard falls back to 4:5 for both.
+    media_aspect_ratio?: number | null;
     likes: number;
     reposts: number;
     replies: number;

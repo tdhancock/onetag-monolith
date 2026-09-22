@@ -19,6 +19,7 @@ import {
   pickImageFromLibrary,
   captureImageWithCamera,
   attachmentFromParams,
+  mediaAspectRatio,
   buildPostMedia,
   type PickedMedia,
   type MediaPickerResult,
@@ -29,10 +30,15 @@ import type { Post } from '../types';
 
 const MAX_CHARS = 280;
 
+/** What PostCard renders when a post carries no ratio. Kept in step with it. */
+const FALLBACK_ASPECT_RATIO = 1080 / 1350;
+
 export default function ComposeScreen() {
-  const { mediaUri, mediaType: paramMediaType } = useLocalSearchParams<{
+  const { mediaUri, mediaType: paramMediaType, mediaWidth, mediaHeight } = useLocalSearchParams<{
     mediaUri?: string;
     mediaType?: string;
+    mediaWidth?: string;
+    mediaHeight?: string;
   }>();
   const router = useRouter();
   const { userProfile, addProfilePost, addToast } = useApp();
@@ -45,8 +51,15 @@ export default function ComposeScreen() {
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
   const [attachment, setAttachment] = useState<PickedMedia | null>(() =>
-    attachmentFromParams(mediaUri, paramMediaType),
+    attachmentFromParams(mediaUri, paramMediaType, mediaWidth, mediaHeight),
   );
+
+  // The preview frames the photo exactly as the feed will: the same measured
+  // and clamped ratio, and `contain` over black so an over-wide or over-tall
+  // photo is letterboxed here too. Before ONE-55 this previewed at 1:1 and
+  // published at 4:5, so the author approved a framing nobody else ever saw.
+  // PostCard's 4:5 fallback is mirrored here for a photo with no dimensions.
+  const previewAspectRatio = mediaAspectRatio(attachment) ?? FALLBACK_ASPECT_RATIO;
 
   const charCount = content.length;
   const canPost =
@@ -219,8 +232,8 @@ export default function ComposeScreen() {
               <View className="rounded-2xl overflow-hidden">
                 <Image
                   source={{ uri: attachment.uri }}
-                  style={{ width: '100%', aspectRatio: 1 }}
-                  contentFit="cover"
+                  style={{ width: '100%', aspectRatio: previewAspectRatio, backgroundColor: '#000' }}
+                  contentFit="contain"
                 />
                 <Pressable
                   onPress={handleRemoveMedia}

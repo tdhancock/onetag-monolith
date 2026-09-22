@@ -127,11 +127,25 @@ export async function captureImageWithCamera(
 export function attachmentFromParams(
   uri?: string,
   mediaType?: string,
+  width?: string,
+  height?: string,
 ): PickedMedia | null {
   if (!uri) return null;
   if (mediaType && mediaType !== 'image') return null;
 
-  return { uri, width: null, height: null, mediaType: 'image' };
+  return {
+    uri,
+    width: parseDimension(width),
+    height: parseDimension(height),
+    mediaType: 'image',
+  };
+}
+
+/** Route params arrive as strings. Anything not a positive number is unknown. */
+function parseDimension(value?: string): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 /**
@@ -143,8 +157,49 @@ export function attachmentFromParams(
 export function buildPostMedia(attachment: PickedMedia | null): {
   media: string | undefined;
   media_type: Post['media_type'];
+  media_aspect_ratio: number | null;
 } {
-  if (!attachment) return { media: undefined, media_type: 'text' };
+  if (!attachment) return { media: undefined, media_type: 'text', media_aspect_ratio: null };
 
-  return { media: attachment.uri, media_type: attachment.mediaType };
+  return {
+    media: attachment.uri,
+    media_type: attachment.mediaType,
+    media_aspect_ratio: mediaAspectRatio(attachment),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Aspect ratio
+// ---------------------------------------------------------------------------
+
+/**
+ * The widest and tallest framings a post may claim, as width / height.
+ *
+ * 0.5 is 1:2 and 1.91 is the landscape limit the major feeds settled on. A
+ * panorama at 5:1 or a full-page screenshot at 1:4 is allowed to be attached,
+ * but it is stored clamped and rendered letterboxed inside that box
+ * (`contentFit="contain"`), because a row tall or wide enough to hold it
+ * wrecks the feed around it. Nothing is ever distorted to fit.
+ */
+export const MIN_ASPECT_RATIO = 0.5;
+export const MAX_ASPECT_RATIO = 1.91;
+
+/**
+ * The ratio to persist as `posts.media_aspect_ratio`, measured once from the
+ * dimensions the source reported — never re-derived from a rendered view,
+ * which is the bug ONE-55 fixed one layer up.
+ *
+ * `null` when the source gave no usable dimensions; `PostCard` then falls back
+ * to 4:5, which is also what every row written before ONE-55 holds.
+ */
+export function mediaAspectRatio(media: PickedMedia | null): number | null {
+  if (!media?.width || !media?.height) return null;
+  if (media.width <= 0 || media.height <= 0) return null;
+
+  return clampAspectRatio(media.width / media.height);
+}
+
+/** Confine a ratio to the publishable range. */
+export function clampAspectRatio(ratio: number): number {
+  return Math.min(MAX_ASPECT_RATIO, Math.max(MIN_ASPECT_RATIO, ratio));
 }

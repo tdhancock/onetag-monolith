@@ -358,6 +358,9 @@ const PostCard: React.FC<PostCardProps> = ({
 
   // ─── Render ────────────────────────────────────
 
+  // Posts published before ONE-55 carry no ratio and keep rendering at 4:5.
+  // Backfilling would mean fetching every stored image to measure it, which is
+  // a decision of its own rather than a side effect of this change.
   const aspectRatio = post.media_aspect_ratio || 1080 / 1350;
 
   return (

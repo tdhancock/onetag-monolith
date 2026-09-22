@@ -43,6 +43,27 @@ export const View: React.FC<React.PropsWithChildren<Record<string, unknown>>> = 
 export const Text: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props =>
   React.createElement('span', passthroughProps(props), props.children);
 
+export const Pressable: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props => {
+  const { onPress, accessibilityLabel, ...rest } = props;
+  return React.createElement(
+    'button',
+    {
+      ...passthroughProps(rest),
+      onClick: onPress as React.MouseEventHandler,
+      'aria-label': accessibilityLabel as string | undefined,
+    },
+    props.children,
+  );
+};
+
+/** Renders its children inline when visible, nothing when not. */
+export const Modal: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props =>
+  props.visible === false
+    ? null
+    : React.createElement('div', { ...passthroughProps(props), 'data-modal': 'true' }, props.children);
+
+export const Alert = { alert: jest.fn() };
+
 const animationHandles = { start: jest.fn(), stop: jest.fn() };
 
 class AnimatedValue {
