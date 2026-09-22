@@ -235,8 +235,15 @@ async function localUrlToBlob(url: string): Promise<Blob> {
  * Uses fetch().arrayBuffer() which works reliably on React Native.
  * Returns the public URL of the uploaded file.
  */
-export async function uploadMedia(localUri: string, userId: string): Promise<string> {
-    // Fetch the local file as an ArrayBuffer — this works on RN for file:// and content:// URIs
+/**
+ * Read a local media URI into an ArrayBuffer, alongside the content type and
+ * extension implied by the URI. This is the React Native path — `fetch()` +
+ * `arrayBuffer()` works for file:// and content:// URIs, where `.blob()` does
+ * not, because RN's Blob is a shim with no accessible binary data.
+ *
+ * Shared by every upload path so none of them can drift back onto `.blob()`.
+ */
+async function readLocalFile(localUri: string): Promise<{ arrayBuffer: ArrayBuffer; contentType: string; ext: string }> {
     const response = await fetch(localUri);
     if (!response.ok) {
         throw new Error(`Failed to read local file: ${response.status} ${response.statusText}`);
@@ -252,6 +259,12 @@ export async function uploadMedia(localUri: string, userId: string): Promise<str
     else if (uriLower.endsWith('.gif')) { contentType = 'image/gif'; ext = 'gif'; }
     else if (uriLower.endsWith('.mp4')) { contentType = 'video/mp4'; ext = 'mp4'; }
     else if (uriLower.endsWith('.mov')) { contentType = 'video/quicktime'; ext = 'mov'; }
+
+    return { arrayBuffer, contentType, ext };
+}
+
+export async function uploadMedia(localUri: string, userId: string): Promise<string> {
+    const { arrayBuffer, contentType, ext } = await readLocalFile(localUri);
 
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
@@ -1089,6 +1102,44 @@ export const replyToStory = async (storyId: string, storyOwnerId: string, text: 
 // User & Profile
 // =========================================================
 
+/**
+ * The two halves of the `profiles` column mapping live next to each other on
+ * purpose. The client shape uses `name` / `profilePicture`; the table uses
+ * `full_name` / `avatar_url`. Reads mapped and writes did not, which is how
+ * every profile save came to target a column that does not exist.
+ */
+type ProfileRow = {
+    id: string;
+    username: string;
+    full_name: string | null;
+    bio: string | null;
+    avatar_url: string | null;
+    is_verified: boolean;
+    is_private: boolean;
+};
+
+export const mapProfileRow = (row: ProfileRow): UserProfile => ({
+    id: row.id,
+    name: row.full_name,
+    username: row.username,
+    bio: row.bio,
+    profilePicture: row.avatar_url,
+    isVerified: row.is_verified,
+    isPrivate: row.is_private,
+} as UserProfile);
+
+/** The inverse of `mapProfileRow`: client field names → `profiles` columns. */
+export type ProfileUpdates = Partial<Pick<UserProfile, 'name' | 'username' | 'bio' | 'profilePicture'>>;
+
+export const mapProfileUpdatesToRow = (updates: ProfileUpdates): Partial<ProfileRow> => {
+    const row: Partial<ProfileRow> = {};
+    if (updates.name !== undefined) row.full_name = updates.name;
+    if (updates.username !== undefined) row.username = updates.username;
+    if (updates.bio !== undefined) row.bio = updates.bio;
+    if (updates.profilePicture !== undefined) row.avatar_url = updates.profilePicture;
+    return row;
+};
+
 // FIX: Replaced undefined 'UserProfileType' with 'UserProfile'.
 const profileCache = new Map<string, UserProfile>();
 export const getUserProfile = async (username: string): Promise<UserProfile | null> => {
@@ -1100,15 +1151,7 @@ export const getUserProfile = async (username: string): Promise<UserProfile | nu
         console.error("Error fetching profile", error);
         return null;
     }
-    const profile: UserProfile = {
-        id: data.id,
-        name: data.full_name,
-        username: data.username,
-        bio: data.bio,
-        profilePicture: data.avatar_url,
-        isVerified: data.is_verified,
-        isPrivate: data.is_private,
-    };
+    const profile = mapProfileRow(data);
     profileCache.set(username, profile);
     return profile;
 };
@@ -1203,26 +1246,57 @@ export const getSavedPosts = async (userId: string): Promise<Post[]> => {
     }
 };
 
-export const updateUserProfileData = async (updates: Partial<Pick<UserProfile, 'name' | 'username' | 'bio'>>): Promise<boolean> => {
+export const updateUserProfileData = async (updates: ProfileUpdates): Promise<boolean> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
-    const { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
-    return !error;
+
+    const row = mapProfileUpdatesToRow(updates);
+    if (Object.keys(row).length === 0) return true;
+
+    const { error } = await supabase.from('profiles').update(row).eq('id', user.id);
+    if (error) {
+        console.error('Profile update error:', error);
+        return false;
+    }
+
+    // The username-keyed read cache would otherwise keep serving the old row
+    // for the rest of the session.
+    if (updates.username) profileCache.delete(updates.username);
+    return true;
 };
 
-export const uploadAvatar = async (file: File | Blob): Promise<string | null> => {
+/**
+ * Upload a new avatar from a local URI and return its public URL.
+ *
+ * Takes a local URI rather than a Blob: `fetch(uri).blob()` is the web path and
+ * yields an empty upload on React Native, which is why this shares
+ * `readLocalFile` with `uploadMedia`. The path shape is fixed by storage RLS —
+ * the avatars policies match `(storage.foldername(name))[2]` against
+ * `auth.uid()`, so the uid must stay the second segment.
+ */
+export const uploadAvatar = async (localUri: string): Promise<string | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const filePath = `avatars/${user.id}/${Date.now()}`;
-    const { error } = await supabase.storage.from('avatars').upload(filePath, file, { upsert: true });
-    if (error) {
-        console.error('Avatar upload error:', error);
+    try {
+        const { arrayBuffer, contentType, ext } = await readLocalFile(localUri);
+        const filePath = `avatars/${user.id}/${Date.now()}.${ext}`;
+
+        const { error } = await supabase.storage
+            .from('avatars')
+            .upload(filePath, arrayBuffer, { upsert: true, contentType, cacheControl: '3600' });
+
+        if (error) {
+            console.error('Avatar upload error:', error);
+            return null;
+        }
+
+        const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+        return data.publicUrl ?? null;
+    } catch (err) {
+        console.error('Avatar upload error:', (err as Error).message || err);
         return null;
     }
-
-    const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
-    return data.publicUrl;
 };
 
 // =========================================================
