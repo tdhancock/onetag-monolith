@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { publishPost, deletePost, updatePost, toggleLike as apiToggleLike, toggleRepost as apiToggleRepost, addComment as apiAddComment, getFollowingList, unfollowUser, followUser, markNotificationsAsRead, getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, markMessagesAsRead as apiMarkMessagesAsRead, toggleSavePost as apiToggleSavePost, adminDeletePost, ensureCurrentUserProfile, uploadMedia } from '../services/apiService';
+import { publishPost, deletePost, updatePost, toggleLike as apiToggleLike, toggleRepost as apiToggleRepost, addComment as apiAddComment, getFollowingList, unfollowUser, followUser, markNotificationsAsRead, getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, markMessagesAsRead as apiMarkMessagesAsRead, toggleSavePost as apiToggleSavePost, adminDeletePost, ensureCurrentUserProfile, MediaUploadError } from '../services/apiService';
 import { supabase } from '../services/supabase.native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -619,37 +619,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const areCommentsLoaded = useCallback((postId: string) => state.postComments.has(postId), [state.postComments]);
 
     const addProfilePost = useCallback(async (post: Post) => {
-        // Upload local media to Supabase Storage before creating the post.
-        // This ensures other users can see the image (local file:// URIs are only visible on the sender's device).
-        const isLocalUri = (uri: string) =>
-            uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('blob:') || uri.startsWith('data:');
-
+        // Local media is uploaded by publishPost, which is the function that
+        // knows what it is inserting. Uploading here as well meant every image
+        // went up twice and a failure was swallowed into a broken post.
         try {
-            let postToPublish = { ...post };
-
-            if (postToPublish.media && isLocalUri(postToPublish.media)) {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) {
-                    throw new Error('You must be logged in to upload media.');
-                }
-                try {
-                    const publicUrl = await uploadMedia(postToPublish.media, user.id);
-                    postToPublish.media = publicUrl;
-                } catch (uploadError) {
-                    console.warn('Storage upload failed, using local data URL as fallback:', uploadError);
-                    // Fallback: keep the original data URL if upload fails
-                    // For camera captures, the URL is already a data: URL
-                    // For blob: URLs from gallery, we keep it as is (will only work on same device)
-                }
-            }
-
-            const realPost = await publishPost(postToPublish);
+            const realPost = await publishPost(post);
             if (!realPost) {
                 throw new Error("API returned null post.");
             }
         } catch (error) {
             console.error("Failed to publish post.", error);
-            addToast('Failed to create post.', 'error');
+            addToast(
+                error instanceof MediaUploadError
+                    ? 'Your photo could not be uploaded. Nothing was posted.'
+                    : 'Failed to create post.',
+                'error',
+            );
             throw error;
         }
     }, [addToast]);

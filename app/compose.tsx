@@ -87,8 +87,10 @@ export default function ComposeScreen() {
       await addProfilePost(newPost);
       setTimeout(() => router.back(), 400);
     } catch (error) {
+      // addProfilePost has already toasted the reason — a second generic toast
+      // here would bury the media-specific one. The draft stays on screen:
+      // router.back() only runs on the success path above.
       console.error('Failed to publish post', error);
-      addToast('Failed to create post.', 'error');
     } finally {
       setIsPosting(false);
     }

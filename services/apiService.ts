@@ -263,6 +263,36 @@ async function readLocalFile(localUri: string): Promise<{ arrayBuffer: ArrayBuff
     return { arrayBuffer, contentType, ext };
 }
 
+/**
+ * Raised when a post's media could not be turned into a remotely readable URL.
+ * Distinct from a generic publish failure so the composer can tell the author
+ * the *image* is the problem, not their text.
+ */
+export class MediaUploadError extends Error {
+    constructor(message: string, readonly cause?: unknown) {
+        super(message);
+        this.name = 'MediaUploadError';
+    }
+}
+
+/** A URI that only resolves on the device that produced it. */
+export const isLocalMediaUri = (uri: string): boolean =>
+    uri.startsWith('file://') ||
+    uri.startsWith('content://') ||
+    uri.startsWith('blob:') ||
+    uri.startsWith('data:');
+
+/**
+ * Last line of defence before an insert: a device-local URI stored as
+ * `image_url` renders for exactly one person and is unfixable afterwards, so
+ * fail loudly rather than writing the row.
+ */
+export function assertRemoteMediaUrl(url: string | null | undefined): void {
+    if (url && isLocalMediaUri(url)) {
+        throw new MediaUploadError('Your photo could not be uploaded, so the post was not published.');
+    }
+}
+
 export async function uploadMedia(localUri: string, userId: string): Promise<string> {
     const { arrayBuffer, contentType, ext } = await readLocalFile(localUri);
 
@@ -482,10 +512,19 @@ export const publishPost = async (post: Post): Promise<Post | null> => {
 
         // --- NEW UPLOAD LOGIC ---
         // If the media is a local URL (from camera or gallery), upload it to storage first.
-        if (uploadUrl && (uploadUrl.startsWith('blob:') || uploadUrl.startsWith('data:') || uploadUrl.startsWith('file://') || uploadUrl.startsWith('content://'))) {
-            // Use the RN-compatible uploadMedia function which uses arrayBuffer
-            uploadUrl = await uploadMedia(uploadUrl, user.id);
+        if (uploadUrl && isLocalMediaUri(uploadUrl)) {
+            // Use the RN-compatible uploadMedia function which uses arrayBuffer.
+            // This is the only upload site for post media — callers hand us the
+            // local URI and we resolve it here, so nothing uploads twice.
+            try {
+                uploadUrl = await uploadMedia(uploadUrl, user.id);
+            } catch (uploadError) {
+                throw new MediaUploadError('Your photo could not be uploaded, so the post was not published.', uploadError);
+            }
         }
+        // uploadMedia falls back to a data: URL when every bucket is unavailable;
+        // that is still unreadable to everyone else, so it must not be inserted.
+        assertRemoteMediaUrl(uploadUrl);
         // --- END NEW UPLOAD LOGIC ---
 
         const { data: insertData, error } = await supabase
