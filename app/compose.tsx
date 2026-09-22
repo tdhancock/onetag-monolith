@@ -167,8 +167,8 @@ export default function ComposeScreen() {
     // Top edge only. Padding the bottom here too would shorten the
     // KeyboardAvoidingView's frame while it still measures the keyboard
     // against the full screen, so the toolbar ended up under the keyboard —
-    // and with `autoFocus` below raising it on open, the attach and poll
-    // buttons were never reachable at all.
+    // buttons could end up out of reach. The primary attach control now sits
+    // in the scrollable body, so this only affects the secondary toolbar.
     <SafeAreaView className="flex-1 bg-black" edges={['top']}>
       <Stack.Screen options={{ headerShown: false, presentation: 'modal' }} />
 
@@ -203,8 +203,7 @@ export default function ComposeScreen() {
         <ScrollView
           className="flex-1"
           keyboardShouldPersistTaps="handled"
-          // `autoFocus` raises the keyboard on open, so there has to be a way
-          // back down: dragging the composer dismisses it.
+          // Dragging the composer puts the keyboard away once it is up.
           keyboardDismissMode="interactive"
         >
           {/* Compose area */}
@@ -218,7 +217,11 @@ export default function ComposeScreen() {
               <TextInput
                 ref={inputRef}
                 multiline
-                autoFocus
+                // Deliberately not `autoFocus`. It raised the keyboard before
+                // the screen had settled, which buried the toolbar and left no
+                // way back down — the composer opened effectively text-only.
+                // Opening with the keyboard down shows the whole screen first;
+                // tapping here still brings it up.
                 className="text-white text-lg"
                 placeholder="What's happening?"
                 placeholderTextColor="#6b7280"
@@ -228,6 +231,29 @@ export default function ComposeScreen() {
               />
             </View>
           </View>
+
+          {/* Attach control.
+              This is the primary one, and it lives in the scrollable body
+              rather than only in the bottom toolbar. The toolbar sits at the
+              bottom of a KeyboardAvoidingView inside a modal, where the
+              keyboard can cover it; this scrolls with the content, so it
+              cannot be hidden however the keyboard behaves. */}
+          {!attachment && !isCreatingPoll && (
+            <View className="px-4 pb-4">
+              <Pressable
+                onPress={handleAttachMedia}
+                accessibilityRole="button"
+                accessibilityLabel="Add a photo"
+                className="flex-row items-center justify-center border border-gray-800 rounded-2xl py-3"
+                style={{ gap: 8 }}
+              >
+                <ImageIcon color="#3b82f6" size={20} />
+                <Text className="text-blue-500 font-semibold text-base">
+                  Add photo
+                </Text>
+              </Pressable>
+            </View>
+          )}
 
           {/* Media preview */}
           {attachment && (
