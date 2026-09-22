@@ -1,7 +1,7 @@
 
 
 // FIX: Import all necessary types from the newly created types.ts file.
-import type { Message, Post, Notification, Comment, Story, UserProfile, SimpleUser, Hashtag } from '../types';
+import type { Message, Post, Notification, Comment, Story, UserProfile, SimpleUser } from '../types';
 import type { User } from '@supabase/supabase-js';
 // Import supabase client from the native adapter (uses SecureStore for session persistence)
 import { supabase } from './supabase.native';
@@ -1680,50 +1680,10 @@ export const toggleCommentLike = async (commentId: string): Promise<boolean> => 
 // Misc
 // =========================================================
 
-export const getAllHashtags = async (): Promise<Hashtag[]> => {
-    // Fetch recent posts and extract hashtags from their content,
-    // then aggregate counts on the client side.
-    // We limit to 500 recent posts to keep the query lightweight.
-    const { data, error } = await supabase
-        .from('posts')
-        .select('content')
-        .not('content', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(500);
-
-    if (error) {
-        console.error('Error fetching posts for hashtags:', error.message);
-        return [];
-    }
-
-    if (!data || data.length === 0) return [];
-
-    // Extract hashtags (#word patterns) from each post's content
-    const hashtagCounts: Record<string, number> = {};
-    const hashtagRegex = /#(\w+)/g;
-
-    for (const post of data) {
-        if (!post.content) continue;
-        let match: RegExpExecArray | null;
-        hashtagRegex.lastIndex = 0;
-        const seenInPost: Record<string, boolean> = {};
-        while ((match = hashtagRegex.exec(post.content)) !== null) {
-            const tag = match[1];
-            // Count each tag only once per post
-            if (!seenInPost[tag]) {
-                seenInPost[tag] = true;
-                hashtagCounts[tag] = (hashtagCounts[tag] || 0) + 1;
-            }
-        }
-    }
-
-    // Convert to Hashtag array sorted by postCount descending
-    const hashtags: Hashtag[] = Object.entries(hashtagCounts)
-        .map(([tag, postCount]) => ({ tag, postCount }))
-        .sort((a, b) => b.postCount - a.postCount);
-
-    return hashtags;
-};
+// Moved to features/hashtags/api.ts in ONE-11. Re-exported here so existing
+// callers keep working while the strangler migration runs; this shim goes
+// away in the final M2 cleanup, once nothing imports it.
+export { fetchHashtags as getAllHashtags } from '../features/hashtags';
 
 export const searchUsers = async (query: string): Promise<any[]> => {
     const { data, error } = await supabase
