@@ -47,7 +47,9 @@ interface AppContextType extends AppState {
     getComments: (postId: string) => Comment[];
     setComments: (postId: string, comments: Comment[]) => void;
     areCommentsLoaded: (postId: string) => boolean;
-    addProfilePost: (post: Post) => void;
+    // Rejects when the post could not be published — the composer relies on
+    // that to keep the draft on screen. See ONE-56.
+    addProfilePost: (post: Post) => Promise<void>;
     deleteProfilePost: (postId: string) => void;
     updateProfilePost: (updatedPost: Post) => void;
     setProfilePosts: (posts: Post[]) => void;

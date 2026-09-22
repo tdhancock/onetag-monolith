@@ -108,10 +108,18 @@ jest.mock('../services/supabase.native', () => ({
 // but the import must resolve cleanly. The `supabase` re-export is
 // forwarded to the mock above so the provider's effects can call
 // `supabase.auth.onAuthStateChange` against a fully-shaped client.
+class FakeMediaUploadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MediaUploadError';
+  }
+}
+
 jest.mock('../services/apiService', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { supabase } = require('../services/supabase.native');
   return {
+    MediaUploadError: FakeMediaUploadError,
     publishPost: jest.fn(),
     deletePost: jest.fn(),
     updatePost: jest.fn(),
@@ -130,7 +138,6 @@ jest.mock('../services/apiService', () => {
     toggleSavePost: jest.fn(),
     adminDeletePost: jest.fn(),
     ensureCurrentUserProfile: jest.fn(),
-    uploadMedia: jest.fn(),
   };
 }, { virtual: true });
 
@@ -139,6 +146,7 @@ import React, { useEffect } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { AppProvider, useApp } from '../store/AppContext.native';
+import { publishPost } from '../services/apiService';
 type AppContextType = ReturnType<typeof useApp>;
 
 // ─── 3. Helpers ─────────────────────────────────────────────────────────
@@ -411,6 +419,79 @@ describe('useApp (AppContext) — error when used outside provider', () => {
         root.unmount();
       });
       container.remove();
+    }
+  });
+});
+
+// ─── 5. addProfilePost — the publish path (ONE-56) ──────────────────────
+//
+// A failed media upload used to be swallowed and the post published anyway
+// with a device-local URI. addProfilePost must now reject, so the composer's
+// `router.back()` — which sits after the await — never runs and the draft
+// stays on screen.
+
+describe('addProfilePost — media upload failures', () => {
+  const mockPublishPost = publishPost as unknown as jest.Mock;
+
+  const draft = () => ({ id: 'temp-1', content: 'keep my draft' }) as never;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAsyncStore = {};
+  });
+
+  it('rejects when the media upload fails, so the composer stays open', async () => {
+    mockPublishPost.mockRejectedValue(new FakeMediaUploadError('upload failed'));
+    const handle = await mountAndHydrate();
+    try {
+      await act(async () => {
+        await expect(handle.capture.current!.addProfilePost(draft())).rejects.toBeInstanceOf(
+          FakeMediaUploadError,
+        );
+      });
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('names the photo as the problem rather than toasting a generic failure', async () => {
+    mockPublishPost.mockRejectedValue(new FakeMediaUploadError('upload failed'));
+    const handle = await mountAndHydrate();
+    try {
+      await act(async () => {
+        await handle.capture.current!.addProfilePost(draft()).catch(() => undefined);
+      });
+      const messages = handle.capture.current!.toasts.map(t => t.message);
+      expect(messages.some(m => /photo could not be uploaded/i.test(m))).toBe(true);
+      expect(messages).not.toContain('Failed to create post.');
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('still reports a non-media publish failure generically', async () => {
+    mockPublishPost.mockRejectedValue(new Error('row-level security'));
+    const handle = await mountAndHydrate();
+    try {
+      await act(async () => {
+        await handle.capture.current!.addProfilePost(draft()).catch(() => undefined);
+      });
+      expect(handle.capture.current!.toasts.map(t => t.message)).toContain('Failed to create post.');
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('hands the draft straight to publishPost — nothing is uploaded here', async () => {
+    mockPublishPost.mockResolvedValue({ id: 'post-1' });
+    const handle = await mountAndHydrate();
+    try {
+      await act(async () => {
+        await handle.capture.current!.addProfilePost(draft());
+      });
+      expect(mockPublishPost).toHaveBeenCalledTimes(1);
+    } finally {
+      unmount(handle);
     }
   });
 });
