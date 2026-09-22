@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
-  Keyboard,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,28 +38,6 @@ export default function ComposeScreen() {
   const { userProfile, addProfilePost, addToast } = useApp();
   const inputRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
-
-  // The toolbar owns the bottom inset, not the root SafeAreaView — see the
-  // `edges` note on it below. While the keyboard is up, KeyboardAvoidingView
-  // has already lifted the toolbar clear of it and the inset would only leave
-  // a gap, so it is applied when the keyboard is down and dropped when it is
-  // up.
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-
-  useEffect(() => {
-    // `keyboardWillShow` fires with the animation on iOS; Android only ever
-    // emits the `did` pair.
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const show = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
-    const hide = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
-
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
 
   const [content, setContent] = useState('');
   const [isPosting, setIsPosting] = useState(false);
@@ -164,11 +141,10 @@ export default function ComposeScreen() {
   const isOverLimit = charCount > MAX_CHARS;
 
   return (
-    // Top edge only. Padding the bottom here too would shorten the
+    // Top edge only. Padding the bottom here as well shortens the
     // KeyboardAvoidingView's frame while it still measures the keyboard
-    // against the full screen, so the toolbar ended up under the keyboard —
-    // buttons could end up out of reach. The primary attach control now sits
-    // in the scrollable body, so this only affects the secondary toolbar.
+    // against the full screen, which is what buried the old footer. The
+    // scroll content carries the bottom inset instead.
     <SafeAreaView className="flex-1 bg-black" edges={['top']}>
       <Stack.Screen options={{ headerShown: false, presentation: 'modal' }} />
 
@@ -205,6 +181,9 @@ export default function ComposeScreen() {
           keyboardShouldPersistTaps="handled"
           // Dragging the composer puts the keyboard away once it is up.
           keyboardDismissMode="interactive"
+          // The root pads only the top edge, and there is no footer left to
+          // hold the bottom one, so the content carries it.
+          contentContainerStyle={{ paddingBottom: insets.bottom + 8 }}
         >
           {/* Compose area */}
           <View className="p-4 flex-row" style={{ gap: 12 }}>
@@ -231,29 +210,6 @@ export default function ComposeScreen() {
               />
             </View>
           </View>
-
-          {/* Attach control.
-              This is the primary one, and it lives in the scrollable body
-              rather than only in the bottom toolbar. The toolbar sits at the
-              bottom of a KeyboardAvoidingView inside a modal, where the
-              keyboard can cover it; this scrolls with the content, so it
-              cannot be hidden however the keyboard behaves. */}
-          {!attachment && !isCreatingPoll && (
-            <View className="px-4 pb-4">
-              <Pressable
-                onPress={handleAttachMedia}
-                accessibilityRole="button"
-                accessibilityLabel="Add a photo"
-                className="flex-row items-center justify-center border border-gray-800 rounded-2xl py-3"
-                style={{ gap: 8 }}
-              >
-                <ImageIcon color="#3b82f6" size={20} />
-                <Text className="text-blue-500 font-semibold text-base">
-                  Add photo
-                </Text>
-              </Pressable>
-            </View>
-          )}
 
           {/* Media preview */}
           {attachment && (
@@ -317,77 +273,84 @@ export default function ComposeScreen() {
               )}
             </View>
           )}
-        </ScrollView>
+          {/* Action row — the bottom edge of the post being composed, rather
+              than a screen footer pinned under the keyboard. It scrolls with
+              the content, so nothing the keyboard does can cover it.
 
-        {/* Toolbar */}
-        <View
-          className="border-t border-gray-900 px-4 pt-2 flex-row items-center justify-between"
-          style={{ paddingBottom: keyboardVisible ? 8 : Math.max(insets.bottom, 8) }}
-        >
-          <View className="flex-row items-center" style={{ gap: 16 }}>
-            {/* Media and polls are mutually exclusive, as they were before:
-                a post carries one or the other, never both. */}
-            {!isCreatingPoll && (
-              <Pressable
-                onPress={handleAttachMedia}
-                accessibilityLabel="Add a photo"
-                className="p-2"
-              >
-                <ImageIcon color={attachment ? '#3b82f6' : '#6b7280'} size={22} />
-              </Pressable>
-            )}
-            {!attachment && (
-              <Pressable
-                onPress={() => setIsCreatingPoll(!isCreatingPoll)}
-                className="p-2"
-              >
-                <PollIcon color={isCreatingPoll ? '#3b82f6' : '#6b7280'} size={22} />
-              </Pressable>
-            )}
-          </View>
-
-          {/* Character counter */}
-          {charCount > 0 && (
+              Media and polls stay mutually exclusive, as they were before: a
+              post carries one or the other, never both, so each control is
+              offered only while it still applies. */}
+          <View className="mx-4 mb-4 pt-3 border-t border-gray-900 flex-row items-center justify-between">
             <View className="flex-row items-center" style={{ gap: 8 }}>
-              <Text
-                className={`text-sm ${
-                  isOverLimit
-                    ? 'text-red-500'
-                    : isNearLimit
-                    ? 'text-yellow-500'
-                    : 'text-gray-500'
-                }`}
-              >
-                {MAX_CHARS - charCount}
-              </Text>
-              {/* Simple progress indicator */}
-              <View
-                className="w-6 h-6 rounded-full border-2"
-                style={{
-                  borderColor: isOverLimit
-                    ? '#ef4444'
-                    : isNearLimit
-                    ? '#eab308'
-                    : '#3b82f6',
-                }}
-              >
+              {!attachment && !isCreatingPoll && (
+                <Pressable
+                  onPress={handleAttachMedia}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add a photo"
+                  className="flex-row items-center border border-gray-800 rounded-full px-4 py-2"
+                  style={{ gap: 6 }}
+                >
+                  <ImageIcon color="#3b82f6" size={18} />
+                  <Text className="text-blue-500 font-semibold text-sm">Photo</Text>
+                </Pressable>
+              )}
+              {!attachment && !isCreatingPoll && (
+                <Pressable
+                  onPress={() => setIsCreatingPoll(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add a poll"
+                  className="flex-row items-center border border-gray-800 rounded-full px-4 py-2"
+                  style={{ gap: 6 }}
+                >
+                  <PollIcon color="#3b82f6" size={18} />
+                  <Text className="text-blue-500 font-semibold text-sm">Poll</Text>
+                </Pressable>
+              )}
+            </View>
+
+            {/* Character counter */}
+            {charCount > 0 && (
+              <View className="flex-row items-center" style={{ gap: 8 }}>
+                <Text
+                  className={`text-sm ${
+                    isOverLimit
+                      ? 'text-red-500'
+                      : isNearLimit
+                      ? 'text-yellow-500'
+                      : 'text-gray-500'
+                  }`}
+                >
+                  {MAX_CHARS - charCount}
+                </Text>
+                {/* Simple progress indicator */}
                 <View
-                  className="rounded-full"
+                  className="w-6 h-6 rounded-full border-2"
                   style={{
-                    width: `${charProgress * 100}%`,
-                    height: '100%',
-                    backgroundColor: isOverLimit
+                    borderColor: isOverLimit
                       ? '#ef4444'
                       : isNearLimit
                       ? '#eab308'
                       : '#3b82f6',
-                    borderRadius: 999,
                   }}
-                />
+                >
+                  <View
+                    className="rounded-full"
+                    style={{
+                      width: `${charProgress * 100}%`,
+                      height: '100%',
+                      backgroundColor: isOverLimit
+                        ? '#ef4444'
+                        : isNearLimit
+                        ? '#eab308'
+                        : '#3b82f6',
+                      borderRadius: 999,
+                    }}
+                  />
+                </View>
               </View>
-            </View>
-          )}
-        </View>
+            )}
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
