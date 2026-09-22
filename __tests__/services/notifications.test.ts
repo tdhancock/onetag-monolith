@@ -8,6 +8,11 @@
 // ---------------------------------------------------------------------------
 let mockIsDevice = true;
 let mockPlatformOS: 'ios' | 'android' = 'ios';
+// Expo Go cannot receive remote push as of SDK 53, so the service detects
+// it and skips registration. Both of these feed that decision and the
+// projectId lookup; getters let a test change them per case.
+let mockExecutionEnvironment = 'standalone';
+let mockProjectId: string | undefined = 'test-project-id';
 // Captures the foreground notification handler registered by
 // services/notifications.ts at module-init time, before any
 // beforeEach(jest.clearAllMocks) runs.
@@ -24,6 +29,26 @@ jest.mock('expo-device', () => ({
 jest.mock('react-native', () => ({
   get Platform() {
     return { OS: mockPlatformOS };
+  },
+}), { virtual: true });
+
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: {
+    get executionEnvironment() {
+      return mockExecutionEnvironment;
+    },
+    get expoConfig() {
+      return { extra: { eas: { projectId: mockProjectId } } };
+    },
+    get easConfig() {
+      return { projectId: mockProjectId };
+    },
+  },
+  ExecutionEnvironment: {
+    Bare: 'bare',
+    Standalone: 'standalone',
+    StoreClient: 'storeClient',
   },
 }), { virtual: true });
 
@@ -71,6 +96,8 @@ describe('registerForPushNotifications', () => {
     jest.clearAllMocks();
     mockIsDevice = true;
     mockPlatformOS = 'ios';
+    mockExecutionEnvironment = 'standalone';
+    mockProjectId = 'test-project-id';
   });
 
   // -----------------------------------------------------------------------
@@ -104,8 +131,10 @@ describe('registerForPushNotifications', () => {
     expect(Notifications.getPermissionsAsync).toHaveBeenCalledTimes(1);
     // Should NOT call requestPermissionsAsync when already granted
     expect(Notifications.requestPermissionsAsync).not.toHaveBeenCalled();
+    // The EAS projectId is read explicitly from the manifest and passed
+    // through — expo-notifications does not infer it from an undefined.
     expect(Notifications.getExpoPushTokenAsync).toHaveBeenCalledWith({
-      projectId: undefined,
+      projectId: 'test-project-id',
     });
   });
 
@@ -205,11 +234,111 @@ describe('registerForPushNotifications', () => {
     (Notifications.getExpoPushTokenAsync as jest.Mock).mockRejectedValue(
       new Error('Network error'),
     );
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const result = await registerForPushNotifications();
+    try {
+      const result = await registerForPushNotifications();
 
-    expect(result).toBeNull();
-    expect(Notifications.getExpoPushTokenAsync).toHaveBeenCalledTimes(1);
+      expect(result).toBeNull();
+      expect(Notifications.getExpoPushTokenAsync).toHaveBeenCalledTimes(1);
+      // A missing push token is not fatal — the app works without push, so
+      // this is a warning rather than an error.
+      expect(warnSpy).toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Test 7 — no EAS projectId configured
+  // -----------------------------------------------------------------------
+  it('returns null with a warning when no EAS projectId is configured', async () => {
+    // Passing an undefined projectId does not make expo-notifications
+    // infer one — it throws. The service checks first so a misconfigured
+    // app.json produces an actionable warning instead of a stack trace.
+    mockProjectId = undefined;
+    (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({
+      status: 'granted',
+    });
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      const result = await registerForPushNotifications();
+
+      expect(result).toBeNull();
+      expect(Notifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('no EAS projectId configured'),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
+
+// ===========================================================================
+// registerForPushNotifications — Expo Go
+//
+// `isExpoGo` is resolved once at module load, so this case needs the module
+// re-required under a StoreClient execution environment rather than a flag
+// flipped mid-test.
+// ===========================================================================
+describe('registerForPushNotifications — under Expo Go', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockIsDevice = true;
+    mockPlatformOS = 'ios';
+    mockProjectId = 'test-project-id';
+  });
+
+  afterEach(() => {
+    mockExecutionEnvironment = 'standalone';
+  });
+
+  it('skips registration entirely, on both platforms', async () => {
+    // Expo Go dropped remote push in SDK 53. Registering cannot succeed
+    // there regardless of permissions, so the service must not even ask.
+    mockExecutionEnvironment = 'storeClient';
+
+    for (const platform of ['ios', 'android'] as const) {
+      mockPlatformOS = platform;
+      jest.resetModules();
+
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const freshService = require('../../services/notifications');
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const freshNotifications = require('expo-notifications');
+
+      const result = await freshService.registerForPushNotifications();
+
+      expect(result).toBeNull();
+      expect(freshNotifications.getPermissionsAsync).not.toHaveBeenCalled();
+      expect(freshNotifications.requestPermissionsAsync).not.toHaveBeenCalled();
+      expect(freshNotifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
+      expect(freshNotifications.setNotificationChannelAsync).not.toHaveBeenCalled();
+    }
+  });
+
+  it('still registers when not running under Expo Go', async () => {
+    // The mirror of the case above: a standalone / dev build proceeds.
+    mockExecutionEnvironment = 'standalone';
+    jest.resetModules();
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const freshService = require('../../services/notifications');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const freshNotifications = require('expo-notifications');
+    freshNotifications.getPermissionsAsync.mockResolvedValue({ status: 'granted' });
+    freshNotifications.getExpoPushTokenAsync.mockResolvedValue({
+      data: 'ExpoPushToken[standalone]',
+    });
+
+    const result = await freshService.registerForPushNotifications();
+
+    expect(result).toBe('ExpoPushToken[standalone]');
+    expect(freshNotifications.getExpoPushTokenAsync).toHaveBeenCalledWith({
+      projectId: 'test-project-id',
+    });
   });
 });
 
