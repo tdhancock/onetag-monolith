@@ -8,63 +8,22 @@ import { supabase } from './supabase.native';
 // Re-export so other files can import from apiService
 export { supabase };
 
-export const FEED_PAGE_SIZE = 20;
+// Feed reads moved to features/posts in ONE-12. These are re-exported so the
+// rest of the app keeps working while the strangler migration runs; the shims
+// go away in the final M2 cleanup.
+export {
+    FEED_PAGE_SIZE,
+    POST_SELECT_QUERY,
+    mapPostData,
+    getFeedUserIds,
+    fetchPostById as getPostById,
+    fetchTrendingPosts as getTrendingPosts,
+} from '../features/posts';
 
-const POST_SELECT_QUERY = `
-    id,
-    user_id,
-    content,
-    image_url,
-    media_type,
-    media_aspect_ratio,
-    created_at,
-    profiles!user_id(
-        username,
-        avatar_url,
-        full_name,
-        is_verified
-    ),
-    likes:likes(count),
-    comments:comments(count),
-    reposts:reposts(count)
-`;
-
-const toNumber = (value: unknown): number => {
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value === 'string') {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed)) return parsed;
-    }
-    return 0;
-};
-
-const extractCount = (embedded: unknown, fallback: unknown): number => {
-    if (Array.isArray(embedded)) {
-        const first = embedded[0] as { count?: unknown } | undefined;
-        if (first && typeof first === 'object' && 'count' in first) {
-            return toNumber(first.count);
-        }
-        return embedded.length;
-    }
-    return toNumber(fallback);
-};
-
-const normalizeMediaType = (mediaType: unknown, mediaUrl?: string): Post['media_type'] => {
-    if (mediaType === 'text') return 'text';
-    return mediaUrl ? 'image' : 'text';
-};
-
-const getFeedUserIds = async (userId: string): Promise<string[]> => {
-    const { data: followingData, error: followingError } = await supabase
-        .from('follows')
-        .select('followed_id')
-        .eq('follower_id', userId);
-
-    if (followingError) throw followingError;
-
-    const followingIds = (followingData || []).map((f: any) => f.followed_id);
-    return Array.from(new Set([...followingIds, userId]));
-};
+import {
+    POST_SELECT_QUERY,
+    mapPostData,
+} from '../features/posts';
 
 const DEFAULT_USER_BIO = 'Hello, I am using OneTag';
 
@@ -629,148 +588,6 @@ export const cleanHtml = (html: string): string => {
         .trim();
 };
 
-export const mapPostData = (p: any): Post => {
-    const mediaUrl = typeof p.image_url === 'string' && p.image_url.trim().length > 0
-        ? p.image_url
-        : undefined;
-
-    let media_preview_url: string | undefined = undefined;
-
-    // Create a low-quality preview URL for images and videos hosted on Supabase.
-    // This is used for the "blur-up" loading effect.
-    if (mediaUrl && mediaUrl.includes('supabase.co')) {
-        try {
-            const url = new URL(mediaUrl);
-            // Transform Supabase storage URL to use the image transformation API.
-            // from: /storage/v1/object/public/posts/...
-            // to:   /storage/v1/render/image/public/posts/...
-            const pathParts = url.pathname.split('/');
-            const objectIndex = pathParts.indexOf('object');
-            
-            if (objectIndex !== -1) {
-                pathParts.splice(objectIndex, 1, 'render', 'image');
-                url.pathname = pathParts.join('/');
-                // Request a small, low-quality version for the preview.
-                url.searchParams.set('width', '50');
-                url.searchParams.set('quality', '40');
-                url.searchParams.set('resize', 'cover');
-                media_preview_url = url.toString();
-            }
-        } catch (e) {
-            // Silently fail if URL parsing doesn't work.
-            console.error("Failed to create preview URL for post media", e);
-        }
-    }
-
-    const profile = Array.isArray(p.profiles) ? (p.profiles[0] || {}) : (p.profiles || {});
-
-    return {
-        id: p.id,
-        content: typeof p.content === 'string' ? p.content : '',
-        media: mediaUrl,
-        media_preview_url, // Add the generated preview URL to the post object.
-        media_type: normalizeMediaType(p.media_type, mediaUrl),
-        media_aspect_ratio: p.media_aspect_ratio,
-        timestamp: p.created_at,
-        username: profile.username || 'unknown_user',
-        avatar: profile.avatar_url || null,
-        name: profile.full_name || profile.username,
-        isVerified: Boolean(profile.is_verified),
-        likes: extractCount(p.likes, p.likes_count),
-        reposts: extractCount(p.reposts, p.reposts_count),
-        replies: extractCount(p.comments, p.comments_count),
-    };
-};
-
-export const getTimeline = async (): Promise<Post[]> => {
-    try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            console.warn("Timeline: No user logged in. Returning empty array.");
-            return [];
-        }
-
-        const userIdsToFetch = await getFeedUserIds(user.id);
-
-        const { data: postsData, error: postsError } = await supabase
-            .from('posts')
-            .select(POST_SELECT_QUERY)
-            .in('user_id', userIdsToFetch)
-            .order('created_at', { ascending: false })
-            .limit(FEED_PAGE_SIZE);
-
-        if (postsError) throw postsError;
-        if (!postsData || postsData.length === 0) {
-            currentFeedCursor = null;
-            return [];
-        }
-
-        currentFeedCursor = postsData[postsData.length - 1]?.created_at ?? null;
-        return postsData.map(mapPostData);
-
-    } catch (error) {
-        console.error("Zaman çizelgesi alınırken hata oluştu:", (error as Error).message || error);
-        return [];
-    }
-};
-
-let currentFeedCursor: string | null = null;
-export const getMorePosts = async (): Promise<Post[]> => {
-    try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            console.warn("getMorePosts: No user logged in.");
-            return [];
-        }
-
-        if (!currentFeedCursor) return [];
-
-        const userIdsToFetch = await getFeedUserIds(user.id);
-
-        const { data: postsData, error: postsError } = await supabase
-            .from('posts')
-            .select(POST_SELECT_QUERY)
-            .in('user_id', userIdsToFetch)
-            .order('created_at', { ascending: false })
-            .lt('created_at', currentFeedCursor)
-            .limit(FEED_PAGE_SIZE);
-
-        if (postsError) throw postsError;
-        if (!postsData || postsData.length === 0) {
-            currentFeedCursor = null;
-            return [];
-        }
-
-        currentFeedCursor = postsData[postsData.length - 1]?.created_at ?? null;
-        return postsData.map(mapPostData);
-
-    } catch (error) {
-        console.error("Error fetching more posts:", (error as Error).message || error);
-        return [];
-    }
-};
-
-export const resetPageCounter = () => {
-    currentFeedCursor = null;
-};
-
-export const getTrendingPosts = async (): Promise<Post[]> => {
-    try {
-        const { data: postsData, error: postsError } = await supabase
-            .from('posts')
-            .select(POST_SELECT_QUERY)
-            .order('created_at', { ascending: false })
-            .limit(FEED_PAGE_SIZE + 1);
-
-        if (postsError) throw postsError;
-        if (!postsData) return [];
-        return postsData.map(mapPostData);
-    } catch (error) {
-        console.error("Error fetching trending posts:", (error as Error).message || error);
-        return [];
-    }
-};
-
 export const markNotificationsAsRead = async (userId: string): Promise<boolean> => {
     const { error } = await supabase
         .from('notifications')
@@ -783,23 +600,6 @@ export const markNotificationsAsRead = async (userId: string): Promise<boolean> 
         return false;
     }
     return true;
-};
-
-export const getPostById = async (postId: string): Promise<Post | undefined> => {
-    try {
-        const { data: postData, error: postError } = await supabase
-            .from('posts')
-            .select(POST_SELECT_QUERY)
-            .eq('id', postId)
-            .single();
-
-        if (postError || !postData) throw postError || new Error("Post not found");
-        return mapPostData(postData);
-        
-    } catch (error) {
-        console.error("Error fetching post by ID:", (error as Error).message || error);
-        return undefined;
-    }
 };
 
 export const fetchLikeCount = async (postId: string): Promise<number> => {

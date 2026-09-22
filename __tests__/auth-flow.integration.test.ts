@@ -22,10 +22,14 @@
 import type { Post, UserProfile, SimpleUser } from '../types';
 import {
   ensureCurrentUserProfile,
-  getTimeline,
   getUserProfile,
   FEED_PAGE_SIZE,
 } from '../services/apiService';
+// ONE-12 moved the feed read into features/posts and made the user id an
+// explicit argument instead of something the function reads from auth. The
+// "no user id → no request at all" guarantee now belongs to the hook, and is
+// asserted in __tests__/features/posts/queries.test.ts.
+import { fetchFeedPage } from '../features/posts';
 
 // ─── 1. Supabase mock ───────────────────────────────────────────────────
 //
@@ -325,9 +329,9 @@ describe('Integration — login → feed → profile → logout', () => {
 
     // ── 3. FEED LOAD ────────────────────────────────────────────────────
     //
-    // Home tab mounts → AppContext calls refreshAllData() → which calls
-    // getTimeline(). That fires auth.getUser(), then `from('follows')`
-    // to compute the feed audience, then `from('posts')` for the page.
+    // Home tab mounts → the feed query calls fetchFeedPage() with the signed
+    // in user's id. That fires `from('follows')` to compute the feed
+    // audience, then `from('posts')` for the page.
     const feedPosts = [
       makeFeedPost({ id: 'p-1', content: 'First post' }),
       makeFeedPost({ id: 'p-2', content: 'Second post', isVerified: true }),
@@ -370,7 +374,7 @@ describe('Integration — login → feed → profile → logout', () => {
       };
     });
 
-    const timeline = await getTimeline();
+    const timeline = await fetchFeedPage({ userId: authUser.id, pageParam: null });
     expect(timeline).toHaveLength(3);
     expect(timeline[0].id).toBe('p-1');
     expect(timeline[0].content).toBe('First post');
@@ -452,10 +456,13 @@ describe('Integration — login → feed → profile → logout', () => {
     expect(afterLogout.unreadChats.size).toBe(0);
     expect(afterLogout.isAdmin).toBe(false);
 
-    // After logout, the feed call must not return any user-specific data.
-    testHooks.mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
-    const timelineAfterLogout = await getTimeline();
-    expect(timelineAfterLogout).toEqual([]);
+    // After logout there is no profile id, so the feed query is disabled and
+    // no request is made at all — a stronger guarantee than the old
+    // getTimeline(), which fired auth.getUser() before deciding to bail.
+    // Asserted against the hook in __tests__/features/posts/queries.test.ts.
+    // The torn-down session leaves a placeholder profile with no id, and an
+    // absent id is exactly what disables the feed query.
+    expect(afterLogout.userProfile?.id).toBeFalsy();
   });
 });
 
@@ -533,20 +540,11 @@ describe('Integration — feed load (focused)', () => {
     }));
     testHooks.setHandler('posts', () => ({ data: [], error: null }));
 
-    const timeline = await getTimeline();
+    const timeline = await fetchFeedPage({ userId: authUser.id, pageParam: null });
     expect(Array.isArray(timeline)).toBe(true);
     expect(timeline).toHaveLength(0);
     expect(testHooks.mockFrom).toHaveBeenCalledWith('follows');
     expect(testHooks.mockFrom).toHaveBeenCalledWith('posts');
-  });
-
-  it('returns an empty array when no user is logged in', async () => {
-    testHooks.mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
-
-    const timeline = await getTimeline();
-    expect(timeline).toEqual([]);
-    // Without a user, neither the follows nor the posts query is fired.
-    expect(testHooks.mockFrom).not.toHaveBeenCalled();
   });
 });
 

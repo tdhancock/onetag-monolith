@@ -1,6 +1,6 @@
 
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,14 +14,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
 import {
-  FEED_PAGE_SIZE,
-  getTimeline,
-  getMorePosts,
-  resetPageCounter,
   getStories,
-  getPostById,
   getSmartUserSuggestions,
 } from '../../services/apiService';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  useFeedQuery,
+  fetchPostById,
+  feedPosts,
+  prependPost,
+  replacePost,
+  removePost,
+  postKeys,
+} from '../../features/posts';
+import type { FeedData } from '../../features/posts';
 import { supabase } from '../../services/supabase.native';
 import PostCard from '../../components/native/PostCard';
 import PostSkeleton from '../../components/native/PostSkeleton';
@@ -31,13 +37,6 @@ import UserAvatar from '../../components/native/UserAvatar';
 import { VerifiedIcon, BellIcon, SendIcon } from '../../components/native/Icons';
 import type { Post, Story, SimpleUser } from '../../types';
 import { tokens } from '../../theme/tokens';
-
-const appendUniquePosts = (current: Post[], incoming: Post[]): Post[] => {
-  if (incoming.length === 0) return current;
-  const seen = new Set(current.map(post => post.id));
-  const next = incoming.filter(post => !seen.has(post.id));
-  return next.length === 0 ? current : [...current, ...next];
-};
 
 const dedupeStoriesById = (stories: Story[]): Story[] => {
   const seen = new Set<string>();
@@ -64,15 +63,31 @@ export default function HomeFeedScreen() {
   const router = useRouter();
   const unreadNotificationCount = notifications?.filter(n => !n.is_read).length ?? 0;
 
-  const [posts, setPosts] = useState<Post[]>([]);
+  const queryClient = useQueryClient();
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
   const [allStories, setAllStories] = useState<Story[]>([]);
   const allStoriesRef = useRef<Story[]>([]);
   const [suggestedUsers, setSuggestedUsers] = useState<SimpleUser[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  const [isStoriesLoading, setIsStoriesLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // ─── Feed ──────────────────────────────────────
+  // Page state belongs to the query, not to this component and not to a
+  // module-level cursor, so a second mount starts from the top on its own.
+  const feedQuery = useFeedQuery(userProfile?.id);
+  const feedKey = postKeys.feed(userProfile?.id ?? '');
+
+  // Blocked authors are filtered here rather than inside the query, so the
+  // cache holds what the server returned and `getNextPageParam` measures a
+  // full page. Filtering before that measurement is what used to end
+  // pagination early whenever a page contained a blocked author.
+  const posts = useMemo(
+    () => feedPosts(feedQuery.data).filter(post => !isUserBlocked(post.username)),
+    [feedQuery.data, isUserBlocked],
+  );
+
+  const isFeedLoading = Boolean(userProfile?.id) && feedQuery.isPending;
+  const isLoading = isFeedLoading || isStoriesLoading;
 
   const loadSuggestions = useCallback(async (userId: string) => {
     try {
@@ -130,36 +145,29 @@ export default function HomeFeedScreen() {
     }
   }, [applyStoriesState]);
 
-  const loadFeed = useCallback(async () => {
+  const loadStories = useCallback(async () => {
     try {
-      resetPageCounter();
-      const [timelinePosts, stories] = await Promise.all([
-        getTimeline(),
-        getStories(),
-      ]);
-
-      const filteredPosts = timelinePosts.filter(post => !isUserBlocked(post.username));
-      setPosts(filteredPosts);
-      setHasMore(filteredPosts.length >= FEED_PAGE_SIZE);
-      applyStoriesState(stories);
-
-      const hasFollows = followedUsernames && followedUsernames.size > 0;
-      if (filteredPosts.length === 0 && !hasFollows && userProfile?.id) {
-        await loadSuggestions(userProfile.id);
-      } else {
-        setSuggestedUsers([]);
-      }
+      applyStoriesState(await getStories());
     } catch (error) {
-      console.error('Feed load error:', error);
-      addToast('Failed to load feed', 'error');
+      console.error('Story load error:', error);
     } finally {
-      setIsLoading(false);
+      setIsStoriesLoading(false);
     }
-  }, [isUserBlocked, addToast, followedUsernames, userProfile?.id, loadSuggestions, applyStoriesState]);
+  }, [applyStoriesState]);
 
   useEffect(() => {
-    loadFeed();
-  }, [loadFeed]);
+    void loadStories();
+  }, [loadStories]);
+
+  // The feed used to toast from loadFeed's catch. The query owns retries now,
+  // so the toast fires once the retries are exhausted rather than on the
+  // first failure.
+  useEffect(() => {
+    if (feedQuery.isError) {
+      console.error('Feed load error:', feedQuery.error);
+      addToast('Failed to load feed', 'error');
+    }
+  }, [feedQuery.isError, feedQuery.error, addToast]);
 
   useEffect(() => {
     const channel = supabase
@@ -208,30 +216,38 @@ export default function HomeFeedScreen() {
     }
   }, [followedUsernames, isLoading, loadSuggestions, posts.length, suggestedUsers.length, userProfile?.id]);
 
+  // Realtime edits land in the query cache — the list is the query's data
+  // now, so there is no local array to fold them into. ONE-16 generalizes
+  // this bridge across domains.
   const handlePostUpdates = useCallback(async (payload: any) => {
+    if (!userProfile?.id) return;
+
     try {
       if (payload.eventType === 'DELETE') {
-        setPosts(prev => prev.filter(post => post.id !== payload.old.id));
+        const deletedId = payload.old?.id;
+        if (!deletedId) return;
+        queryClient.setQueryData(feedKey, (data: FeedData | undefined) =>
+          removePost(data, deletedId),
+        );
         return;
       }
 
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         const postId = payload.new?.id;
         if (!postId) return;
-        const fullPost = await getPostById(postId);
+        const fullPost = await fetchPostById(postId);
         if (!fullPost || isUserBlocked(fullPost.username)) return;
 
-        if (payload.eventType === 'INSERT') {
-          setPosts(prev => (prev.some(post => post.id === fullPost.id) ? prev : [fullPost, ...prev]));
-          return;
-        }
-
-        setPosts(prev => prev.map(post => (post.id === fullPost.id ? fullPost : post)));
+        queryClient.setQueryData(feedKey, (data: FeedData | undefined) =>
+          payload.eventType === 'INSERT'
+            ? prependPost(data, fullPost)
+            : replacePost(data, fullPost),
+        );
       }
     } catch (error) {
       console.error('Realtime post handling error:', error);
     }
-  }, [isUserBlocked]);
+  }, [isUserBlocked, queryClient, feedKey, userProfile?.id]);
 
   useEffect(() => {
     const channel = supabase
@@ -248,37 +264,23 @@ export default function HomeFeedScreen() {
     };
   }, [handlePostUpdates]);
 
+  // Refetching an infinite query refetches every loaded page from the first
+  // cursor, so the list rebuilds from the top without duplicating.
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await loadFeed();
+      await Promise.all([feedQuery.refetch(), loadStories()]);
     } finally {
       setRefreshing(false);
     }
-  }, [loadFeed]);
+  }, [feedQuery, loadStories]);
 
-  const loadMore = useCallback(async () => {
-    if (isLoadingMore || !hasMore) return;
-    setIsLoadingMore(true);
-    try {
-      const morePosts = await getMorePosts();
-      if (morePosts.length === 0) {
-        setHasMore(false);
-        return;
-      }
-
-      const filteredPosts = morePosts.filter(post => !isUserBlocked(post.username));
-      setPosts(prev => appendUniquePosts(prev, filteredPosts));
-
-      if (morePosts.length < FEED_PAGE_SIZE) {
-        setHasMore(false);
-      }
-    } catch (error) {
-      console.error('Load more error:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }, [isLoadingMore, hasMore, isUserBlocked]);
+  const loadMore = useCallback(() => {
+    // FlatList fires onEndReached more than once per arrival at the end; both
+    // guards are what keep a page from being appended twice.
+    if (!feedQuery.hasNextPage || feedQuery.isFetchingNextPage) return;
+    void feedQuery.fetchNextPage();
+  }, [feedQuery]);
 
   const handleViewProfile = useCallback((username: string) => {
     router.push(`/user/${username}`);
@@ -407,13 +409,13 @@ export default function HomeFeedScreen() {
   }, [isLoading, followedUsernames, suggestedUsers, isUserFollowed, toggleFollowUser, handleViewProfile]);
 
   const ListFooter = useCallback(() => {
-    if (!isLoadingMore) return null;
+    if (!feedQuery.isFetchingNextPage) return null;
     return (
       <View className="py-6">
         <ActivityIndicator color="#3b82f6" />
       </View>
     );
-  }, [isLoadingMore]);
+  }, [feedQuery.isFetchingNextPage]);
 
   if (isLoading) {
     return (
