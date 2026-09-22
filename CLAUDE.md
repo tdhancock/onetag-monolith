@@ -19,6 +19,10 @@ app/                       expo-router routes — every screen
   (tabs)/                  tab bar screens (+ their *.utils.ts, which are live)
   <route>.tsx              stack screens: compose, messages, settings, …
 components/native/         shared components
+components/native/ui/      shared visual primitives — token-only, no raw hex
+features/<domain>/         data domains: api, keys, queries, mutations, types, index
+lib/                       queryClient, QueryProvider, queryKeys
+theme/tokens.ts            design tokens — the single source of truth for colour and type
 store/AppContext.native    global UI state
 services/                  supabase client, apiService, realtime, notifications, storage
 supabase/migrations/       schema
@@ -30,8 +34,7 @@ scripts/                   CI gates
 `store/AppContext.native.tsx` and `services/supabase.native.ts` keep a `.native` suffix left
 over from a web fork deleted in ONE-5. Neither has a non-native twin — import the `.native` one.
 
-**Not here yet:** `theme/tokens.ts` (M1a), `features/<domain>/` (M2), `lib/tagLinks.ts` (M4).
-Don't import them before their ticket lands.
+**Not here yet:** `lib/tagLinks.ts` (M4). Don't import it before its ticket lands.
 
 ## Commands
 
@@ -74,9 +77,30 @@ features/<domain>/
   index.ts      public surface — other features import only from here
 ```
 
+**`features/hashtags/` is the canonical example** — the smallest domain in the app, one read
+and no mutations, so the structure is visible without domain logic on top of it. Copy it.
+A domain with no mutations has no `mutations.ts`; don't add an empty file to match the list.
+
+Three rules, stated in full in [`features/README.md`](features/README.md):
+
+1. `api.ts` imports nothing from React and nothing from another feature. It may import the
+   Supabase client from `services/` and its own `./types`.
+2. Screens and other features import **only** from `features/<domain>` — the `index.ts`
+   barrel — never from a file inside it.
+3. Query keys are built **only** in `keys.ts`, via `createQueryKeys` from `lib/queryKeys.ts`.
+   A raw array key literal anywhere else is a bug.
+
+Keys are hierarchical because TanStack matches by key prefix: `postKeys.all` is `['posts']`,
+`postKeys.list({userId})` is `['posts','list',{userId}]`, so invalidating `all` reaches every
+key beneath it while `lists()` leaves cached details alone.
+
 Like, Save, Follow and Repost are one operation — an optimistic boolean toggle over a join
 table with a count — so they share **one** generic helper. Four hand-written variants is the
 thing this pattern exists to prevent.
+
+Migration is a strangler: when a function moves out of `services/apiService.ts`, leave a
+re-export behind pointing at the new home so nothing else breaks — see `getAllHashtags`. The
+shims come out in the final M2 cleanup.
 
 ## Styling
 

@@ -17,9 +17,9 @@ import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
 import {
   getTrendingPosts,
-  getAllHashtags,
   searchUsers,
 } from '../../services/apiService';
+import { useHashtagsQuery } from '../../features/hashtags';
 import UserAvatar from '../../components/native/UserAvatar';
 import { SearchIcon, VerifiedIcon, HeartIcon, CommentIcon } from '../../components/native/Icons';
 import RenderUserContent from '../../components/native/RenderUserContent';
@@ -129,7 +129,6 @@ export default function SearchScreen() {
   const [activeFilter, setActiveFilter] = useState<FilterType>('users');
 
   const [trendingPosts, setTrendingPosts] = useState<Post[]>([]);
-  const [hashtags, setHashtags] = useState<Hashtag[]>([]);
   const [userResults, setUserResults] = useState<SimpleUser[]>([]);
   const [isUserSearchLoading, setIsUserSearchLoading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -137,14 +136,18 @@ export default function SearchScreen() {
 
   // ─── Data loading ──────────────────────────────
 
+  // Hashtags come from the query cache; trending posts are still on the old
+  // path until the feed migration ticket moves them.
+  const {
+    data: hashtags = [],
+    isLoading: hashtagsLoading,
+    refetch: refetchHashtags,
+  } = useHashtagsQuery();
+
   const loadExploreData = useCallback(async () => {
     try {
-      const [postsData, hashtagsData] = await Promise.all([
-        getTrendingPosts(),
-        getAllHashtags(),
-      ]);
+      const postsData = await getTrendingPosts();
       setTrendingPosts(postsData);
-      setHashtags(hashtagsData);
     } catch (error) {
       console.error('Search data load error:', error);
     } finally {
@@ -152,15 +155,19 @@ export default function SearchScreen() {
     }
   }, []);
 
+  // The screen shows one spinner for the whole explore surface, so it waits
+  // on both sources exactly as it did when they loaded together.
+  const isExploreLoading = loading || hashtagsLoading;
+
   useEffect(() => {
     loadExploreData();
   }, [loadExploreData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadExploreData();
+    await Promise.all([loadExploreData(), refetchHashtags()]);
     setRefreshing(false);
-  }, [loadExploreData]);
+  }, [loadExploreData, refetchHashtags]);
 
   // ─── User search with debounce ─────────────────
 
@@ -349,7 +356,7 @@ export default function SearchScreen() {
       {/* Content */}
       {isSearching ? (
         renderSearchContent()
-      ) : loading ? (
+      ) : isExploreLoading ? (
         <View className="py-4">
           <PostSkeleton />
           <PostSkeleton />
