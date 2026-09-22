@@ -103,7 +103,7 @@ Use these exactly — as table names, variable names, and user-facing labels.
 | **Scan** | Reading a Physical Tag with the camera. Applies to Physical Tags only. |
 | **Scan History** | A user's private log of Tags they scanned. Private by default; opt-in to public. |
 | **Profile** | A presence on the platform. Either a Business Profile or an Individual Profile. |
-| **Product** | A shoppable, taggable catalog item listed by a Business Profile. |
+| **Product** | A taggable catalog item listed by a Business Profile. A Tag Destination, not a thing you can buy — payments are permanently out of scope (see below). |
 | **Project** | A build, install or completed work. Can link many Contributors and Products. |
 | **Contributor** | A Profile Linked to a Project as participant or supplier. **Never "vendor".** |
 | **Linked** | The verb for connections between entities. Not "attached", "connected", or "associated". |
@@ -137,8 +137,7 @@ payouts · leads inbox and quote requests · team permission seats and role-base
 access · brand partnership marketplace, campaigns, gifted products · multi-seller product
 pages · NFC (QR only; `expo-camera` is already installed)
 
-A Product here is a catalog item and a Tag Destination. **It is not a thing you can buy.** If a
-ticket seems to lead toward any of these, stop at the boundary and note it on the ticket.
+If a ticket seems to lead toward any of these, stop at the boundary and note it on the ticket.
 
 ## Definition of done
 
