@@ -5,9 +5,9 @@ import { View, Text, Pressable, Alert, StyleSheet, ActivityIndicator } from 'rea
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '../../store/AppContext.native';
 import { uploadStory } from '../../services/apiService';
+import { pickImageFromLibrary } from '../../services/mediaPicker';
 import {
   CameraIcon,
   FlipCameraIcon,
@@ -105,14 +105,10 @@ export default function CameraScreen() {
   }, [capturing, triggerHapticFeedback, handleUploadStory, router, addToast]);
 
   const pickFromGallery = useCallback(async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.9,
-      allowsEditing: true,
-    });
+    const result = await pickImageFromLibrary();
 
-    if (!result.canceled && result.assets[0]?.uri) {
-      const uri = result.assets[0].uri;
+    if (result.status === 'selected') {
+      const uri = result.media.uri;
       Alert.alert('Share as', 'What would you like to do with this photo?', [
         {
           text: 'Story',

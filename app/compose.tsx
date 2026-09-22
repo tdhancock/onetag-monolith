@@ -8,14 +8,22 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useApp } from '../store/AppContext.native';
 import { cleanHtml } from '../services/apiService';
+import {
+  pickImageFromLibrary,
+  captureImageWithCamera,
+  type PickedMedia,
+  type MediaPickerResult,
+} from '../services/mediaPicker';
+import { attachmentFromParams, buildPostMedia } from './compose.utils';
 import UserAvatar from '../components/native/UserAvatar';
-import { PollIcon, XIcon } from '../components/native/Icons';
+import { ImageIcon, PollIcon, XIcon } from '../components/native/Icons';
 import type { Post } from '../types';
 
 const MAX_CHARS = 280;
@@ -34,10 +42,13 @@ export default function ComposeScreen() {
   const [isCreatingPoll, setIsCreatingPoll] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
+  const [attachment, setAttachment] = useState<PickedMedia | null>(() =>
+    attachmentFromParams(mediaUri, paramMediaType),
+  );
 
   const charCount = content.length;
   const canPost =
-    (content.trim().length > 0 || mediaUri) &&
+    (content.trim().length > 0 || attachment) &&
     !isPosting &&
     charCount <= MAX_CHARS &&
     (!isCreatingPoll || (pollQuestion.trim() && pollOptions.filter(o => o.trim()).length >= 2));
@@ -56,8 +67,7 @@ export default function ComposeScreen() {
         name: userProfile.name || userProfile.username,
         avatar: userProfile.profilePicture || null,
         timestamp: new Date().toISOString(),
-        media: mediaUri || undefined,
-        media_type: mediaUri ? 'image' : 'text',
+        ...buildPostMedia(attachment),
         likes: 0,
         reposts: 0,
         replies: 0,
@@ -81,6 +91,30 @@ export default function ComposeScreen() {
       setIsPosting(false);
     }
   };
+
+  const adoptResult = async (pick: () => Promise<MediaPickerResult>) => {
+    try {
+      const result = await pick();
+      if (result.status === 'selected') {
+        setAttachment(result.media);
+      } else if (result.status === 'permission-denied') {
+        addToast('Camera access is needed to take a photo.', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to attach media', error);
+      addToast('Failed to attach photo.', 'error');
+    }
+  };
+
+  const handleAttachMedia = () => {
+    Alert.alert('Add a photo', 'Where should it come from?', [
+      { text: 'Photo Library', onPress: () => adoptResult(pickImageFromLibrary) },
+      { text: 'Take Photo', onPress: () => adoptResult(captureImageWithCamera) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const handleRemoveMedia = () => setAttachment(null);
 
   const addPollOption = () => {
     if (pollOptions.length < 4) {
@@ -156,14 +190,21 @@ export default function ComposeScreen() {
           </View>
 
           {/* Media preview */}
-          {mediaUri && (
+          {attachment && (
             <View className="px-4 pb-4">
               <View className="rounded-2xl overflow-hidden">
                 <Image
-                  source={{ uri: mediaUri }}
+                  source={{ uri: attachment.uri }}
                   style={{ width: '100%', aspectRatio: 1 }}
                   contentFit="cover"
                 />
+                <Pressable
+                  onPress={handleRemoveMedia}
+                  accessibilityLabel="Remove photo"
+                  className="absolute top-2 right-2 bg-black/60 p-2 rounded-full"
+                >
+                  <XIcon color="white" size={18} />
+                </Pressable>
               </View>
             </View>
           )}
@@ -215,7 +256,18 @@ export default function ComposeScreen() {
         {/* Toolbar */}
         <View className="border-t border-gray-900 px-4 py-2 flex-row items-center justify-between">
           <View className="flex-row items-center" style={{ gap: 16 }}>
-            {!mediaUri && (
+            {/* Media and polls are mutually exclusive, as they were before:
+                a post carries one or the other, never both. */}
+            {!isCreatingPoll && (
+              <Pressable
+                onPress={handleAttachMedia}
+                accessibilityLabel="Add a photo"
+                className="p-2"
+              >
+                <ImageIcon color={attachment ? '#3b82f6' : '#6b7280'} size={22} />
+              </Pressable>
+            )}
+            {!attachment && (
               <Pressable
                 onPress={() => setIsCreatingPoll(!isCreatingPoll)}
                 className="p-2"
