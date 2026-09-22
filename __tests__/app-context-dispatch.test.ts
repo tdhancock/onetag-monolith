@@ -455,7 +455,7 @@ describe('AppContext dispatch — logout transition', () => {
 describe('AppContext dispatch — source wiring', () => {
  const fs = require('fs');
  const path = require('path');
- const SRC = path.join(__dirname, '..', 'store', 'AppContext.tsx');
+ const SRC = path.join(__dirname, '..', 'store', 'AppContext.native.tsx');
 
  it('exports an AppProvider and uses useState<AppState>', () => {
  const src = fs.readFileSync(SRC, 'utf8');

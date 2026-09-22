@@ -1,342 +1,203 @@
 
 //
 // target: __tests__/components/Icons.test.ts
-// Batch 7/10: Icons exhaustive SVG rendering tests
+// Icons exhaustive SVG contract tests — components/native/Icons.
+//
+// Repointed from the deleted web fork (components/Icons.tsx) to the live
+// native twin. The two have genuinely different APIs: the fork took an
+// optional `className` and hard-coded its sizes in Tailwind classes, while
+// the native icons take `{ color, size }` and thread them into the
+// react-native-svg <Svg> element. The assertions below follow the native
+// contract, not the fork's.
+//
+// These tests invoke each icon as a plain function rather than mounting it,
+// so no renderer is needed — but the component body really does run, so the
+// size/colour threading is actually exercised rather than assumed.
 
 import React from 'react';
-import {
-  // Required-prop icons
-  HeartIcon,
-  BookmarkIcon,
 
-  // No-prop simple icons
-  HomeIcon,
-  SearchIcon,
-  CameraIcon,
-  PencilAltIcon,
-  UserIcon,
-  BellIcon,
-  RepostIcon,
-  PlusIcon,
-  ImageIcon,
-  FlipCameraIcon,
-  ShareIcon,
-  PlusCircleIcon,
-  HashtagIcon,
+// ─── 1. Mock react-native-svg ───────────────────────────────────────────
+// The icons import Svg/Path/Circle/G/Rect at module load. We only inspect
+// the element tree they build, so a set of inert pass-through components is
+// enough — and it keeps this suite inside the project's "no React Native at
+// runtime" Jest config.
 
-  // Optional className icons
-  OneTagIcon,
-  CommentIcon,
-  TrashIcon,
-  XIcon,
-  ArrowRightIcon,
-  ArrowLeftIcon,
-  PencilIcon,
-  TypeIcon,
-  DownloadIcon,
-  LockClosedIcon,
-  MenuIcon,
-  ThreeDotsVerticalIcon,
-  BlockIcon,
-  LogoutIcon,
-  EyeIcon,
-  ReplyIcon,
-  PollIcon,
-  VerifiedIcon,
-  CheckIcon,
-  DoubleCheckIcon,
-  FlagIcon,
-  ReportIcon,
-  StarIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-  ShareIOSIcon,
-  AddToHomeScreenIOSIcon,
-  MoreVertAndroidIcon,
-} from '../../components/Icons';
+jest.mock('react-native-svg', () => {
+  const makeStub = (name: string) => {
+    const Stub: React.FC<Record<string, unknown>> = () => null;
+    Stub.displayName = name;
+    return Stub;
+  };
+  return {
+    __esModule: true,
+    default: makeStub('Svg'),
+    Svg: makeStub('Svg'),
+    Path: makeStub('Path'),
+    Circle: makeStub('Circle'),
+    G: makeStub('G'),
+    Rect: makeStub('Rect'),
+  };
+}, { virtual: true });
 
-// ---------------------------------------------------------------------------
-// 1. ALL icon exports render as React elements
-// ---------------------------------------------------------------------------
+import * as Icons from '../../components/native/Icons';
 
-describe('Icons – exhaustive React element creation', () => {
-  const allIcons: Array<[string, React.FC<any>]> = [
-    ['HomeIcon', HomeIcon],
-    ['SearchIcon', SearchIcon],
-    ['CameraIcon', CameraIcon],
-    ['PencilAltIcon', PencilAltIcon],
-    ['UserIcon', UserIcon],
-    ['BellIcon', BellIcon],
-    ['RepostIcon', RepostIcon],
-    ['PlusIcon', PlusIcon],
-    ['ImageIcon', ImageIcon],
-    ['FlipCameraIcon', FlipCameraIcon],
-    ['ShareIcon', ShareIcon],
-    ['PlusCircleIcon', PlusCircleIcon],
-    ['HashtagIcon', HashtagIcon],
-    ['HeartIcon', HeartIcon],
-    ['BookmarkIcon', BookmarkIcon],
-    ['OneTagIcon', OneTagIcon],
-    ['CommentIcon', CommentIcon],
-    ['TrashIcon', TrashIcon],
-    ['XIcon', XIcon],
-    ['ArrowRightIcon', ArrowRightIcon],
-    ['ArrowLeftIcon', ArrowLeftIcon],
-    ['PencilIcon', PencilIcon],
-    ['TypeIcon', TypeIcon],
-    ['DownloadIcon', DownloadIcon],
-    ['LockClosedIcon', LockClosedIcon],
-    ['MenuIcon', MenuIcon],
-    ['ThreeDotsVerticalIcon', ThreeDotsVerticalIcon],
-    ['BlockIcon', BlockIcon],
-    ['LogoutIcon', LogoutIcon],
-    ['EyeIcon', EyeIcon],
-    ['ReplyIcon', ReplyIcon],
-    ['PollIcon', PollIcon],
-    ['VerifiedIcon', VerifiedIcon],
-    ['CheckIcon', CheckIcon],
-    ['DoubleCheckIcon', DoubleCheckIcon],
-    ['FlagIcon', FlagIcon],
-    ['ReportIcon', ReportIcon],
-    ['StarIcon', StarIcon],
-    ['ChevronDownIcon', ChevronDownIcon],
-    ['ChevronUpIcon', ChevronUpIcon],
-    ['ShareIOSIcon', ShareIOSIcon],
-    ['AddToHomeScreenIOSIcon', AddToHomeScreenIOSIcon],
-    ['MoreVertAndroidIcon', MoreVertAndroidIcon],
-  ];
+// ─── 2. Helpers ─────────────────────────────────────────────────────────
 
-  allIcons.forEach(([name, Component]) => {
-    it(`${name} renders as a valid React element`, () => {
-      // Determine props needed for required-prop icons
-      let props = {};
-      if (name === 'HeartIcon') props = { liked: false };
-      if (name === 'BookmarkIcon') props = { saved: false };
+type AnyIcon = (props: Record<string, unknown>) => React.ReactElement;
 
-      const el = React.createElement(Component, props);
-      expect(el).toBeDefined();
-      expect(el.type).toBe(Component);
-      expect(el.props).toEqual(expect.objectContaining(props));
+/** Invoke an icon component directly and return the <Svg> element it builds. */
+const renderIcon = (Component: unknown, props: Record<string, unknown> = {}) =>
+  (Component as AnyIcon)(props) as React.ReactElement<Record<string, unknown>>;
+
+/**
+ * Collect every prop object in an element tree, so a colour applied to a
+ * nested <Path stroke={color}> is as visible to the test as one applied to
+ * the root <Svg stroke={color}>. OneTagIcon needs this — it strokes its
+ * children rather than the root.
+ */
+function collectProps(node: unknown, acc: Record<string, unknown>[] = []) {
+  if (!node || typeof node !== 'object') return acc;
+  if (Array.isArray(node)) {
+    node.forEach(child => collectProps(child, acc));
+    return acc;
+  }
+  const el = node as React.ReactElement<Record<string, unknown>>;
+  if (!el.props) return acc;
+  acc.push(el.props);
+  collectProps(el.props.children, acc);
+  return acc;
+}
+
+/** Whether `color` shows up anywhere in the tree as a stroke or fill. */
+const treePaintsWith = (el: React.ReactElement, color: string): boolean =>
+  collectProps(el).some(p => p.stroke === color || p.fill === color);
+
+// The complete native export surface. Pinned as a list so an icon that is
+// accidentally deleted or renamed fails here rather than at a call site.
+const ICON_NAMES = [
+  'OneTagIcon', 'HomeIcon', 'SearchIcon', 'CameraIcon', 'PencilAltIcon',
+  'UserIcon', 'BellIcon', 'HeartIcon', 'CommentIcon', 'RepostIcon',
+  'BookmarkIcon', 'TrashIcon', 'XIcon', 'PlusIcon', 'ArrowRightIcon',
+  'ArrowLeftIcon', 'ImageIcon', 'FlipCameraIcon', 'PencilIcon', 'TypeIcon',
+  'ShareIcon', 'DownloadIcon', 'LockClosedIcon', 'PlusCircleIcon', 'MenuIcon',
+  'ThreeDotsVerticalIcon', 'BlockIcon', 'LogoutIcon', 'EyeIcon', 'ReplyIcon',
+  'HashtagIcon', 'PollIcon', 'VerifiedIcon', 'CheckIcon', 'DoubleCheckIcon',
+  'FlagIcon', 'ReportIcon', 'SendIcon', 'StarIcon', 'ChevronDownIcon',
+  'ChevronUpIcon', 'ShareIOSIcon', 'AddToHomeScreenIOSIcon',
+  'MoreVertAndroidIcon', 'ChevronRightIcon',
+] as const;
+
+// Icons whose default size differs from the 24px house default.
+const DEFAULT_SIZES: Record<string, number> = {
+  OneTagIcon: 32,
+  VerifiedIcon: 20,
+};
+
+// ─── 3. Export surface ──────────────────────────────────────────────────
+
+describe('native Icons — export surface', () => {
+  it.each(ICON_NAMES)('%s is exported as a component', name => {
+    expect(typeof (Icons as Record<string, unknown>)[name]).toBe('function');
+  });
+
+  it('exports no icons beyond the pinned list', () => {
+    const exported = Object.keys(Icons).filter(k => k.endsWith('Icon'));
+    expect(exported.sort()).toEqual([...ICON_NAMES].sort());
+  });
+});
+
+// ─── 4. size → Svg width/height ─────────────────────────────────────────
+
+describe('native Icons — size prop drives Svg width and height', () => {
+  it.each(ICON_NAMES)('%s applies an explicit size to width and height', name => {
+    const el = renderIcon((Icons as Record<string, unknown>)[name], { size: 37 });
+    expect(el.props.width).toBe(37);
+    expect(el.props.height).toBe(37);
+  });
+
+  it.each(ICON_NAMES)('%s falls back to its default size', name => {
+    const el = renderIcon((Icons as Record<string, unknown>)[name], {});
+    const expected = DEFAULT_SIZES[name] ?? 24;
+    expect(el.props.width).toBe(expected);
+    expect(el.props.height).toBe(expected);
+  });
+
+  it.each(ICON_NAMES)('%s declares a viewBox so it scales with size', name => {
+    const el = renderIcon((Icons as Record<string, unknown>)[name], {});
+    expect(typeof el.props.viewBox).toBe('string');
+    expect(el.props.viewBox).toMatch(/^\d+ \d+ \d+ \d+$/);
+  });
+});
+
+// ─── 5. color → stroke/fill ─────────────────────────────────────────────
+
+describe('native Icons — color prop is threaded into the SVG', () => {
+  it.each(ICON_NAMES)('%s paints with the supplied color', name => {
+    const el = renderIcon((Icons as Record<string, unknown>)[name], {
+      color: '#abcdef',
     });
+    expect(treePaintsWith(el, '#abcdef')).toBe(true);
+  });
+
+  it.each(ICON_NAMES)('%s defaults to white when no color is given', name => {
+    const el = renderIcon((Icons as Record<string, unknown>)[name], {});
+    expect(treePaintsWith(el, '#fff')).toBe(true);
+  });
+
+  it('accepts a non-string ColorValue without coercing it', () => {
+    // react-navigation hands tabBarIcon a ColorValue, which may be an
+    // OpaqueColorValue rather than a string. The icons must pass it
+    // straight through to react-native-svg.
+    const opaque = { __opaque: true } as unknown as string;
+    const el = renderIcon(Icons.HomeIcon, { color: opaque });
+    expect(el.props.stroke).toBe(opaque);
   });
 });
 
-// ---------------------------------------------------------------------------
-// 2. Required-boolean-prop icons (HeartIcon, BookmarkIcon)
-// ---------------------------------------------------------------------------
+// ─── 6. Toggle icons ────────────────────────────────────────────────────
 
-describe('Icons – required boolean props', () => {
-  it('HeartIcon accepts liked={true}', () => {
-    const el = React.createElement(HeartIcon, { liked: true });
-    expect(el.props.liked).toBe(true);
+describe('native Icons — HeartIcon liked toggle', () => {
+  it('fills with the color when liked', () => {
+    const el = renderIcon(Icons.HeartIcon, { color: '#ff0000', liked: true });
+    expect(el.props.fill).toBe('#ff0000');
+    expect(el.props.stroke).toBe('#ff0000');
   });
 
-  it('HeartIcon accepts liked={false}', () => {
-    const el = React.createElement(HeartIcon, { liked: false });
-    expect(el.props.liked).toBe(false);
+  it('is unfilled when not liked', () => {
+    const el = renderIcon(Icons.HeartIcon, { color: '#ff0000', liked: false });
+    expect(el.props.fill).toBe('none');
+    expect(el.props.stroke).toBe('#ff0000');
   });
 
-  it('BookmarkIcon accepts saved={true}', () => {
-    const el = React.createElement(BookmarkIcon, { saved: true });
-    expect(el.props.saved).toBe(true);
-  });
-
-  it('BookmarkIcon accepts saved={false}', () => {
-    const el = React.createElement(BookmarkIcon, { saved: false });
-    expect(el.props.saved).toBe(false);
+  it('defaults to unliked when the prop is omitted', () => {
+    const el = renderIcon(Icons.HeartIcon, { color: '#ff0000' });
+    expect(el.props.fill).toBe('none');
   });
 });
 
-// ---------------------------------------------------------------------------
-// 3. Boolean state toggling (liked / saved) produces different props
-// ---------------------------------------------------------------------------
-
-describe('Icons – boolean state toggle correctness', () => {
-  it('HeartIcon toggles liked from false to true', () => {
-    const elFalse = React.createElement(HeartIcon, { liked: false });
-    const elTrue = React.createElement(HeartIcon, { liked: true });
-    expect(elFalse.props.liked).toBe(false);
-    expect(elTrue.props.liked).toBe(true);
-    expect(elTrue.props.liked).not.toBe(elFalse.props.liked);
+describe('native Icons — BookmarkIcon saved toggle', () => {
+  it('fills with the color when saved', () => {
+    const el = renderIcon(Icons.BookmarkIcon, { color: '#00ff00', saved: true });
+    expect(el.props.fill).toBe('#00ff00');
+    expect(el.props.stroke).toBe('#00ff00');
   });
 
-  it('BookmarkIcon toggles saved from false to true', () => {
-    const elFalse = React.createElement(BookmarkIcon, { saved: false });
-    const elTrue = React.createElement(BookmarkIcon, { saved: true });
-    expect(elFalse.props.saved).toBe(false);
-    expect(elTrue.props.saved).toBe(true);
-    expect(elTrue.props.saved).not.toBe(elFalse.props.saved);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 4. Icons that accept an optional className prop
-// ---------------------------------------------------------------------------
-
-describe('Icons – optional className prop', () => {
-  const classNameIcons: Array<[string, React.FC<any>]> = [
-    ['OneTagIcon', OneTagIcon],
-    ['CommentIcon', CommentIcon],
-    ['TrashIcon', TrashIcon],
-    ['XIcon', XIcon],
-    ['ArrowRightIcon', ArrowRightIcon],
-    ['ArrowLeftIcon', ArrowLeftIcon],
-    ['PencilIcon', PencilIcon],
-    ['TypeIcon', TypeIcon],
-    ['DownloadIcon', DownloadIcon],
-    ['LockClosedIcon', LockClosedIcon],
-    ['MenuIcon', MenuIcon],
-    ['ThreeDotsVerticalIcon', ThreeDotsVerticalIcon],
-    ['BlockIcon', BlockIcon],
-    ['LogoutIcon', LogoutIcon],
-    ['EyeIcon', EyeIcon],
-    ['ReplyIcon', ReplyIcon],
-    ['PollIcon', PollIcon],
-    ['VerifiedIcon', VerifiedIcon],
-    ['CheckIcon', CheckIcon],
-    ['DoubleCheckIcon', DoubleCheckIcon],
-    ['FlagIcon', FlagIcon],
-    ['ReportIcon', ReportIcon],
-    ['StarIcon', StarIcon],
-    ['ChevronDownIcon', ChevronDownIcon],
-    ['ChevronUpIcon', ChevronUpIcon],
-    ['ShareIOSIcon', ShareIOSIcon],
-    ['AddToHomeScreenIOSIcon', AddToHomeScreenIOSIcon],
-    ['MoreVertAndroidIcon', MoreVertAndroidIcon],
-  ];
-
-  classNameIcons.forEach(([name, Component]) => {
-    it(`${name} accepts a custom className prop`, () => {
-      const el = React.createElement(Component, { className: 'my-custom-class' });
-      expect(el).toBeDefined();
-      expect(el.props.className).toBe('my-custom-class');
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 5. OneTagIcon – with and without className
-// ---------------------------------------------------------------------------
-
-describe('OneTagIcon – className behavior', () => {
-  it('renders with provided className', () => {
-    const el = React.createElement(OneTagIcon, { className: 'w-10 h-10' });
-    expect(el.props.className).toBe('w-10 h-10');
+  it('is unfilled when not saved', () => {
+    const el = renderIcon(Icons.BookmarkIcon, { color: '#00ff00', saved: false });
+    expect(el.props.fill).toBe('none');
+    expect(el.props.stroke).toBe('#00ff00');
   });
 
-  it('renders without className (default w-8 h-8)', () => {
-    const el = React.createElement(OneTagIcon, {});
-    // OneTagIcon uses: className={className || "w-8 h-8"}
-    // When no className is passed, props will not contain className
-    expect(el.props.className).toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 6. VerifiedIcon – renders without error
-// ---------------------------------------------------------------------------
-
-describe('VerifiedIcon – basic rendering', () => {
-  it('renders without any props', () => {
-    const el = React.createElement(VerifiedIcon, {});
-    expect(el).toBeDefined();
-    expect(el.type).toBe(VerifiedIcon);
+  it('defaults to unsaved when the prop is omitted', () => {
+    const el = renderIcon(Icons.BookmarkIcon, { color: '#00ff00' });
+    expect(el.props.fill).toBe('none');
   });
 
-  it('renders with custom className', () => {
-    const el = React.createElement(VerifiedIcon, { className: 'w-8 h-8' });
-    expect(el.props.className).toBe('w-8 h-8');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 7. Icons that use spread (iconProps) produce valid React elements
-//    These are icons that destructure {...iconProps} inside their SVG.
-// ---------------------------------------------------------------------------
-
-describe('Icons – iconProps spread pattern', () => {
-  const spreadIcons: Array<[string, React.FC<any>]> = [
-    // Icons using spread WITHOUT className override
-    ['HomeIcon', HomeIcon],
-    ['SearchIcon', SearchIcon],
-    ['CameraIcon', CameraIcon],
-    ['PencilAltIcon', PencilAltIcon],
-    ['UserIcon', UserIcon],
-    ['BellIcon', BellIcon],
-    ['RepostIcon', RepostIcon],
-    ['PlusIcon', PlusIcon],
-    ['ImageIcon', ImageIcon],
-    ['FlipCameraIcon', FlipCameraIcon],
-    ['ShareIcon', ShareIcon],
-    ['PlusCircleIcon', PlusCircleIcon],
-    ['HashtagIcon', HashtagIcon],
-
-    // Icons using spread WITH className override
-    ['CommentIcon', CommentIcon],
-    ['TrashIcon', TrashIcon],
-    ['XIcon', XIcon],
-    ['ArrowRightIcon', ArrowRightIcon],
-    ['ArrowLeftIcon', ArrowLeftIcon],
-    ['PencilIcon', PencilIcon],
-    ['TypeIcon', TypeIcon],
-    ['DownloadIcon', DownloadIcon],
-    ['LockClosedIcon', LockClosedIcon],
-    ['MenuIcon', MenuIcon],
-    ['ThreeDotsVerticalIcon', ThreeDotsVerticalIcon],
-    ['BlockIcon', BlockIcon],
-    ['LogoutIcon', LogoutIcon],
-    ['EyeIcon', EyeIcon],
-    ['ReplyIcon', ReplyIcon],
-    ['PollIcon', PollIcon],
-    ['CheckIcon', CheckIcon],
-    ['DoubleCheckIcon', DoubleCheckIcon],
-    ['FlagIcon', FlagIcon],
-    ['ReportIcon', ReportIcon],
-    ['StarIcon', StarIcon],
-    ['ChevronDownIcon', ChevronDownIcon],
-    ['ChevronUpIcon', ChevronUpIcon],
-  ];
-
-  spreadIcons.forEach(([name, Component]) => {
-    it(`${name} uses iconProps spread and renders a valid React element`, () => {
-      // Determine if this icon requires additional required props
-      let props: Record<string, any> = {};
-      if (name === 'HeartIcon') props.liked = false;
-      if (name === 'BookmarkIcon') props.saved = false;
-
-      const el = React.createElement(Component, props);
-      expect(el).toBeDefined();
-      expect(typeof el.type).toBe('function');
-      expect(el.props).toBeDefined();
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 8. Summary edge cases for icons that do NOT use the iconProps spread
-//    (custom standalone SVGs)
-// ---------------------------------------------------------------------------
-
-describe('Icons – custom standalone SVGs (no iconProps spread)', () => {
-  const customIcons: Array<[string, React.FC<any>]> = [
-    ['OneTagIcon', OneTagIcon],
-    ['HeartIcon', HeartIcon],
-    ['BookmarkIcon', BookmarkIcon],
-    ['VerifiedIcon', VerifiedIcon],
-    ['ShareIOSIcon', ShareIOSIcon],
-    ['AddToHomeScreenIOSIcon', AddToHomeScreenIOSIcon],
-    ['MoreVertAndroidIcon', MoreVertAndroidIcon],
-  ];
-
-  customIcons.forEach(([name, Component]) => {
-    it(`${name} renders as a valid React element without spread pattern`, () => {
-      let props: Record<string, any> = {};
-      if (name === 'HeartIcon') props.liked = false;
-      if (name === 'BookmarkIcon') props.saved = false;
-
-      const el = React.createElement(Component, props);
-      expect(el).toBeDefined();
-      expect(el.type).toBe(Component);
-    });
+  it('toggling saved changes the fill and nothing else', () => {
+    const unsaved = renderIcon(Icons.BookmarkIcon, { color: '#00ff00', saved: false });
+    const saved = renderIcon(Icons.BookmarkIcon, { color: '#00ff00', saved: true });
+    expect(unsaved.props.fill).not.toBe(saved.props.fill);
+    expect(unsaved.props.width).toBe(saved.props.width);
+    expect(unsaved.props.viewBox).toBe(saved.props.viewBox);
   });
 });

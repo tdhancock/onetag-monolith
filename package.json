@@ -9,7 +9,6 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web:build": "rm -rf dist && mkdir -p dist/client && esbuild index.tsx --bundle --minify --sourcemap --outfile=dist/client/index.js && cp index.html manifest.json service-worker.js icon.svg _redirects dist/client/",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
     "typecheck": "tsc --noEmit",

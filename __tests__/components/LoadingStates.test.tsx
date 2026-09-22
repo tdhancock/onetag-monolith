@@ -1,99 +1,100 @@
 /**
  * @jest-environment jsdom
  *
-
- *
  * target: __tests__/components/LoadingStates.test.tsx
  *
- * Tests covering loading-state UI:
- *   1. Skeleton shimmer is visible while content is loading.
- *      The PostSkeleton component renders placeholder bars using the
- *      `animate-pulse` class during the initial loading phase, before
- *      it transitions to a "blur preview" state at 750ms.
- *   2. Spinner is rendered for in-flight actions.
- *      The submit button on LoginScreen swaps its label for a spinning
- *      circle (`animate-spin` div) while `isLoading` is true.
- *   3. The skeleton correctly transitions from shimmer to blur phase
- *      after the 750ms timer fires.
- *   4. When data is available (no longer loading), the skeleton is
- *      unmounted and the actual content is rendered instead.
+ * Loading-state UI, covering components/native/PostSkeleton.
+ *
+ * Repointed from the deleted web fork. The two skeletons are not the same
+ * component in different clothes:
+ *
+ *   - the fork rendered <div>s and switched a Tailwind `animate-pulse`
+ *     class for `filter blur-sm` on a 750ms timer;
+ *   - the native twin renders react-native <Animated.View> shimmer bars
+ *     driven by a looped opacity animation, with no phase transition.
+ *
+ * So the pulse/blur assertions are gone and the animation lifecycle takes
+ * their place. The fork's LoginScreen spinner harness went with the fork —
+ * that screen has no native twin.
  */
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // ─── 1. Mock react-native ────────────────────────────────────────────────
-// The skeleton components only use <div> + className (NativeWind on the
-// web target). React Native still gets imported transitively in places,
-// so we provide a minimal shim — same strategy as ErrorBoundary.test.tsx.
+// PostSkeleton needs View plus the Animated API (Value / loop / sequence /
+// timing / View). The mock renders to DOM nodes so react-dom can mount the
+// real component, and exposes the loop handle so the test can assert that
+// the animation is started on mount and stopped on unmount.
 
 jest.mock('react-native', () => {
   const React = require('react');
 
-  const flattenStyle = (style: unknown): React.CSSProperties => {
+  const flattenStyle = (style: unknown): Record<string, unknown> => {
     if (!style) return {};
     if (Array.isArray(style)) {
-      return style.reduce<React.CSSProperties>(
+      return style.reduce<Record<string, unknown>>(
         (acc, s) => ({ ...acc, ...flattenStyle(s) }),
         {},
       );
     }
-    return style as React.CSSProperties;
+    return style as Record<string, unknown>;
   };
 
   const passthroughProps = (props: Record<string, unknown>) => {
-    const { style, children, testID, onPress, accessibilityRole, ...rest } =
-      props;
+    const { style, children, testID, className, ...rest } = props;
     const domProps: Record<string, unknown> = { ...rest };
-    if (typeof testID === 'string') {
-      domProps['data-testid'] = testID;
+    if (typeof testID === 'string') domProps['data-testid'] = testID;
+    if (typeof className === 'string') domProps.className = className;
+    const flat = flattenStyle(style);
+    // An Animated.Value lands here as an object; drop it so jsdom does not
+    // choke, but record that an opacity driver was wired up.
+    if (flat.opacity && typeof flat.opacity === 'object') {
+      domProps['data-has-opacity-driver'] = 'true';
+      delete flat.opacity;
     }
-    if (accessibilityRole !== undefined) {
-      domProps['data-accessibility-role'] = accessibilityRole;
-    }
-    domProps.style = flattenStyle(style);
+    domProps.style = flat;
     return domProps;
   };
 
-  const View: React.FC<React.PropsWithChildren<Record<string, unknown>>> = (
-    props,
-  ) => React.createElement('div', passthroughProps(props), props.children);
+  const View: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props =>
+    React.createElement('div', passthroughProps(props), props.children);
 
-  const Text: React.FC<React.PropsWithChildren<Record<string, unknown>>> = (
-    props,
-  ) => React.createElement('span', passthroughProps(props), props.children);
+  const handles = { start: jest.fn(), stop: jest.fn() };
 
-  const Pressable: React.FC<
-    React.PropsWithChildren<{
-      onPress?: (e?: unknown) => void;
-      style?: unknown;
-      testID?: string;
-      accessibilityRole?: string;
-    }>
-  > = ({ onPress, ...props }) =>
-    React.createElement(
-      'button',
-      { ...passthroughProps(props), onClick: onPress, type: 'button' },
-      props.children,
-    );
+  class AnimatedValue {
+    _value: number;
+    constructor(value: number) {
+      this._value = value;
+    }
+  }
 
-  return {
-    __esModule: true,
-    View,
-    Text,
-    Pressable,
-    ActivityIndicator: () =>
-      React.createElement('div', { 'data-testid': 'rn-activity-indicator' }),
-    StyleSheet: {
-      create: <T extends Record<string, unknown>>(styles: T): T => styles,
-    },
+  const Animated = {
+    Value: AnimatedValue,
+    View: (props: React.PropsWithChildren<Record<string, unknown>>) =>
+      React.createElement(
+        'div',
+        { ...passthroughProps(props), 'data-animated': 'true' },
+        props.children,
+      ),
+    loop: jest.fn(() => handles),
+    sequence: jest.fn((animations: unknown[]) => ({ animations })),
+    timing: jest.fn((value: unknown, config: unknown) => ({ value, config })),
+    __handles: handles,
   };
-});
+
+  return { __esModule: true, View, Animated };
+}, { virtual: true });
 
 // ─── 2. Imports ─────────────────────────────────────────────────────────
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
-import PostSkeleton from '../../components/PostSkeleton';
+import { Animated } from 'react-native';
+import PostSkeleton from '../../components/native/PostSkeleton';
+
+const animationHandles = (Animated as unknown as {
+  __handles: { start: jest.Mock; stop: jest.Mock };
+}).__handles;
 
 // ─── 3. Helpers ─────────────────────────────────────────────────────────
 
@@ -119,195 +120,158 @@ function unmount(handle: MountHandle): void {
   handle.container.remove();
 }
 
-const advance = (ms: number) => {
-  act(() => {
-    jest.advanceTimersByTime(ms);
-  });
-};
+const shimmerBars = (container: HTMLElement) =>
+  Array.from(container.querySelectorAll('div[data-animated="true"]'));
 
-// ─── 4. Tests ───────────────────────────────────────────────────────────
+// The bar geometry PostSkeleton lays out, in document order: avatar, the
+// two header lines, two body lines, the media block, then three action
+// placeholders.
+const EXPECTED_BAR_COUNT = 9;
 
-describe('Loading states — skeleton shimmer is visible during load', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-  });
-  afterEach(() => {
-    jest.useRealTimers();
-  });
+beforeEach(() => {
+  jest.clearAllMocks();
+});
 
-  it('renders placeholder bars with the animate-pulse class on initial mount', () => {
+// ─── 4. Shimmer structure ───────────────────────────────────────────────
+
+describe('Loading states — skeleton shimmer structure', () => {
+  it('renders one shimmer bar per placeholder slot', () => {
     const handle = mount(React.createElement(PostSkeleton));
     try {
-      // The outermost container is the one whose className switches
-      // between animate-pulse (loading) and filter blur-sm (preview).
-      const container = handle.container.querySelector(
-        'div.animate-pulse',
-      ) as HTMLDivElement | null;
-      expect(container).not.toBeNull();
-      // The skeleton should NOT yet be in the blur-preview phase.
-      expect(container?.className).toContain('animate-pulse');
-      expect(container?.className).not.toContain('blur-sm');
+      expect(shimmerBars(handle.container)).toHaveLength(EXPECTED_BAR_COUNT);
     } finally {
       unmount(handle);
     }
   });
 
-  it('renders the expected number of placeholder rows (avatar + 2 lines + 2 lines + media)', () => {
+  it('paints every bar with the shared shimmer background and radius', () => {
     const handle = mount(React.createElement(PostSkeleton));
     try {
-      // PostSkeleton renders: avatar (1), title row (2), body (2), media (1) = 6 grey bars.
-      const greyBars = handle.container.querySelectorAll('.bg-gray-200');
-      expect(greyBars.length).toBeGreaterThanOrEqual(6);
-      // All bars share the dark-mode counterpart class so dark mode keeps
-      // a coherent palette.
-      const allHaveDarkClass = Array.from(greyBars).every((el) =>
-        el.className.includes('dark:bg-gray-700'),
-      );
-      expect(allHaveDarkClass).toBe(true);
+      const bars = shimmerBars(handle.container);
+      expect(bars.length).toBeGreaterThan(0);
+      bars.forEach(bar => {
+        // #374151 — jsdom normalises the hex to rgb().
+        expect((bar as HTMLElement).style.backgroundColor).toBe('rgb(55, 65, 81)');
+      });
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('gives each bar an animated opacity driver', () => {
+    const handle = mount(React.createElement(PostSkeleton));
+    try {
+      const bars = shimmerBars(handle.container);
+      bars.forEach(bar => {
+        expect(bar.getAttribute('data-has-opacity-driver')).toBe('true');
+      });
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('lays out a circular avatar bar and a tall media bar', () => {
+    const handle = mount(React.createElement(PostSkeleton));
+    try {
+      const bars = shimmerBars(handle.container) as HTMLElement[];
+      // Avatar: 40x40 fully rounded.
+      const avatar = bars[0];
+      expect(avatar.style.width).toBe('40px');
+      expect(avatar.style.height).toBe('40px');
+      expect(avatar.style.borderRadius).toBe('20px');
+      // Media block: full width, 200px tall.
+      const media = bars.find(b => b.style.height === '200px');
+      expect(media).toBeDefined();
+      expect(media!.style.width).toBe('100%');
     } finally {
       unmount(handle);
     }
   });
 });
 
-describe('Loading states — skeleton transitions to blur preview after 750ms', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-  });
-  afterEach(() => {
-    jest.useRealTimers();
-  });
+// ─── 5. Animation lifecycle ─────────────────────────────────────────────
 
-  it('swaps the animate-pulse class for the blur-sm class after the timer fires', () => {
+describe('Loading states — shimmer animation lifecycle', () => {
+  it('starts a looped animation for every bar on mount', () => {
     const handle = mount(React.createElement(PostSkeleton));
     try {
-      // Initial phase: animate-pulse is present.
-      const initial = handle.container.querySelector('div.animate-pulse');
-      expect(initial).not.toBeNull();
-
-      // Fire the 750ms transition timer.
-      advance(800);
-
-      // After the transition: animate-pulse is gone, blur-sm appears.
-      const afterPulse = handle.container.querySelector('div.animate-pulse');
-      expect(afterPulse).toBeNull();
-      const blurred = handle.container.querySelector(
-        'div.filter.blur-sm',
-      ) as HTMLDivElement | null;
-      expect(blurred).not.toBeNull();
-      expect(blurred?.className).toContain('opacity-80');
+      expect(Animated.loop).toHaveBeenCalledTimes(EXPECTED_BAR_COUNT);
+      expect(animationHandles.start).toHaveBeenCalledTimes(EXPECTED_BAR_COUNT);
+      expect(animationHandles.stop).not.toHaveBeenCalled();
     } finally {
       unmount(handle);
     }
   });
 
-  it('clears the transition timer on unmount (no leaked timers / late state updates)', () => {
+  it('loops a two-step opacity sequence between 0.3 and 0.7', () => {
+    const handle = mount(React.createElement(PostSkeleton));
+    try {
+      // Each bar sequences two timings; assert the pair of targets rather
+      // than the raw call count so the intent survives a re-order.
+      const targets = (Animated.timing as unknown as jest.Mock).mock.calls.map(
+        ([, config]) => (config as { toValue: number }).toValue,
+      );
+      expect(new Set(targets)).toEqual(new Set([0.3, 0.7]));
+      const durations = (Animated.timing as unknown as jest.Mock).mock.calls.map(
+        ([, config]) => (config as { duration: number }).duration,
+      );
+      expect(new Set(durations)).toEqual(new Set([800]));
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('drives the animation off the JS thread', () => {
+    const handle = mount(React.createElement(PostSkeleton));
+    try {
+      const calls = (Animated.timing as unknown as jest.Mock).mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      calls.forEach(([, config]) => {
+        expect((config as { useNativeDriver: boolean }).useNativeDriver).toBe(true);
+      });
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('stops every animation on unmount (no leaked loops)', () => {
     const handle = mount(React.createElement(PostSkeleton));
     unmount(handle);
-    // Advancing timers after unmount must not throw. If the cleanup
-    // weren't called, React would warn about updating an unmounted
-    // component when the setTimeout fires.
-    expect(() => advance(1000)).not.toThrow();
+    expect(animationHandles.stop).toHaveBeenCalledTimes(EXPECTED_BAR_COUNT);
   });
 });
 
-describe('Loading states — spinner for in-flight actions', () => {
-  it('shows a spinning indicator and hides the submit label while isLoading is true', () => {
-    // Mirror LoginScreen's submit-button contract: while `isLoading` is
-    // true, the button renders a spinner and no label; once it flips to
-    // false, the label reappears.
-    // We assert the contract through a tiny harness that mirrors the
-    // exact JSX shape used in components/screens/LoginScreen.tsx
-    // (animate-spin round div replacing the children), so a regression
-    // in LoginScreen will be caught here too.
-    const Harness: React.FC<{ isLoading: boolean }> = ({ isLoading }) =>
-      React.createElement(
-        'button',
-        {
-          'data-testid': 'submit',
-          type: 'button',
-          disabled: isLoading,
-        },
-        isLoading
-          ? React.createElement('div', {
-              'data-testid': 'spinner',
-              className: 'animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-white',
-            })
-          : 'Log In',
-      );
-
-    const handle = mount(React.createElement(Harness, { isLoading: true }));
-    try {
-      const button = handle.container.querySelector(
-        '[data-testid="submit"]',
-      ) as HTMLButtonElement | null;
-      expect(button).not.toBeNull();
-      expect(button?.disabled).toBe(true);
-
-      const spinner = handle.container.querySelector('[data-testid="spinner"]');
-      expect(spinner).not.toBeNull();
-      expect(spinner?.className).toContain('animate-spin');
-      // The text label must be hidden while loading.
-      expect(button?.textContent).toBe('');
-    } finally {
-      unmount(handle);
-    }
-  });
-});
+// ─── 6. Skeleton → content handoff ──────────────────────────────────────
 
 describe('Loading states — transition from skeleton to real content', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-  });
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
   it('unmounts the skeleton and renders the content once data arrives', () => {
     // Real screens follow this shape: `isLoading ? <Skeleton/> : <Content/>`.
-    // We assert the conditional render contract directly, plus that the
-    // skeleton's state-machine (pulse → blur) does not bleed into the
-    // content render path.
     const Content: React.FC<{ message: string }> = ({ message }) =>
-      React.createElement(
-        'div',
-        { 'data-testid': 'real-content' },
-        message,
-      );
+      React.createElement('div', { 'data-testid': 'real-content' }, message);
 
     const Screen: React.FC<{ loaded: boolean }> = ({ loaded }) =>
       loaded
         ? React.createElement(Content, { message: 'hello world' })
         : React.createElement(PostSkeleton);
 
-    // 1. Loading phase: skeleton is on screen, content is not.
+    // 1. Loading phase: shimmer bars on screen, no content.
     const handle = mount(React.createElement(Screen, { loaded: false }));
     try {
-      expect(
-        handle.container.querySelector('div.animate-pulse'),
-      ).not.toBeNull();
+      expect(shimmerBars(handle.container).length).toBe(EXPECTED_BAR_COUNT);
       expect(
         handle.container.querySelector('[data-testid="real-content"]'),
       ).toBeNull();
-
-      // Re-mount with loaded=true to simulate the data arriving and the
-      // parent re-rendering.
     } finally {
       unmount(handle);
     }
 
+    // 2. Loaded phase: content only, and no shimmer left behind.
     const handle2 = mount(React.createElement(Screen, { loaded: true }));
     try {
-      const content = handle2.container.querySelector(
-        '[data-testid="real-content"]',
-      );
+      const content = handle2.container.querySelector('[data-testid="real-content"]');
       expect(content).not.toBeNull();
       expect(content?.textContent).toBe('hello world');
-      // No skeleton markers should remain.
-      expect(handle2.container.querySelector('div.animate-pulse')).toBeNull();
-      expect(
-        handle2.container.querySelector('div.filter.blur-sm'),
-      ).toBeNull();
+      expect(shimmerBars(handle2.container)).toHaveLength(0);
     } finally {
       unmount(handle2);
     }
