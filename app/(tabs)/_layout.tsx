@@ -12,6 +12,7 @@ import {
   UserIcon, 
   PencilAltIcon 
 } from '../../components/native/Icons';
+import { color } from '../../theme/tokens';
 
 export default function TabLayout() {
   const router = useRouter();
@@ -24,13 +25,13 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#3b82f6',
-        tabBarInactiveTintColor: '#6b7280',
+        tabBarActiveTintColor: color.text,
+        tabBarInactiveTintColor: color.textMuted,
         tabBarShowLabel: false,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          backgroundColor: '#000',
-          borderTopColor: '#1f2937', // border-gray-800
+          backgroundColor: color.bg,
+          borderTopColor: color.border,
           height: 60 + insets.bottom,
           paddingBottom: Math.max(insets.bottom, 8),
           paddingTop: 8,

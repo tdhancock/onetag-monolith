@@ -1,287 +1,208 @@
-
 //
 // target: __tests__/theme-consistency.test.ts
 //
-// Tests for dark/light theme consistency in the app store.
+// Tests that the design tokens are what M1a specified, and that the
+// tailwind mirror resolves to exactly the same values.
 //
 // What we cover:
-//   1. Theme resolution produces the correct dark/light color tokens
-//      for the surfaces the app actually uses (background, text,
-//      border). Guards against accidental class/prop swaps.
-//   2. The theme toggle (setTheme) updates in-memory state AND writes
-//      the choice to localStorage so it survives an app restart.
-//   3. The initial theme rehydrates from localStorage on a cold start,
-//      preferring the persisted value over the system preference.
-//   4. When there is no persisted value, the store falls back to the
-//      OS-level prefers-color-scheme media query, defaulting to 'dark'
-//      when no preference is expressed.
+//   1. theme/tokens.ts exports the colour, radius, space and type groups
+//      with every value the ticket listed — this is the single source of
+//      truth the whole re-skin builds on, so a typo here is expensive.
+//   2. Radius is square across the board. It is the house style, and the
+//      scale exists so components reference it instead of inventing one.
+//   3. The monoLabel micro-label treatment is defined once, at the right
+//      size and tracking.
+//   4. tailwind.config.ts carries identical values, so a NativeWind class
+//      and an inline style cannot drift apart, and the old blue and
+//      display-font scales are gone.
+//   5. The chrome files carry no raw hex the tokens now own.
 //
-// These tests mirror the project's existing convention of pure-data
-// reducers that replicate AppContext's state transitions (see
-// __tests__/app-context-dispatch.test.ts and
-// __tests__/state-rehydration.test.ts). They deliberately avoid
-// pulling in React Native or the full provider so they run in the
-// current `jest --preset ts-jest --testEnvironment node` setup.
+// Runs in the project's plain `ts-jest` / node setup — the token module is
+// pure data and pulls in no React Native.
 
-const THEME_STORAGE_KEY = 'onetag-theme';
+import * as fs from 'fs';
+import * as path from 'path';
 
-// ── Minimal in-memory localStorage shim ────────────────────────────────
-// Same shape as state-rehydration.test.ts so the persistence and
-// rehydration paths are exercised against the same surface the real
-// provider uses.
-class MemoryStorage {
-  private store = new Map<string, string>();
-  getItem(key: string): string | null {
-    return this.store.has(key) ? this.store.get(key)! : null;
-  }
-  setItem(key: string, value: string): void {
-    this.store.set(key, String(value));
-  }
-  removeItem(key: string): void {
-    this.store.delete(key);
-  }
-  clear(): void {
-    this.store.clear();
-  }
-}
+import { color, radius, space, type, tokens } from '../theme/tokens';
+import tailwindConfig from '../tailwind.config';
 
-// ── matchMedia shim ────────────────────────────────────────────────────
-// Mirrors only the slice of the Web API that resolveInitialTheme in
-// store/AppContext.tsx relies on: a callable that takes a media query
-// string and returns an object with a `matches` boolean.
-type MatchMediaShim = (query: string) => { matches: boolean };
+const repoRoot = path.resolve(__dirname, '..');
+const read = (relative: string) =>
+  fs.readFileSync(path.join(repoRoot, relative), 'utf8');
 
-function makeMatchMedia(prefersLight: boolean | null): MatchMediaShim {
-  return (query: string) => ({
-    matches: query === '(prefers-color-scheme: light)' ? !!prefersLight : false,
-  });
-}
+// ─── 1. Colour tokens ─────────────────────────────────────────────────
 
-// ── Pure replica of resolveInitialTheme ────────────────────────────────
-// Reads localStorage first, then falls back to prefers-color-scheme,
-// and finally defaults to 'dark'. This MUST stay in lockstep with the
-// implementation in store/AppContext.tsx so these tests catch drift in
-// the real provider.
-type Theme = 'light' | 'dark';
-
-function resolveInitialTheme(
-  ls: MemoryStorage,
-  matchMedia?: MatchMediaShim,
-): Theme {
-  const persisted = ls.getItem(THEME_STORAGE_KEY);
-  if (persisted === 'light' || persisted === 'dark') {
-    return persisted;
-  }
-  if (matchMedia && matchMedia('(prefers-color-scheme: light)').matches) {
-    return 'light';
-  }
-  return 'dark';
-}
-
-// ── Pure replica of the setTheme dispatch ──────────────────────────────
-// Mirrors AppContext.tsx setTheme: writes the value to localStorage,
-// then returns the next state slice with the theme field updated.
-function dispatchSetTheme(
-  state: { theme: Theme },
-  theme: Theme,
-  ls: MemoryStorage,
-): { theme: Theme } {
-  ls.setItem(THEME_STORAGE_KEY, theme);
-  return { ...state, theme };
-}
-
-// ── Color tokens the app uses for the two themes ──────────────────────
-// These are the canonical pairs the bottom nav, profile header, and
-// settings screens all depend on. Centralizing them here lets a single
-// test catch a swap (e.g. light text on a light surface) that would
-// otherwise be invisible until someone actually used the app.
-const PALETTE = {
-  dark: {
-    background: '#000000',
-    surface: '#111827',     // bg-gray-900
-    text: '#ffffff',
-    mutedText: '#9ca3af',   // text-gray-400
-    border: '#1f2937',     // border-gray-800
-    accent: '#3b82f6',      // primary-500
-  },
-  light: {
-    background: '#ffffff',
-    surface: '#f3f4f6',     // bg-gray-100
-    text: '#000000',
-    mutedText: '#6b7280',    // text-gray-500
-    border: '#e5e7eb',      // border-gray-200
-    accent: '#3b82f6',      // primary-500
-  },
-} as const;
-
-// Helper: resolve the full palette for the active theme. Mirrors the
-// shape a `useTheme()` consumer in the components would receive.
-function paletteFor(theme: Theme) {
-  return PALETTE[theme];
-}
-
-// ─── 1. Theme colors apply correctly per mode ─────────────────────────
-
-describe('theme consistency — color tokens', () => {
-  it('dark theme resolves the dark palette (black background, white text)', () => {
-    const palette = paletteFor('dark');
-    expect(palette.background).toBe('#000000');
-    expect(palette.text).toBe('#ffffff');
-    // The surface the cards sit on in dark mode must be visibly
-    // distinct from the page background, otherwise content edges
-    // disappear.
-    expect(palette.surface).not.toBe(palette.background);
+describe('design tokens — colour', () => {
+  it('exports exactly the light editorial palette', () => {
+    expect(color).toEqual({
+      bg: '#ffffff',
+      bgSub: '#fafafa',
+      bgPanel: '#f5f5f5',
+      border: '#e8e8e8',
+      borderStrong: '#d0d0d0',
+      text: '#0a0a0a',
+      textMid: '#555555',
+      textMuted: '#999999',
+      inverse: '#ffffff',
+      heart: '#e53935',
+      affiliate: '#4caf50',
+    });
   });
 
-  it('light theme resolves the light palette (white background, black text)', () => {
-    const palette = paletteFor('light');
-    expect(palette.background).toBe('#ffffff');
-    expect(palette.text).toBe('#000000');
-    expect(palette.surface).not.toBe(palette.background);
+  it('is a light ground with near-black ink, not the old dark theme', () => {
+    // The direction reversed in M1a: the ground used to be black with white
+    // text. Anything that flips it back is a regression, not a preference.
+    expect(color.bg).toBe('#ffffff');
+    expect(color.text).toBe('#0a0a0a');
+    expect(color.inverse).toBe(color.bg);
   });
 
-  it('dark and light themes swap background AND text colors (no same-mode bleed)', () => {
-    // Catches the classic "light text on light bg" bug. If these two
-    // palettes ever share a background or a text color, contrast is
-    // broken in at least one mode.
-    expect(PALETTE.dark.background).not.toBe(PALETTE.light.background);
-    expect(PALETTE.dark.text).not.toBe(PALETTE.light.text);
-    // And specifically: dark text must NOT be white, light text must
-    // NOT be black — the modes are mirror images of each other.
-    expect(PALETTE.dark.text).toBe(PALETTE.light.background);
-    expect(PALETTE.dark.background).toBe(PALETTE.light.text);
+  it('drops the blue accent the app was built from', () => {
+    expect(Object.values(color)).not.toContain('#3b82f6');
   });
 
-  it('both themes share the same primary accent so branded elements stay recognizable', () => {
-    expect(PALETTE.dark.accent).toBe(PALETTE.light.accent);
-    expect(PALETTE.dark.accent).toBe('#3b82f6');
+  it('every colour is a six-digit lowercase hex', () => {
+    // Catches a shorthand or uppercase value slipping in, which would make
+    // the tailwind mirror and an inline style compare unequal as strings
+    // even when they render the same.
+    for (const [name, value] of Object.entries(color)) {
+      expect(`${name}:${value}`).toMatch(/^[a-zA-Z]+:#[0-9a-f]{6}$/);
+    }
   });
 });
 
-// ─── 2. Theme toggle updates state AND persists ───────────────────────
+// ─── 2. Radius is square everywhere ───────────────────────────────────
 
-describe('theme consistency — setTheme persists to localStorage', () => {
-  let ls: MemoryStorage;
-  beforeEach(() => {
-    ls = new MemoryStorage();
-  });
-
-  it('setTheme flips the in-memory state from dark to light', () => {
-    const initial = { theme: 'dark' as Theme };
-    const next = dispatchSetTheme(initial, 'light', ls);
-    expect(next.theme).toBe('light');
-  });
-
-  it('setTheme writes the new theme to localStorage under onetag-theme', () => {
-    dispatchSetTheme({ theme: 'dark' }, 'light', ls);
-    expect(ls.getItem(THEME_STORAGE_KEY)).toBe('light');
-  });
-
-  it('setTheme toggling twice (dark → light → dark) ends at the last value and persists it', () => {
-    let state: { theme: Theme } = { theme: 'dark' };
-    state = dispatchSetTheme(state, 'light', ls);
-    state = dispatchSetTheme(state, 'dark', ls);
-
-    expect(state.theme).toBe('dark');
-    expect(ls.getItem(THEME_STORAGE_KEY)).toBe('dark');
-  });
-
-  it('setTheme does not touch unrelated state slices (theme-only dispatch)', () => {
-    // The full state slice carries unrelated fields (userProfile,
-    // likes, etc.). The setTheme reducer must leave those alone — a
-    // shallow object spread is the entire implementation. This test
-    // guards against someone "helpfully" resetting the slice.
-    const fullInitial = {
-      theme: 'dark' as Theme,
-      userProfile: { name: 'Layla', username: 'layla' },
-      likesCount: 42,
-    };
-    const next = dispatchSetTheme(fullInitial, 'light', ls);
-    expect((next as any).userProfile).toEqual({ name: 'Layla', username: 'layla' });
-    expect((next as any).likesCount).toBe(42);
+describe('design tokens — radius', () => {
+  it('exposes a scale whose every step is 0', () => {
+    expect(Object.values(radius).length).toBeGreaterThan(0);
+    for (const value of Object.values(radius)) {
+      expect(value).toBe(0);
+    }
   });
 });
 
-// ─── 3. Theme rehydrates from localStorage on cold start ──────────────
+// ─── 3. Space ─────────────────────────────────────────────────────────
 
-describe('theme consistency — rehydration on cold start', () => {
-  it('reads a previously persisted light theme from localStorage on init', () => {
-    const ls = new MemoryStorage();
-    ls.setItem(THEME_STORAGE_KEY, 'light');
-    // No system preference supplied — the persisted value must win.
-    const resolved = resolveInitialTheme(ls);
-    expect(resolved).toBe('light');
+describe('design tokens — space', () => {
+  it('exports the 4 / 8 / 12 / 16 / 24 / 32 scale', () => {
+    expect(Object.values(space)).toEqual([4, 8, 12, 16, 24, 32]);
   });
 
-  it('reads a previously persisted dark theme from localStorage on init', () => {
-    const ls = new MemoryStorage();
-    ls.setItem(THEME_STORAGE_KEY, 'dark');
-    const resolved = resolveInitialTheme(ls);
-    expect(resolved).toBe('dark');
-  });
-
-  it('persisted theme takes precedence over the OS light preference', () => {
-    // User explicitly chose dark; OS reports light. The persisted
-    // choice wins, otherwise the toggle would feel broken to the
-    // user on every restart.
-    const ls = new MemoryStorage();
-    ls.setItem(THEME_STORAGE_KEY, 'dark');
-    const resolved = resolveInitialTheme(ls, makeMatchMedia(true));
-    expect(resolved).toBe('dark');
-  });
-
-  it('corrupt persisted value falls back to the system preference', () => {
-    // Anything other than exactly 'light' or 'dark' in localStorage
-    // must be ignored — older app versions, manual edits, partial
-    // writes — and the resolution must proceed to the next step.
-    const ls = new MemoryStorage();
-    ls.setItem(THEME_STORAGE_KEY, 'solarized');
-    const resolved = resolveInitialTheme(ls, makeMatchMedia(true));
-    expect(resolved).toBe('light');
-  });
-
-  it('absent persisted value with no system preference defaults to dark', () => {
-    // Brand-new install on a device that does NOT express an OS
-    // preference — matchMedia returns false. We default to 'dark'
-    // because the rest of the app's styling (dark cards, white text
-    // on the settings screen, etc.) assumes a dark baseline.
-    const ls = new MemoryStorage();
-    expect(ls.getItem(THEME_STORAGE_KEY)).toBeNull();
-    const resolved = resolveInitialTheme(ls, makeMatchMedia(false));
-    expect(resolved).toBe('dark');
+  it('is ordered ascending so the names stay meaningful', () => {
+    const values = Object.values(space) as number[];
+    const sorted = [...values].sort((a, b) => a - b);
+    expect(values).toEqual(sorted);
   });
 });
 
-// ─── 4. System theme fallback when no persisted value ─────────────────
+// ─── 4. Type ──────────────────────────────────────────────────────────
 
-describe('theme consistency — system theme fallback', () => {
-  it('uses light when the OS reports prefers-color-scheme: light and nothing is persisted', () => {
-    const ls = new MemoryStorage();
-    const resolved = resolveInitialTheme(ls, makeMatchMedia(true));
-    expect(resolved).toBe('light');
+describe('design tokens — type', () => {
+  it('names the DM Mono and DM Sans families the root layout loads', () => {
+    expect(type.mono).toBe('DMMono_500Medium');
+    expect(type.body).toBe('DMSans_400Regular');
+    expect(type.bodyMedium).toBe('DMSans_500Medium');
+    expect(type.bodyBold).toBe('DMSans_700Bold');
   });
 
-  it('uses dark when the OS reports prefers-color-scheme: dark (or no light match) and nothing is persisted', () => {
-    const ls = new MemoryStorage();
-    const resolved = resolveInitialTheme(ls, makeMatchMedia(false));
-    expect(resolved).toBe('dark');
+  it('defines monoLabel once: 10px monospace, 0.18em tracking, uppercase', () => {
+    // React Native takes letterSpacing in points, so 0.18em at 10px is 1.8.
+    expect(type.monoLabel).toEqual({
+      fontFamily: type.mono,
+      fontSize: 10,
+      letterSpacing: 1.8,
+      textTransform: 'uppercase',
+    });
+    expect(type.monoLabel.letterSpacing).toBeCloseTo(
+      type.monoLabel.fontSize * 0.18,
+      5,
+    );
   });
 
-  it('uses dark when matchMedia is unavailable (React Native / SSR) and nothing is persisted', () => {
-    // No matchMedia argument at all — the provider's defensive check
-    // must not throw, and the default ('dark') must win.
-    const ls = new MemoryStorage();
-    expect(() => resolveInitialTheme(ls)).not.toThrow();
-    expect(resolveInitialTheme(ls)).toBe('dark');
+  it('carries none of the three display fonts the template shipped with', () => {
+    const families = [type.mono, type.body, type.bodyMedium, type.bodyBold].join(' ');
+    for (const stale of ['DancingScript', 'Anton', 'Fredoka']) {
+      expect(families).not.toContain(stale);
+    }
+  });
+});
+
+// ─── 5. The grouped export ────────────────────────────────────────────
+
+describe('design tokens — grouped export', () => {
+  it('exposes colour, radius, space and type under one object', () => {
+    expect(tokens).toEqual({ color, radius, space, type });
+  });
+});
+
+// ─── 6. The tailwind mirror cannot drift ──────────────────────────────
+
+const extend = tailwindConfig.theme!.extend!;
+
+describe('tailwind mirror — colours', () => {
+  it('resolves every colour to the identical token value', () => {
+    expect(extend.colors).toEqual(color);
   });
 
-  it('a fresh install on a light-mode device starts in light without requiring user action', () => {
-    // Full cold-start scenario for a new user: no localStorage, OS
-    // says light. They should land directly on the light palette.
-    const ls = new MemoryStorage();
-    const resolved = resolveInitialTheme(ls, makeMatchMedia(true));
-    expect(resolved).toBe('light');
-    expect(paletteFor(resolved).background).toBe('#ffffff');
-    expect(paletteFor(resolved).text).toBe('#000000');
+  it('no longer carries the primary blue scale', () => {
+    expect(extend.colors).not.toHaveProperty('primary');
+    expect(read('tailwind.config.ts')).not.toContain('#3b82f6');
+  });
+});
+
+describe('tailwind mirror — radius and space', () => {
+  it('mirrors every radius step as 0px', () => {
+    for (const key of Object.keys(radius)) {
+      expect((extend.borderRadius as Record<string, string>)[key]).toBe('0px');
+    }
+  });
+
+  it('mirrors every space step at the identical value', () => {
+    for (const [key, value] of Object.entries(space)) {
+      expect((extend.spacing as Record<string, string>)[key]).toBe(`${value}px`);
+    }
+  });
+});
+
+describe('tailwind mirror — type', () => {
+  it('registers the four DM families and drops the old display fonts', () => {
+    const families = extend.fontFamily as Record<string, string[]>;
+    expect(families.mono).toEqual([type.mono]);
+    expect(families.body).toEqual([type.body]);
+    expect(families['body-medium']).toEqual([type.bodyMedium]);
+    expect(families['body-bold']).toEqual([type.bodyBold]);
+
+    for (const stale of ['handwriting', 'anton', 'fredoka']) {
+      expect(families).not.toHaveProperty(stale);
+    }
+  });
+
+  it('exposes the monoLabel size and tracking as utilities', () => {
+    expect((extend.fontSize as Record<string, string>)['mono-label']).toBe(
+      `${type.monoLabel.fontSize}px`,
+    );
+    expect((extend.letterSpacing as Record<string, string>)['mono-label']).toBe(
+      `${type.monoLabel.letterSpacing}px`,
+    );
+  });
+});
+
+// ─── 7. Chrome files no longer hardcode what the tokens own ───────────
+
+describe('chrome files reference tokens, not raw hex', () => {
+  const chrome = ['app/_layout.tsx', 'app/(tabs)/_layout.tsx', 'tailwind.config.ts'];
+
+  it.each(chrome)('%s contains no dark-theme or blue-accent literal', (file) => {
+    const source = read(file);
+    expect(source).not.toContain('#3b82f6');
+    expect(source).not.toContain("'#000'");
+    expect(source).not.toContain('"#000"');
+  });
+
+  it('app/_layout.tsx renders the status bar dark against the white ground', () => {
+    const source = read('app/_layout.tsx');
+    expect(source).toContain('<StatusBar style="dark" />');
+    expect(source).toContain('backgroundColor: color.bg');
   });
 });
