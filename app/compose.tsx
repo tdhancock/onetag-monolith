@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,10 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useApp } from '../store/AppContext.native';
 import { cleanHtml } from '../services/apiService';
@@ -36,6 +37,29 @@ export default function ComposeScreen() {
   const router = useRouter();
   const { userProfile, addProfilePost, addToast } = useApp();
   const inputRef = useRef<TextInput>(null);
+  const insets = useSafeAreaInsets();
+
+  // The toolbar owns the bottom inset, not the root SafeAreaView — see the
+  // `edges` note on it below. While the keyboard is up, KeyboardAvoidingView
+  // has already lifted the toolbar clear of it and the inset would only leave
+  // a gap, so it is applied when the keyboard is down and dropped when it is
+  // up.
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    // `keyboardWillShow` fires with the animation on iOS; Android only ever
+    // emits the `did` pair.
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const show = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   const [content, setContent] = useState('');
   const [isPosting, setIsPosting] = useState(false);
@@ -139,7 +163,12 @@ export default function ComposeScreen() {
   const isOverLimit = charCount > MAX_CHARS;
 
   return (
-    <SafeAreaView className="flex-1 bg-black">
+    // Top edge only. Padding the bottom here too would shorten the
+    // KeyboardAvoidingView's frame while it still measures the keyboard
+    // against the full screen, so the toolbar ended up under the keyboard —
+    // and with `autoFocus` below raising it on open, the attach and poll
+    // buttons were never reachable at all.
+    <SafeAreaView className="flex-1 bg-black" edges={['top']}>
       <Stack.Screen options={{ headerShown: false, presentation: 'modal' }} />
 
       {/* Header */}
@@ -164,9 +193,19 @@ export default function ComposeScreen() {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        // The modal reaches the bottom of the screen and the root no longer
+        // pads that edge, so the view's frame and the keyboard's are measured
+        // against the same origin and no offset is needed.
+        keyboardVerticalOffset={0}
         className="flex-1"
       >
-        <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
+        <ScrollView
+          className="flex-1"
+          keyboardShouldPersistTaps="handled"
+          // `autoFocus` raises the keyboard on open, so there has to be a way
+          // back down: dragging the composer dismisses it.
+          keyboardDismissMode="interactive"
+        >
           {/* Compose area */}
           <View className="p-4 flex-row" style={{ gap: 12 }}>
             <UserAvatar
@@ -254,7 +293,10 @@ export default function ComposeScreen() {
         </ScrollView>
 
         {/* Toolbar */}
-        <View className="border-t border-gray-900 px-4 py-2 flex-row items-center justify-between">
+        <View
+          className="border-t border-gray-900 px-4 pt-2 flex-row items-center justify-between"
+          style={{ paddingBottom: keyboardVisible ? 8 : Math.max(insets.bottom, 8) }}
+        >
           <View className="flex-row items-center" style={{ gap: 16 }}>
             {/* Media and polls are mutually exclusive, as they were before:
                 a post carries one or the other, never both. */}
