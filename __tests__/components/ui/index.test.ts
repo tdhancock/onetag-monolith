@@ -28,12 +28,7 @@ jest.mock('react-native', () => {
   };
 }, { virtual: true });
 
-jest.mock('expo-image', () => {
-  const React = require('react');
-  const Image: React.FC<Record<string, unknown>> = () => null;
-  Image.displayName = 'Image';
-  return { __esModule: true, Image };
-}, { virtual: true });
+jest.mock('expo-image', () => require('../../support/expoImageStub'), { virtual: true });
 
 // The import line from the acceptance criterion, verbatim in spirit: all
 // five primitives, one specifier. If this does not typecheck, tsc fails.

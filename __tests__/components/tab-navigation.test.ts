@@ -42,23 +42,7 @@ jest.mock('react-native', () => {
   };
 }, { virtual: true });
 
-jest.mock('react-native-svg', () => {
-  const React = require('react');
-  const makeStub = (name: string) => {
-    const Stub: React.FC<Record<string, unknown>> = () => null;
-    Stub.displayName = name;
-    return Stub;
-  };
-  return {
-    __esModule: true,
-    default: makeStub('Svg'),
-    Svg: makeStub('Svg'),
-    Path: makeStub('Path'),
-    Circle: makeStub('Circle'),
-    G: makeStub('G'),
-    Rect: makeStub('Rect'),
-  };
-}, { virtual: true });
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
 
 jest.mock('expo-router', () => {
   const React = require('react');
