@@ -1,86 +1,172 @@
 
 //
 // target: __tests__/components/UserAvatar.test.ts
-// Batch 1/10: UserAvatar component and Icons rendering tests
+// UserAvatar + Icons rendering — components/native/*.
+//
+// Repointed from the deleted web fork. The fork's avatar was sized by
+// Tailwind `className` ("w-10 h-10") and rendered an <img>; the native twin
+// takes a numeric `size` and renders either an expo-image <Image> or a
+// <View>/<Text> initials badge. The assertions follow the native contract.
 
 import React from 'react';
-import UserAvatar from '../../components/UserAvatar';
+
+// ─── 1. Mock the native runtime ─────────────────────────────────────────
+
+jest.mock('react-native', () => {
+  const React = require('react');
+  const passthrough = (name: string) => {
+    const C: React.FC<Record<string, unknown>> = props =>
+      React.createElement(name, props, props.children as React.ReactNode);
+    C.displayName = name;
+    return C;
+  };
+  return { __esModule: true, View: passthrough('div'), Text: passthrough('span') };
+}, { virtual: true });
+
+jest.mock('expo-image', () => {
+  const React = require('react');
+  const Image: React.FC<Record<string, unknown>> = () => null;
+  Image.displayName = 'Image';
+  return { __esModule: true, Image };
+}, { virtual: true });
+
+jest.mock('react-native-svg', () => {
+  const makeStub = (name: string) => {
+    const Stub: React.FC<Record<string, unknown>> = () => null;
+    Stub.displayName = name;
+    return Stub;
+  };
+  return {
+    __esModule: true,
+    default: makeStub('Svg'),
+    Svg: makeStub('Svg'),
+    Path: makeStub('Path'),
+    Circle: makeStub('Circle'),
+    G: makeStub('G'),
+    Rect: makeStub('Rect'),
+  };
+}, { virtual: true });
+
+import UserAvatar from '../../components/native/UserAvatar';
 import {
   HomeIcon, SearchIcon, HeartIcon, CommentIcon, RepostIcon,
   BookmarkIcon, TrashIcon, BellIcon, UserIcon, CameraIcon,
   ShareIcon, PlusIcon, OneTagIcon, VerifiedIcon, FlagIcon,
   ReportIcon, StarIcon,
-} from '../../components/Icons';
+} from '../../components/native/Icons';
 
-describe('UserAvatar', () => {
-  it('renders img element when avatarUrl is provided', () => {
-    const el = React.createElement(UserAvatar, {
+// ─── 2. Helpers ─────────────────────────────────────────────────────────
+
+type AvatarProps = {
+  username: string | null | undefined;
+  avatarUrl: string | null | undefined;
+  size?: number;
+  className?: string;
+};
+
+type AvatarElement = React.ReactElement<{
+  style: Record<string, unknown>;
+  source?: { uri: string };
+  contentFit?: string;
+  transition?: number;
+  children?: React.ReactElement<{ children?: unknown; style?: Record<string, unknown> }>;
+}>;
+
+const render = (props: AvatarProps): AvatarElement =>
+  (UserAvatar as unknown as (p: AvatarProps) => AvatarElement)(props);
+
+// ─── 3. UserAvatar — image branch ───────────────────────────────────────
+
+describe('native UserAvatar — with an avatarUrl', () => {
+  it('renders the remote image with the url as its source', () => {
+    const el = render({
       username: 'johndoe',
       avatarUrl: 'https://example.com/avatar.jpg',
-      className: 'w-10 h-10',
     });
-    expect(el).toBeDefined();
-    expect(el.props.avatarUrl).toBe('https://example.com/avatar.jpg');
-    expect(el.props.username).toBe('johndoe');
-    expect(el.props.className).toContain('w-10');
+    expect(el.props.source).toEqual({ uri: 'https://example.com/avatar.jpg' });
   });
 
-  it('renders initial without avatarUrl', () => {
-    const el = React.createElement(UserAvatar, {
-      username: 'alice',
-      avatarUrl: null,
-      className: 'w-12 h-12',
+  it('sizes the image as a circle at the default 40px', () => {
+    const el = render({ username: 'johndoe', avatarUrl: 'https://x/a.jpg' });
+    expect(el.props.style).toMatchObject({
+      width: 40,
+      height: 40,
+      borderRadius: 20,
     });
-    expect(el).toBeDefined();
-    expect(el.props.avatarUrl).toBeNull();
-    expect(el.props.username).toBe('alice');
   });
 
-  it('handles null username', () => {
-    const el = React.createElement(UserAvatar, {
-      username: null,
-      avatarUrl: null,
-      className: 'w-8 h-8',
-    });
-    expect(el).toBeDefined();
-    expect(el.props.avatarUrl).toBeNull();
-    expect(el.props.username).toBeNull();
-  });
-
-  it('handles undefined username', () => {
-    const el = React.createElement(UserAvatar, {
-      username: undefined,
-      avatarUrl: null,
-      className: 'w-8 h-8',
-    });
-    expect(el).toBeDefined();
-    expect(el.props.username).toBeUndefined();
-  });
-
-  it('handles empty string username', () => {
-    const el = React.createElement(UserAvatar, {
-      username: '',
-      avatarUrl: null,
-      className: 'w-8 h-8',
-    });
-    expect(el).toBeDefined();
-    expect(el.props.username).toBe('');
-  });
-
-  it('accepts different size classes', () => {
-    const sizes = ['w-6 h-6', 'w-8 h-8', 'w-10 h-10', 'w-12 h-12', 'w-16 h-16', 'w-20 h-20', 'w-24 h-24'];
-    sizes.forEach(size => {
-      const el = React.createElement(UserAvatar, {
-        username: 'size-test',
-        avatarUrl: null,
-        className: size,
+  it('keeps the circle at any explicit size', () => {
+    [24, 32, 48, 64, 96].forEach(size => {
+      const el = render({ username: 'johndoe', avatarUrl: 'https://x/a.jpg', size });
+      expect(el.props.style).toMatchObject({
+        width: size,
+        height: size,
+        borderRadius: size / 2,
       });
-      expect(el.props.className).toBe(size);
     });
+  });
+
+  it('covers the frame rather than letterboxing, and fades in', () => {
+    // A stretched or letterboxed avatar is the visible failure here, so
+    // the contentFit is part of the contract, not an incidental prop.
+    const el = render({ username: 'johndoe', avatarUrl: 'https://x/a.jpg' });
+    expect(el.props.contentFit).toBe('cover');
+    expect(el.props.transition).toBe(200);
+  });
+
+  it('prefers the image over the initials badge even with no username', () => {
+    const el = render({ username: null, avatarUrl: 'https://x/a.jpg' });
+    expect(el.props.source).toEqual({ uri: 'https://x/a.jpg' });
+    expect(el.props.children).toBeUndefined();
   });
 });
 
-describe('Icons', () => {
+// ─── 4. UserAvatar — initials branch ────────────────────────────────────
+
+describe('native UserAvatar — without an avatarUrl', () => {
+  it('renders an initials badge instead of an image', () => {
+    const el = render({ username: 'alice', avatarUrl: null });
+    expect(el.props.source).toBeUndefined();
+    expect(el.props.children?.props.children).toBe('A');
+  });
+
+  it('centers the initial in a coloured circle', () => {
+    const el = render({ username: 'alice', avatarUrl: null, size: 60 });
+    expect(el.props.style).toMatchObject({
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      alignItems: 'center',
+      justifyContent: 'center',
+    });
+    expect(typeof el.props.style.backgroundColor).toBe('string');
+  });
+
+  it('scales the glyph to 40% of the avatar size', () => {
+    [20, 40, 80].forEach(size => {
+      const el = render({ username: 'alice', avatarUrl: null, size });
+      expect(el.props.children?.props.style).toMatchObject({ fontSize: size * 0.4 });
+    });
+  });
+
+  it('handles null, undefined and empty usernames without throwing', () => {
+    ([null, undefined, ''] as const).forEach(username => {
+      expect(() => render({ username, avatarUrl: null })).not.toThrow();
+      const el = render({ username, avatarUrl: null });
+      expect(el.props.children?.props.children).toBe('?');
+    });
+  });
+
+  it('is stable across repeated renders of the same username', () => {
+    const a = render({ username: 'size-test', avatarUrl: null });
+    const b = render({ username: 'size-test', avatarUrl: null });
+    expect(a.props.style.backgroundColor).toBe(b.props.style.backgroundColor);
+  });
+});
+
+// ─── 5. Icons smoke coverage ────────────────────────────────────────────
+
+describe('native Icons — used alongside UserAvatar', () => {
   const iconComponents = [
     ['HomeIcon', HomeIcon],
     ['SearchIcon', SearchIcon],
@@ -102,34 +188,39 @@ describe('Icons', () => {
   ] as const;
 
   iconComponents.forEach(([name, Component]) => {
-    it(`${name} renders as a function component`, () => {
-      const el = React.createElement(Component as React.FC);
+    it(`${name} builds an Svg element when invoked`, () => {
+      const el = (Component as unknown as (p: Record<string, unknown>) => React.ReactElement<
+        Record<string, unknown>
+      >)({});
       expect(el).toBeDefined();
-      expect(el.type).toBe(Component);
+      expect(typeof el.props.viewBox).toBe('string');
     });
   });
 
-  it('HeartIcon receives liked prop', () => {
-    const liked = React.createElement(HeartIcon, { liked: true });
-    expect(liked.props.liked).toBe(true);
-    const unliked = React.createElement(HeartIcon, { liked: false });
-    expect(unliked.props.liked).toBe(false);
+  it('HeartIcon fill follows the liked prop', () => {
+    const toSvg = (props: Record<string, unknown>) =>
+      (HeartIcon as unknown as (p: Record<string, unknown>) => React.ReactElement<
+        Record<string, unknown>
+      >)(props);
+    expect(toSvg({ color: '#f00', liked: true }).props.fill).toBe('#f00');
+    expect(toSvg({ color: '#f00', liked: false }).props.fill).toBe('none');
   });
 
-  it('BookmarkIcon receives saved prop', () => {
-    const saved = React.createElement(BookmarkIcon, { saved: true });
-    expect(saved.props.saved).toBe(true);
-    const unsaved = React.createElement(BookmarkIcon, { saved: false });
-    expect(unsaved.props.saved).toBe(false);
+  it('BookmarkIcon fill follows the saved prop', () => {
+    const toSvg = (props: Record<string, unknown>) =>
+      (BookmarkIcon as unknown as (p: Record<string, unknown>) => React.ReactElement<
+        Record<string, unknown>
+      >)(props);
+    expect(toSvg({ color: '#0f0', saved: true }).props.fill).toBe('#0f0');
+    expect(toSvg({ color: '#0f0', saved: false }).props.fill).toBe('none');
   });
 
-  it('OneTagIcon accepts className prop', () => {
-    const el = React.createElement(OneTagIcon, { className: 'w-10 h-10' });
-    expect(el.props.className).toBe('w-10 h-10');
-  });
-
-  it('OneTagIcon uses default className when none provided', () => {
-    const el = React.createElement(OneTagIcon, {});
-    expect(el.props.className).toBeUndefined();
+  it('OneTagIcon defaults to 32px and honours an explicit size', () => {
+    const toSvg = (props: Record<string, unknown>) =>
+      (OneTagIcon as unknown as (p: Record<string, unknown>) => React.ReactElement<
+        Record<string, unknown>
+      >)(props);
+    expect(toSvg({}).props.width).toBe(32);
+    expect(toSvg({ size: 10 }).props.width).toBe(10);
   });
 });

@@ -2,8 +2,14 @@
 
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
 import { supabase } from './supabase.native';
+
+// Expo Go removed support for remote push notifications in SDK 53. Registering
+// from Expo Go cannot succeed on either platform regardless of configuration,
+// so detect it and skip rather than failing on every launch.
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 // Configure how notifications appear when app is in foreground
 Notifications.setNotificationHandler({
@@ -18,6 +24,11 @@ Notifications.setNotificationHandler({
 
 export async function registerForPushNotifications(): Promise<string | null> {
   if (!Device.isDevice) {
+    return null;
+  }
+
+  // See the note on isExpoGo above — this cannot succeed in Expo Go.
+  if (isExpoGo) {
     return null;
   }
 
@@ -45,14 +56,29 @@ export async function registerForPushNotifications(): Promise<string | null> {
     });
   }
 
-  // Get Expo push token
+  // Get Expo push token.
+  //
+  // projectId is required. Passing undefined does NOT make it auto-infer — it
+  // makes expo-notifications look for extra.eas.projectId in the manifest and
+  // throw when it isn't there. Read it explicitly so a missing id is a clear
+  // warning rather than a stack trace.
+  const projectId =
+    Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+
+  if (!projectId) {
+    console.warn(
+      'Push notifications: no EAS projectId configured. Run `eas init` to add ' +
+        'extra.eas.projectId to app.json. Skipping registration.',
+    );
+    return null;
+  }
+
   try {
-    const token = await Notifications.getExpoPushTokenAsync({
-      projectId: undefined, // Uses the project ID from app.json automatically
-    });
+    const token = await Notifications.getExpoPushTokenAsync({ projectId });
     return token.data;
   } catch (error) {
-    console.error('Failed to get push token:', error);
+    // Not fatal — the app works without push.
+    console.warn('Push notifications unavailable:', error);
     return null;
   }
 }

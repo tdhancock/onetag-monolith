@@ -15,9 +15,9 @@
 //      becomes visible again.
 //
 // We exercise the underlying pure helpers (`toggleBlockUser`,
-// `filterBlockedPosts`, `applyRealtimeInsert`) so React Native /
-// supabase are not required at runtime, mirroring the convention used
-// by report-user-flow.test.ts and the FeedScreen.* tests.
+// `applyRealtimeInsert`) so React Native / supabase are not required at
+// runtime, mirroring the convention used by report-user-flow.test.ts and
+// the FeedScreen.* tests.
 
 // ---------------------------------------------------------------------------
 // Local-storage stub.
@@ -43,7 +43,7 @@ function installLocalStorageStub(): void {
 // 1. Block action — toggleBlockUser adds the username and persists it.
 // ---------------------------------------------------------------------------
 //
-// Mirrors the toggleBlockUser contract from store/AppContext.tsx so we
+// Mirrors the toggleBlockUser contract from store/AppContext.native.tsx so we
 // do not need to spin up the full React provider. The real implementation
 // stores the blocked usernames as a JSON-encoded string array under
 // BLOCKED_USERS_KEY; we exercise the same algorithm here.
@@ -146,83 +146,21 @@ describe('Block user flow — block action', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. Blocked content hidden — filterBlockedPosts strips blocked authors.
+// 2. Blocked content hidden — a blocked author's post never reaches the feed.
 //
-// `filterBlockedPosts` lives in components/tabs/SearchTab.utils.ts and
-// is the single source of truth for "drop posts whose author is in the
-// viewer's block-list". The HomeFeedScreen, SearchTab, and CommentsScreen
-// all pipe their lists through it (or its inline equivalent).
+// The block-list predicate is applied by `applyRealtimeInsert` in
+// app/(tabs)/feed.utils.ts, which is the reducer every feed screen pipes
+// Postgres INSERT events through. Comment lists apply the same rule inline
+// (app/comments/[postId].tsx). There is no shared list-filter helper to
+// point at: the one that used to live in components/tabs/SearchTab.utils.ts
+// belonged to the orphaned web fork and went away with it.
 // ---------------------------------------------------------------------------
 
-import {
-  filterBlockedPosts,
-  filterBlockedUsers,
-} from '../components/tabs/SearchTab.utils';
 import { applyRealtimeInsert, type FeedPost } from '../app/(tabs)/feed.utils';
-import type { Post, SimpleUser } from '../types';
-
-// Minimal Post fixture matching the contract in types.ts — the filter
-// helpers only read `id`, `username`, and `content`, so we keep the
-// shape as small as the type allows.
-const makePost = (id: string, username: string, content = 'hello'): Post => ({
-  id,
-  username,
-  avatar: null,
-  content,
-  media_type: 'text',
-  likes: 0,
-  reposts: 0,
-  replies: 0,
-});
-
-const makeUser = (username: string): SimpleUser => ({
-  id: `id-${username}`,
-  username,
-  name: username,
-  avatar: null,
-  isVerified: false,
-});
 
 describe('Block user flow — blocked content is hidden', () => {
   beforeEach(() => {
     installLocalStorageStub();
-  });
-
-  test('filterBlockedPosts drops posts authored by a blocked username', () => {
-    // The viewer has blocked `spammer`. The home-feed timeline
-    // contains a mix of authors; the filter must remove only the
-    // matching author and preserve everyone else in the original
-    // order (the FlatList relies on stable ordering for its
-    // keyExtractor / getItemLayout props).
-    const posts: Post[] = [
-      makePost('p1', 'alice', 'first'),
-      makePost('p2', 'spammer', 'spam content'),
-      makePost('p3', 'bob', 'third'),
-      makePost('p4', 'spammer', 'more spam'),
-    ];
-    const isBlocked = (u: string) => u === 'spammer';
-
-    const visible = filterBlockedPosts(posts, isBlocked);
-
-    expect(visible.map(p => p.id)).toEqual(['p1', 'p3']);
-    // The blocked user's two posts are both gone — we don't leak one.
-    expect(visible.some(p => p.username === 'spammer')).toBe(false);
-  });
-
-  test('filterBlockedUsers removes blocked users from search results', () => {
-    // The Discover / Search panel renders a "Users" result list. A
-    // blocked username must never appear in it, even if the row was
-    // returned by the Supabase search RPC.
-    const results: SimpleUser[] = [
-      makeUser('alice'),
-      makeUser('spammer'),
-      makeUser('bob'),
-    ];
-    const isBlocked = (u: string) => u === 'spammer';
-
-    const visible = filterBlockedUsers(results, isBlocked);
-
-    expect(visible.map(u => u.username)).toEqual(['alice', 'bob']);
   });
 
   test('a realtime INSERT from a blocked author is dropped before it hits the feed', () => {
@@ -281,30 +219,33 @@ describe('Block user flow — unblock restores visibility', () => {
   });
 
   test('a post authored by a previously-blocked user becomes visible again after unblocking', () => {
-    // End-to-end recovery scenario:
+    // End-to-end recovery scenario, driven through the live feed reducer:
     //   1. The viewer blocks `spammer`.
-    //   2. The filter drops spammer's post from the timeline.
+    //   2. An INSERT from spammer is dropped before it reaches the feed.
     //   3. The viewer unblocks `spammer`.
-    //   4. Re-applying the same filter now keeps spammer's post.
-    const posts: Post[] = [
-      makePost('p1', 'alice'),
-      makePost('p2', 'spammer'),
-      makePost('p3', 'bob'),
+    //   4. The same INSERT now lands, at the head of the timeline.
+    interface SamplePost extends FeedPost { username: string; }
+    const timeline: SamplePost[] = [
+      { id: 'p1', username: 'alice' },
+      { id: 'p3', username: 'bob' },
     ];
+    const incoming: SamplePost = { id: 'p2', username: 'spammer' };
 
-    // Step 1+2: block.
-    let blocked = new Set<string>(['spammer']);
-    const isBlocked = (u: string) => blocked.has(u);
-    const whileBlocked = filterBlockedPosts(posts, isBlocked);
+    // Step 1+2: block. The predicate reads the live Set, so the same
+    // closure reflects the unblock in step 3 without being rebuilt.
+    const blocked = new Set<string>(['spammer']);
+    const isBlocked = (u: string | undefined) => (u ? blocked.has(u) : false);
+
+    const whileBlocked = applyRealtimeInsert(timeline, incoming, isBlocked);
     expect(whileBlocked.map(p => p.id)).toEqual(['p1', 'p3']);
 
     // Step 3: unblock — mirror toggleBlockUser's "delete on second tap".
     blocked.delete('spammer');
 
-    // Step 4: re-apply the same filter; spammer's post is back, and
-    // the timeline order is preserved.
-    const afterUnblock = filterBlockedPosts(posts, isBlocked);
-    expect(afterUnblock.map(p => p.id)).toEqual(['p1', 'p2', 'p3']);
+    // Step 4: the same INSERT is accepted now, newest-first, and the
+    // existing timeline order below it is preserved.
+    const afterUnblock = applyRealtimeInsert(timeline, incoming, isBlocked);
+    expect(afterUnblock.map(p => p.id)).toEqual(['p2', 'p1', 'p3']);
     expect(afterUnblock.find(p => p.username === 'spammer')?.id).toBe('p2');
   });
 });

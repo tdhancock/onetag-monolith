@@ -5,15 +5,19 @@
  *
  * target: __tests__/useAppContext.test.tsx
  *
- * Tests for the `useApp` hook (exported from `store/AppContext.tsx`).
+ * Tests for the `useApp` hook (exported from `store/AppContext.native.tsx`).
  *
- * NOTE on naming: the request referred to this hook as `useAppContext`, but
- * the actual export in `store/AppContext.tsx` is `useApp` (see line 1142).
- * The store file also defines the React context object internally as
- * `AppContext` (not exported). These tests therefore cover the public
- * `useApp` hook, which is the consumer-facing entry point for the
- * `AppProvider` state tree. This is the same hook the rest of the
- * codebase imports.
+ * Repointed from the deleted web fork's `store/AppContext.tsx` to the live
+ * native provider. The public surface is identical — `AppProvider` plus
+ * `useApp`, which throws the same "must be used within an AppProvider"
+ * error — but the persistence layer is not: the fork hydrated its
+ * block-list synchronously from `localStorage` inside the useState
+ * initializer, while the native provider reads AsyncStorage in an effect
+ * after mount. The hydration test below follows the native behaviour.
+ *
+ * NOTE on naming: the hook is `useApp`, not `useAppContext`; the context
+ * object itself is module-private. These tests cover the public hook,
+ * which is what the rest of the codebase imports.
  *
  * Strategy:
  *   - We use `react-dom/client` + `react-dom/test-utils` (createRoot +
@@ -47,6 +51,36 @@ const mockAuthGetUser = jest.fn(async () => ({
   error: null,
 }));
 
+// The native provider persists the block-list to AsyncStorage and reads it
+// back in a post-mount effect. A mutable store lets a test seed it before
+// mounting, the way a returning user's device would already have it.
+let mockAsyncStore: Record<string, string> = {};
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(async (key: string) =>
+      Object.prototype.hasOwnProperty.call(mockAsyncStore, key)
+        ? mockAsyncStore[key]
+        : null,
+    ),
+    setItem: jest.fn(async (key: string, value: string) => {
+      mockAsyncStore[key] = value;
+    }),
+    removeItem: jest.fn(async (key: string) => {
+      delete mockAsyncStore[key];
+    }),
+  },
+}), { virtual: true });
+
+// Haptics fire on like/repost/save. Never invoked by these tests, but the
+// import has to resolve.
+jest.mock('expo-haptics', () => ({
+  __esModule: true,
+  impactAsync: jest.fn(async () => undefined),
+  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
+}), { virtual: true });
+
 jest.mock('../services/supabase.native', () => ({
   supabase: {
     auth: {
@@ -68,7 +102,7 @@ jest.mock('../services/supabase.native', () => ({
   },
 }), { virtual: true });
 
-// Mock the apiService that AppContext.tsx pulls in. We provide a no-op
+// Mock the apiService that AppContext.native.tsx pulls in. We provide a no-op
 // shape for every named import the file references. The provider uses
 // some of these inside useCallbacks that aren't invoked by these tests,
 // but the import must resolve cleanly. The `supabase` re-export is
@@ -96,6 +130,7 @@ jest.mock('../services/apiService', () => {
     toggleSavePost: jest.fn(),
     adminDeletePost: jest.fn(),
     ensureCurrentUserProfile: jest.fn(),
+    uploadMedia: jest.fn(),
   };
 }, { virtual: true });
 
@@ -103,7 +138,7 @@ jest.mock('../services/apiService', () => {
 import React, { useEffect } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
-import { AppProvider, useApp } from '../store/AppContext';
+import { AppProvider, useApp } from '../store/AppContext.native';
 type AppContextType = ReturnType<typeof useApp>;
 
 // ─── 3. Helpers ─────────────────────────────────────────────────────────
@@ -154,6 +189,19 @@ function mountWithProvider(): MountedHandle {
   return { root, container, capture };
 }
 
+/**
+ * Mount, then flush the provider's post-mount async effects (the
+ * AsyncStorage block-list read). Use this when a test asserts on state
+ * that arrives after hydration rather than from the initial render.
+ */
+async function mountAndHydrate(): Promise<MountedHandle> {
+  const handle = mountWithProvider();
+  await act(async () => {
+    await Promise.resolve();
+  });
+  return handle;
+}
+
 function unmount(handle: MountedHandle): void {
   act(() => {
     handle.root.unmount();
@@ -167,7 +215,7 @@ describe('useApp (AppContext) — provider wrapper', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     // Make sure no stale blocked-users value carries over between tests.
-    window.localStorage.removeItem('onetag-blocked-users');
+    mockAsyncStore = {};
   });
 
   it('renders children inside the provider without throwing', () => {
@@ -232,14 +280,14 @@ describe('useApp (AppContext) — provider wrapper', () => {
     }
   });
 
-  it('hydrates blocked users from localStorage when present', () => {
-    // Seed localStorage as the real provider would encounter on a
-    // returning visit, then mount and confirm the set is hydrated.
-    window.localStorage.setItem(
-      'onetag-blocked-users',
-      JSON.stringify(['spammer1', 'spammer2']),
-    );
-    const handle = mountWithProvider();
+  it('hydrates blocked users from AsyncStorage when present', async () => {
+    // Seed AsyncStorage as a returning user's device would already have
+    // it, then mount and let the hydration effect settle.
+    mockAsyncStore['onetag-blocked-users'] = JSON.stringify([
+      'spammer1',
+      'spammer2',
+    ]);
+    const handle = await mountAndHydrate();
     try {
       const ctx = handle.capture.current!;
       expect(ctx.blockedUsers).toBeInstanceOf(Set);
@@ -248,7 +296,45 @@ describe('useApp (AppContext) — provider wrapper', () => {
       expect(ctx.blockedUsers.has('spammer2')).toBe(true);
     } finally {
       unmount(handle);
-      window.localStorage.removeItem('onetag-blocked-users');
+    }
+  });
+
+  it('starts with an empty block-list before hydration resolves', () => {
+    // Unlike the fork, the native provider cannot read storage inside its
+    // useState initializer — the first paint always shows an empty set.
+    mockAsyncStore['onetag-blocked-users'] = JSON.stringify(['spammer1']);
+    const handle = mountWithProvider();
+    try {
+      expect(handle.capture.current!.blockedUsers.size).toBe(0);
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('ignores a malformed AsyncStorage payload instead of throwing', async () => {
+    mockAsyncStore['onetag-blocked-users'] = '{not json';
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const handle = await mountAndHydrate();
+      try {
+        expect(handle.capture.current!.blockedUsers.size).toBe(0);
+      } finally {
+        unmount(handle);
+      }
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('ignores a non-array AsyncStorage payload', async () => {
+    // The provider guards on Array.isArray before rehydrating, so a stray
+    // object must not become a block-list.
+    mockAsyncStore['onetag-blocked-users'] = JSON.stringify({ spammer1: true });
+    const handle = await mountAndHydrate();
+    try {
+      expect(handle.capture.current!.blockedUsers.size).toBe(0);
+    } finally {
+      unmount(handle);
     }
   });
 });
