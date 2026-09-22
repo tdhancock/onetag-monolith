@@ -35,56 +35,46 @@ export default function EditProfileScreen() {
     if (saving) return;
     setSaving(true);
 
-    const originalProfile = userProfile ? { ...userProfile } : null;
+    const cleanedBio = cleanHtml(bio);
 
-    // Optimistic update — apply locally and navigate back immediately
-    updateProfile({
-      name,
-      username,
-      bio: cleanHtml(bio),
-      ...(avatarUri ? { profilePicture: avatarUri } : {}),
-    });
-    router.back();
-
-    // Background sync
+    // Stay on the screen until the save resolves. The previous version
+    // navigated back first, so a failure surfaced as a toast over whatever
+    // screen the user had already moved on to, with nothing left to retry on.
     try {
-      const promises: Promise<unknown>[] = [];
-
+      // The avatar has to reach Storage before the profile row is written —
+      // `avatar_url` takes the returned public URL, never the local file:// URI.
+      let avatarUrl: string | null = null;
       if (avatarUri) {
-        promises.push(
-          fetch(avatarUri)
-            .then((res) => res.blob())
-            .then((blob) => uploadAvatar(blob))
-        );
+        avatarUrl = await uploadAvatar(avatarUri);
+        if (!avatarUrl) {
+          throw new Error('Avatar upload failed');
+        }
       }
 
-      const hasTextChanges =
-        name !== originalProfile?.name ||
-        username !== originalProfile?.username ||
-        bio !== (originalProfile?.bio ?? '');
+      const saved = await updateUserProfileData({
+        name,
+        username,
+        bio: cleanedBio,
+        ...(avatarUrl ? { profilePicture: avatarUrl } : {}),
+      });
 
-      if (hasTextChanges) {
-        promises.push(
-          updateUserProfileData({
-            name,
-            username,
-            bio,
-          })
-        );
+      if (!saved) {
+        throw new Error('Profile update failed');
       }
 
-      const results = await Promise.all(promises);
-
-      const failed = results.some((r) => r === false || r === null);
-      if (failed) {
-        throw new Error('One or more updates failed');
-      }
+      updateProfile({
+        name,
+        username,
+        bio: cleanedBio,
+        ...(avatarUrl ? { profilePicture: avatarUrl } : {}),
+      });
+      router.back();
     } catch {
-      // Revert to original profile on failure
-      if (originalProfile) {
-        updateProfile(originalProfile);
-      }
-      addToast('Failed to save profile. Changes reverted.', 'error');
+      // Nothing was applied locally, so there is nothing to revert — the user
+      // keeps their edits on screen and can try again.
+      addToast('Failed to save profile. Please try again.', 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
