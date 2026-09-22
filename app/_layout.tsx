@@ -25,6 +25,7 @@ import {
 } from '../services/notifications';
 import ToastContainer from '../components/native/Toast';
 import { color } from '../theme/tokens';
+import QueryProvider from '../lib/QueryProvider';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -142,11 +143,15 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: color.bg }}>
       <SafeAreaProvider>
-        <AppProvider>
-          <StatusBar style="dark" />
-          <RootLayoutNav />
-          <ToastContainer />
-        </AppProvider>
+        {/* Query sits outside AppProvider: AppContext will consume query
+            hooks as the M2 tickets land, so it has to be the inner one. */}
+        <QueryProvider>
+          <AppProvider>
+            <StatusBar style="dark" />
+            <RootLayoutNav />
+            <ToastContainer />
+          </AppProvider>
+        </QueryProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
