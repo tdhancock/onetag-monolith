@@ -32,12 +32,19 @@ export interface OptimisticToggleConfig<TEntity> {
    * count behind in the list it was liked from.
    */
   listKey: QueryKey;
-  /** Where the boolean lives on the entity. */
-  isOn: (entity: TEntity) => boolean;
+  /**
+   * Where the boolean lives on the entity.
+   *
+   * The id is passed to every selector because not every toggle is a field on
+   * a record: blocking flips *membership of a list*, so its entity is the
+   * list and the id is what decides whether it is currently on. Toggles over
+   * a single record ignore it.
+   */
+  isOn: (entity: TEntity, id: string) => boolean;
   /** Where the paired count lives. */
-  count: (entity: TEntity) => number;
+  count: (entity: TEntity, id: string) => number;
   /** Build the updated entity. Pure — no mutation of the original. */
-  apply: (entity: TEntity, next: { isOn: boolean; count: number }) => TEntity;
+  apply: (entity: TEntity, next: { isOn: boolean; count: number }, id: string) => TEntity;
   /** How to recognise the entity inside a list page. */
   entityId: (entity: TEntity) => string;
   /**
@@ -61,15 +68,20 @@ export interface ToggleSnapshot<TEntity> {
 export const toggled = <TEntity>(
   entity: TEntity,
   config: Pick<OptimisticToggleConfig<TEntity>, 'isOn' | 'count' | 'apply'>,
+  id = '',
 ): TEntity => {
-  const nextOn = !config.isOn(entity);
+  const nextOn = !config.isOn(entity, id);
 
-  return config.apply(entity, {
-    isOn: nextOn,
-    // A count can only be dragged below zero by a cache that was already
-    // wrong; clamping keeps that from rendering as "-1 likes".
-    count: Math.max(0, config.count(entity) + (nextOn ? 1 : -1)),
-  });
+  return config.apply(
+    entity,
+    {
+      isOn: nextOn,
+      // A count can only be dragged below zero by a cache that was already
+      // wrong; clamping keeps that from rendering as "-1 likes".
+      count: Math.max(0, config.count(entity, id) + (nextOn ? 1 : -1)),
+    },
+    id,
+  );
 };
 
 /** Apply a transform to a cached detail entry, leaving an empty one alone. */
@@ -140,7 +152,7 @@ export const toggleMutationOptions = <TEntity>(
       .getQueriesData({ queryKey: config.listKey })
       .filter(([, data]) => hasPages(data));
 
-    const transform = (entity: TEntity) => toggled(entity, config);
+    const transform = (entity: TEntity) => toggled(entity, config, id);
 
     queryClient.setQueryData<TEntity>(entityKey, (entity) => patchEntity(entity, transform));
 
@@ -153,8 +165,8 @@ export const toggleMutationOptions = <TEntity>(
     // Read the state back off the cache rather than recomputing it, so the
     // caller is told what actually landed.
     const applied = queryClient.getQueryData<TEntity>(entityKey);
-    if (applied !== undefined) config.onToggle?.({ isOn: config.isOn(applied) });
-    else config.onToggle?.({ isOn: !(previousEntity && config.isOn(previousEntity)) });
+    if (applied !== undefined) config.onToggle?.({ isOn: config.isOn(applied, id) });
+    else config.onToggle?.({ isOn: !(previousEntity && config.isOn(previousEntity, id)) });
 
     return {
       entity: [entityKey, previousEntity],

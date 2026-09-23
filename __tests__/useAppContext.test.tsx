@@ -141,10 +141,28 @@ jest.mock('../services/apiService', () => {
   };
 }, { virtual: true });
 
+// features/blocks talks to Supabase and TanStack Query. This suite is about
+// the provider, so the feature is stubbed and only the calls the provider
+// makes into it are asserted.
+const mockMigrateLocalBlocks = jest.fn(async () => null);
+
+jest.mock('../features/blocks', () => ({
+  useBlockedUsers: () => ({
+    blockedUsers: [],
+    isUserBlocked: () => false,
+    isUserIdBlocked: () => false,
+    query: { data: [], isPending: false },
+  }),
+  useBlockToggle: () => ({ toggle: jest.fn(), isPending: false }),
+  migrateLocalBlocks: (...args: unknown[]) => mockMigrateLocalBlocks(...(args as [])),
+  blockKeys: { all: ['blocks'] },
+}), { virtual: true });
+
 // ─── 2. Imports under test ──────────────────────────────────────────────
 import React, { useEffect } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useApp } from '../store/AppContext.native';
 import { publishPost } from '../services/apiService';
 type AppContextType = ReturnType<typeof useApp>;
@@ -168,7 +186,7 @@ const Probe: React.FC<{ capture: Captured }> = ({ capture }) => {
     hasAddToast: typeof ctx.addToast === 'function',
     theme: ctx.theme,
     userProfileName: ctx.userProfile.name,
-    blockedUsersSize: ctx.blockedUsers.size,
+    hasIsUserBlocked: typeof ctx.isUserBlocked === 'function',
     unreadMessageCount: ctx.unreadMessageCount,
     isAdmin: ctx.isAdmin,
   }));
@@ -185,12 +203,22 @@ function mountWithProvider(): MountedHandle {
   document.body.appendChild(container);
   const capture: Captured = { current: null };
   const root = createRoot(container);
+  // AppContext consumes query hooks now (ONE-54), so it needs a client —
+  // which mirrors app/_layout.tsx, where QueryProvider is the outer one.
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+
   act(() => {
     root.render(
       React.createElement(
-        AppProvider,
-        null,
-        React.createElement(Probe, { capture }),
+        QueryClientProvider,
+        { client: queryClient },
+        React.createElement(
+          AppProvider,
+          null,
+          React.createElement(Probe, { capture }),
+        ),
       ),
     );
   });
@@ -252,14 +280,13 @@ describe('useApp (AppContext) — provider wrapper', () => {
       expect(ctx!.userProfile.username).toBe('onetag_user');
       // Default theme.
       expect(ctx!.theme).toBe('dark');
-      // Post interaction state is no longer here: likes, reposts and saves
-      // live on the cached post entity and are toggled through
-      // features/posts/mutations.ts (ONE-13). AppContext holds only UI state
-      // no server owns, which is what blockedUsers still is.
+      // Server-owned state is no longer here: likes, reposts and saves live
+      // on the cached post entity (ONE-13), and the block list is a query
+      // (ONE-54). AppContext holds only UI state no server owns.
       expect(ctx).not.toHaveProperty('likedPosts');
       expect(ctx).not.toHaveProperty('repostedPosts');
       expect(ctx).not.toHaveProperty('savedPosts');
-      expect(ctx!.blockedUsers.size).toBe(0);
+      expect(ctx).not.toHaveProperty('blockedUsers');
       expect(ctx!.unreadMessageCount).toBe(0);
       expect(ctx!.isAdmin).toBe(false);
       expect(ctx!.notifications).toBeNull();
@@ -287,59 +314,32 @@ describe('useApp (AppContext) — provider wrapper', () => {
     }
   });
 
-  it('hydrates blocked users from AsyncStorage when present', async () => {
-    // Seed AsyncStorage as a returning user's device would already have
-    // it, then mount and let the hydration effect settle.
-    mockAsyncStore['onetag-blocked-users'] = JSON.stringify([
-      'spammer1',
-      'spammer2',
-    ]);
+  it('no longer keeps a block-list of its own (ONE-54)', async () => {
+    // A returning device may still hold the old key. The provider does not
+    // read it into state any more — it hands it to features/blocks to import
+    // once, and `isUserBlocked` answers from the server query after that.
+    // The import itself is covered in __tests__/features/blocks.
+    mockAsyncStore['onetag-blocked-users'] = JSON.stringify(['spammer1', 'spammer2']);
+
     const handle = await mountAndHydrate();
     try {
       const ctx = handle.capture.current!;
-      expect(ctx.blockedUsers).toBeInstanceOf(Set);
-      expect(ctx.blockedUsers.size).toBe(2);
-      expect(ctx.blockedUsers.has('spammer1')).toBe(true);
-      expect(ctx.blockedUsers.has('spammer2')).toBe(true);
+      expect(ctx).not.toHaveProperty('blockedUsers');
+      expect(ctx.isUserBlocked('spammer1')).toBe(false);
     } finally {
       unmount(handle);
     }
   });
 
-  it('starts with an empty block-list before hydration resolves', () => {
-    // Unlike the fork, the native provider cannot read storage inside its
-    // useState initializer — the first paint always shows an empty set.
+  it('does not try to import a block-list with nobody signed in', () => {
+    // There is no blocker to attribute the rows to, so the migration waits
+    // rather than dropping the list on the floor.
     mockAsyncStore['onetag-blocked-users'] = JSON.stringify(['spammer1']);
+
     const handle = mountWithProvider();
     try {
-      expect(handle.capture.current!.blockedUsers.size).toBe(0);
-    } finally {
-      unmount(handle);
-    }
-  });
-
-  it('ignores a malformed AsyncStorage payload instead of throwing', async () => {
-    mockAsyncStore['onetag-blocked-users'] = '{not json';
-    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      const handle = await mountAndHydrate();
-      try {
-        expect(handle.capture.current!.blockedUsers.size).toBe(0);
-      } finally {
-        unmount(handle);
-      }
-    } finally {
-      errorSpy.mockRestore();
-    }
-  });
-
-  it('ignores a non-array AsyncStorage payload', async () => {
-    // The provider guards on Array.isArray before rehydrating, so a stray
-    // object must not become a block-list.
-    mockAsyncStore['onetag-blocked-users'] = JSON.stringify({ spammer1: true });
-    const handle = await mountAndHydrate();
-    try {
-      expect(handle.capture.current!.blockedUsers.size).toBe(0);
+      expect(mockMigrateLocalBlocks).not.toHaveBeenCalled();
+      expect(mockAsyncStore['onetag-blocked-users']).toBe(JSON.stringify(['spammer1']));
     } finally {
       unmount(handle);
     }

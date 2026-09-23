@@ -2,6 +2,8 @@
 
 import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { useQueryClient } from '@tanstack/react-query';
+import { useBlockedUsers, useBlockToggle, migrateLocalBlocks, blockKeys } from '../features/blocks';
 import { publishPost, deletePost, updatePost, addComment as apiAddComment, getFollowingList, unfollowUser, followUser, markNotificationsAsRead, getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, markMessagesAsRead as apiMarkMessagesAsRead, adminDeletePost, ensureCurrentUserProfile, MediaUploadError } from '../services/apiService';
 import { supabase } from '../services/supabase.native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -20,7 +22,6 @@ interface AppState {
     hasNewStory: boolean;
     viewedStoryTimestamps: Set<string>;
     isViewingStory: boolean;
-    blockedUsers: Set<string>;
     likedVideoIds: Set<string>;
     followedUsernames: Set<string>;
     votedPolls: Map<string, number>;
@@ -79,8 +80,6 @@ interface AppContextType extends AppState {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const BLOCKED_USERS_KEY = 'onetag-blocked-users';
-
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [state, setState] = useState<AppState>(() => {
         return {
@@ -100,7 +99,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             hasNewStory: false,
             viewedStoryTimestamps: new Set(),
             isViewingStory: false,
-            blockedUsers: new Set(),
             likedVideoIds: new Set(),
             followedUsernames: new Set(),
             votedPolls: new Map(),
@@ -114,28 +112,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         };
     });
 
-    // Load blocked users from AsyncStorage after mount
-    useEffect(() => {
-        const loadBlockedUsers = async () => {
-            try {
-                const savedBlockedUsers = await AsyncStorage.getItem(BLOCKED_USERS_KEY);
-                if (savedBlockedUsers) {
-                    const parsed = JSON.parse(savedBlockedUsers);
-                    if (Array.isArray(parsed)) {
-                        const validBlockedUsers = parsed.filter(item => typeof item === 'string');
-                        setState(prevState => ({
-                            ...prevState,
-                            blockedUsers: new Set(validBlockedUsers),
-                        }));
-                    }
-                }
-            } catch (e) {
-                console.error("Could not parse blocked users from AsyncStorage", e);
-            }
-        };
+    const queryClient = useQueryClient();
 
-        loadBlockedUsers();
-    }, []);
+    // Blocking lives on the server now (ONE-54). The list is a query, and
+    // `isUserBlocked` reads from it rather than from AppState — a block that
+    // only this device knows about is not a block.
+    const blocks = useBlockedUsers(state.userProfile.id || undefined);
+    const blockToggle = useBlockToggle(state.userProfile.id || undefined);
+
+    // One-time migration of the device-local list (ONE-54). The logic lives
+    // in features/blocks so the tests drive the same code this does.
+    useEffect(() => {
+        const blockerId = state.userProfile.id;
+        if (!blockerId) return;
+
+        migrateLocalBlocks(AsyncStorage, blockerId).then(imported => {
+            if (imported) queryClient.invalidateQueries({ queryKey: blockKeys.all });
+        });
+    }, [state.userProfile.id, queryClient]);
 
     // Fetches notifications and messages, and subscribes to real-time updates.
     useEffect(() => {
@@ -689,22 +683,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setState((prevState: AppState) => ({ ...prevState, isViewingStory: isViewing }));
     }, []);
 
-    const isUserBlocked = useCallback((username: string) => state.blockedUsers.has(username), [state.blockedUsers]);
+    const isUserBlocked = blocks.isUserBlocked;
 
+    /**
+     * Kept on the context because a dozen screens call it, but it is a thin
+     * pass-through to features/blocks now. It takes a username for the same
+     * reason: that is what a post, a story or a search result carries.
+     */
     const toggleBlockUser = useCallback((username: string) => {
-        setState((prevState: AppState) => {
-            const newBlockedUsers = new Set(prevState.blockedUsers);
-            if (newBlockedUsers.has(username)) {
-                newBlockedUsers.delete(username);
-            } else {
-                newBlockedUsers.add(username);
-            }
-            AsyncStorage.setItem(BLOCKED_USERS_KEY, JSON.stringify(Array.from(newBlockedUsers))).catch(error => {
-                console.error("Failed to save blocked users to AsyncStorage", error);
+        const alreadyBlocked = blocks.blockedUsers.find(user => user.username === username);
+
+        if (alreadyBlocked) {
+            blockToggle.toggle(alreadyBlocked);
+            return;
+        }
+
+        // Blocking by username needs the id the row is keyed on, which the
+        // caller does not have.
+        supabase
+            .from('profiles')
+            .select('id, username, full_name, avatar_url')
+            .eq('username', username)
+            .maybeSingle()
+            .then(({ data, error }) => {
+                if (error || !data) {
+                    console.error('Could not resolve user to block', error);
+                    addToast('Could not block that account.', 'error');
+                    return;
+                }
+
+                blockToggle.toggle({
+                    userId: data.id,
+                    username: data.username,
+                    name: data.full_name,
+                    avatarUrl: data.avatar_url,
+                });
             });
-            return { ...prevState, blockedUsers: newBlockedUsers };
-        });
-    }, []);
+    }, [blocks.blockedUsers, blockToggle, addToast]);
 
     const toggleVideoLike = useCallback((videoId: string) => {
         triggerHapticFeedback();

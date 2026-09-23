@@ -80,6 +80,17 @@ export default function SettingsScreen() {
             </Link>
           </View>
 
+          {/* Privacy */}
+          <Text className="text-gray-500 font-bold mb-4 ml-1">PRIVACY</Text>
+          <View className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden mb-8">
+            <Link href="/blocked-users" asChild>
+              <Pressable className="flex-row items-center justify-between px-4 py-4">
+                <Text className="text-white text-base">Blocked Accounts</Text>
+                <ChevronRightIcon color="#6b7280" />
+              </Pressable>
+            </Link>
+          </View>
+
           {/* Preferences — dark mode switch removed; app is always dark */}
           <Text className="text-gray-500 font-bold mb-4 ml-1">PREFERENCES</Text>
           <View className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden mb-8">
