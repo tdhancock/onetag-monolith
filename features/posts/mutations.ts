@@ -7,10 +7,15 @@
 // Business) is another twenty lines of configuration, not another rollback.
 
 import { useCallback } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toggleLike, toggleRepost, toggleSavePost } from './api';
 import { postKeys } from './keys';
 import type { Post } from './types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
+// Publishing still lives in services/apiService.ts; it is the next thing to
+// move (ONE-20), and importing it here keeps this the only place screens go
+// for a post write in the meantime.
+import { publishPost, updatePost, deletePost, adminDeletePost } from '../../services/apiService';
 
 /** What every post toggle has in common: where the entity lives, and how. */
 const postToggleBase = {
@@ -117,4 +122,73 @@ const useToggle = (
     ),
     isPending,
   };
+};
+
+// ---------------------------------------------------------------------------
+// Publishing, editing and deleting
+// ---------------------------------------------------------------------------
+//
+// These were `addProfilePost` / `updateProfilePost` / `deleteProfilePost` on
+// AppContext, each keeping a `profilePosts` array in sync by hand (ONE-15).
+// The array is a query now, so they invalidate instead.
+
+/**
+ * Publish a post.
+ *
+ * Rejects when the media could not be uploaded, which is what keeps the
+ * composer open with the draft intact (ONE-56).
+ */
+export const useCreatePost = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (post: Post): Promise<Post> => {
+      const published = await publishPost(post);
+      if (!published) throw new Error('API returned null post.');
+      return published;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: postKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+    },
+  });
+};
+
+/** Edit a post's text. */
+export const useUpdatePost = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (post: Post) => updatePost(post),
+    onSuccess: (_updated, post) => {
+      queryClient.invalidateQueries({ queryKey: postKeys.detail(post.id) });
+      queryClient.invalidateQueries({ queryKey: postKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+    },
+  });
+};
+
+/**
+ * Delete a post.
+ *
+ * `asAdmin` routes through the admin delete, which is RLS-gated on the
+ * `is_admin` flag rather than on ownership.
+ */
+export const useDeletePost = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ postId, asAdmin = false }: { postId: string; asAdmin?: boolean }) => {
+      if (asAdmin) return adminDeletePost(postId);
+
+      // deletePost reports failure by returning false rather than throwing.
+      const deleted = await deletePost(postId);
+      if (!deleted) throw new Error('Could not delete that post.');
+    },
+    onSuccess: (_result, { postId }) => {
+      queryClient.removeQueries({ queryKey: postKeys.detail(postId) });
+      queryClient.invalidateQueries({ queryKey: postKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+    },
+  });
 };

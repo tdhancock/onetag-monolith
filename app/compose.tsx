@@ -14,6 +14,8 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useApp } from '../store/AppContext.native';
+import { useCreatePost } from '../features/posts';
+import { MediaUploadError } from '../services/apiService';
 import { cleanHtml } from '../services/apiService';
 import {
   pickImageFromLibrary,
@@ -41,7 +43,12 @@ export default function ComposeScreen() {
     mediaHeight?: string;
   }>();
   const router = useRouter();
-  const { userProfile, addProfilePost, addToast } = useApp();
+  const { userProfile, addToast } = useApp();
+
+  // Publishing is a mutation now (ONE-15). It still rejects when the media
+  // could not be uploaded, which is what keeps this screen open with the
+  // draft intact (ONE-56).
+  const createPost = useCreatePost();
   const inputRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
 
@@ -97,13 +104,18 @@ export default function ComposeScreen() {
           : undefined,
       };
 
-      await addProfilePost(newPost);
+      await createPost.mutateAsync(newPost);
       setTimeout(() => router.back(), 400);
     } catch (error) {
-      // addProfilePost has already toasted the reason — a second generic toast
-      // here would bury the media-specific one. The draft stays on screen:
-      // router.back() only runs on the success path above.
       console.error('Failed to publish post', error);
+      addToast(
+        error instanceof MediaUploadError
+          ? 'Your photo could not be uploaded. Nothing was posted.'
+          : 'Failed to create post.',
+        'error',
+      );
+      // The draft stays on screen: router.back() only runs on the success
+      // path above.
     } finally {
       setIsPosting(false);
     }

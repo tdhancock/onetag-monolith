@@ -12,7 +12,9 @@ import {
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../store/AppContext.native';
+import { useFollowCountsQuery, profileKeys } from '../../features/profiles';
 import {
   getUserPosts,
   getUserReposts,
@@ -65,7 +67,12 @@ const GridTile: React.FC<{ post: Post; onPress: () => void }> = React.memo(({ po
 // ─── Profile Screen ──────────────────────────────
 
 export default function ProfileScreen() {
-  const { userProfile, refreshAllData, addToast, followedUsernames } = useApp();
+  const { userProfile, refreshAllData, addToast } = useApp();
+  const queryClient = useQueryClient();
+
+  // Follow counts come from the query the follow toggle moves optimistically
+  // (ONE-15), so following someone updates this screen without a refetch.
+  const { data: followCounts } = useFollowCountsQuery(userProfile?.id || undefined);
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<TabType>('posts');
@@ -74,26 +81,20 @@ export default function ProfileScreen() {
   // The posts on the Saved tab, not the viewer's set of saved ids — that
   // moved onto the cached post as `isSaved` in ONE-13.
   const [savedTabPosts, setSavedTabPosts] = useState<Post[]>([]);
-  const [followerCount, setFollowerCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchAll = useCallback(async () => {
     if (!userProfile?.id) return;
     try {
-      const [userPosts, userReposts, userSaved, followers, following] = await Promise.all([
+      const [userPosts, userReposts, userSaved] = await Promise.all([
         getUserPosts(userProfile.id),
         getUserReposts(userProfile.id),
         getSavedPosts(userProfile.id),
-        getFollowerCount(userProfile.id),
-        getFollowingCount(userProfile.id),
       ]);
       setPosts(userPosts);
       setReposts(userReposts);
       setSavedTabPosts(userSaved);
-      setFollowerCount(followers);
-      setFollowingCount(following);
     } catch (error) {
       console.error('Profile fetch error:', error);
       addToast('Failed to load profile data', 'error');
@@ -105,10 +106,6 @@ export default function ProfileScreen() {
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
-
-  useEffect(() => {
-    setFollowingCount(followedUsernames.size);
-  }, [followedUsernames]);
 
   // Realtime: own posts
   useEffect(() => {
@@ -137,12 +134,9 @@ export default function ProfileScreen() {
           const o = payload.old as any;
           if (f?.follower_id === userProfile.id || f?.followed_id === userProfile.id ||
               o?.follower_id === userProfile.id || o?.followed_id === userProfile.id) {
-            const [followers, following] = await Promise.all([
-              getFollowerCount(userProfile.id),
-              getFollowingCount(userProfile.id),
-            ]);
-            setFollowerCount(followers);
-            setFollowingCount(following);
+            // The counts are a query now; a realtime follow invalidates it
+            // rather than writing to local state.
+            queryClient.invalidateQueries({ queryKey: profileKeys.counts(userProfile.id) });
           }
         }
       )
@@ -199,14 +193,14 @@ export default function ProfileScreen() {
               onPress={() => router.push({ pathname: '/user-list', params: { type: 'followers', userId: userProfile.id, title: 'Followers' } })}
               className="items-center"
             >
-              <Text className="text-white font-bold text-lg">{followerCount}</Text>
+              <Text className="text-white font-bold text-lg">{followCounts?.followers ?? 0}</Text>
               <Text className="text-gray-500 text-sm">Followers</Text>
             </Pressable>
             <Pressable
               onPress={() => router.push({ pathname: '/user-list', params: { type: 'following', userId: userProfile.id, title: 'Following' } })}
               className="items-center"
             >
-              <Text className="text-white font-bold text-lg">{followingCount}</Text>
+              <Text className="text-white font-bold text-lg">{followCounts?.following ?? 0}</Text>
               <Text className="text-gray-500 text-sm">Following</Text>
             </Pressable>
           </View>

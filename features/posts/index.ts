@@ -22,7 +22,14 @@ export { postKeys } from './keys';
 
 export { useFeedQuery, usePostQuery } from './queries';
 
-export { useLikePost, useRepostPost, useSavePost } from './mutations';
+export {
+  useLikePost,
+  useRepostPost,
+  useSavePost,
+  useCreatePost,
+  useUpdatePost,
+  useDeletePost,
+} from './mutations';
 export type { PostToggle, OnToggle } from './mutations';
 
 export { feedPosts, prependPost, replacePost, removePost } from './cache';

@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, ReactNode, useCallback, use
 import type { User } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { useBlockedUsers, useBlockToggle, migrateLocalBlocks, blockKeys } from '../features/blocks';
+import { useCurrentUserQuery } from '../features/profiles';
 import { publishPost, deletePost, updatePost, addComment as apiAddComment, getFollowingList, unfollowUser, followUser, markNotificationsAsRead, getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, markMessagesAsRead as apiMarkMessagesAsRead, adminDeletePost, ensureCurrentUserProfile, MediaUploadError } from '../services/apiService';
 import { supabase } from '../services/supabase.native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,8 +14,14 @@ import { normalizeNotifications } from '../types';
 
 interface AppState {
     postComments: Map<string, Comment[]>;
-    profilePosts: Post[];
-    userProfile: UserProfile;
+    /**
+     * The signed-in auth user's id — the session, not their profile row.
+     *
+     * The profile itself is a query (ONE-15); this is what keys it, and it is
+     * the one piece of identity AppContext still owns because it comes from
+     * the auth listener rather than from a table.
+     */
+    authUserId: string;
     theme: 'light' | 'dark';
     userStories: Story[];
     storyComments: Map<string, Comment[]>;
@@ -23,7 +30,6 @@ interface AppState {
     viewedStoryTimestamps: Set<string>;
     isViewingStory: boolean;
     likedVideoIds: Set<string>;
-    followedUsernames: Set<string>;
     votedPolls: Map<string, number>;
     toasts: Toast[];
     tooltip: { text: string } | null;
@@ -35,17 +41,17 @@ interface AppState {
 }
 
 interface AppContextType extends AppState {
+    /**
+     * The signed-in user. Sourced from `features/profiles` rather than from
+     * AppState (ONE-15), but still handed out here because it is the app's
+     * identity object. While loading it is the placeholder with `id: ''`, so
+     * `userProfile?.id` guards read as "not ready" exactly as before.
+     */
+    userProfile: UserProfile;
     postComment: (postId: string, content: string) => Promise<void>;
     getComments: (postId: string) => Comment[];
     setComments: (postId: string, comments: Comment[]) => void;
     areCommentsLoaded: (postId: string) => boolean;
-    // Rejects when the post could not be published — the composer relies on
-    // that to keep the draft on screen. See ONE-56.
-    addProfilePost: (post: Post) => Promise<void>;
-    deleteProfilePost: (postId: string) => void;
-    updateProfilePost: (updatedPost: Post) => void;
-    setProfilePosts: (posts: Post[]) => void;
-    updateProfile: (newProfile: Partial<UserProfile>) => void;
     setTheme: (theme: 'light' | 'dark') => void;
     addUserStory: (story: Story) => void;
     deleteStory: (storyId: string) => void;
@@ -62,8 +68,6 @@ interface AppContextType extends AppState {
     isUserBlocked: (username: string) => boolean;
     toggleVideoLike: (videoId: string) => void;
     isVideoLiked: (videoId: string) => boolean;
-    toggleFollowUser: (username: string) => Promise<void>;
-    isUserFollowed: (username: string) => boolean;
     voteInPoll: (postId: string, optionIndex: number) => void;
     getPollVote: (postId: string) => number | undefined;
     addToast: (message: string, type?: Toast['type']) => void;
@@ -84,14 +88,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const [state, setState] = useState<AppState>(() => {
         return {
             postComments: new Map(),
-            profilePosts: [],
-            userProfile: {
-                id: '',
-                name: 'OneTag User',
-                username: 'onetag_user',
-                bio: 'Hello, I am using OneTag',
-                profilePicture: null,
-            },
+            authUserId: '',
             theme: 'dark',
             userStories: [],
             storyComments: new Map(),
@@ -100,7 +97,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             viewedStoryTimestamps: new Set(),
             isViewingStory: false,
             likedVideoIds: new Set(),
-            followedUsernames: new Set(),
             votedPolls: new Map(),
             toasts: [],
             tooltip: null,
@@ -114,26 +110,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const queryClient = useQueryClient();
 
+    /**
+     * The signed-in user's profile.
+     *
+     * Still on the context because it is the app's identity object and a
+     * dozen screens read it, but it is a query now, not AppState (ONE-15).
+     * The loading shape keeps `id: ''`, so every existing `userProfile?.id`
+     * guard — push-notification registration in app/_layout.tsx above all —
+     * behaves exactly as it did.
+     */
+    const { userProfile } = useCurrentUserQuery(state.authUserId || undefined);
+
     // Blocking lives on the server now (ONE-54). The list is a query, and
     // `isUserBlocked` reads from it rather than from AppState — a block that
     // only this device knows about is not a block.
-    const blocks = useBlockedUsers(state.userProfile.id || undefined);
-    const blockToggle = useBlockToggle(state.userProfile.id || undefined);
+    const blocks = useBlockedUsers(userProfile.id || undefined);
+    const blockToggle = useBlockToggle(userProfile.id || undefined);
 
     // One-time migration of the device-local list (ONE-54). The logic lives
     // in features/blocks so the tests drive the same code this does.
     useEffect(() => {
-        const blockerId = state.userProfile.id;
+        const blockerId = userProfile.id;
         if (!blockerId) return;
 
         migrateLocalBlocks(AsyncStorage, blockerId).then(imported => {
             if (imported) queryClient.invalidateQueries({ queryKey: blockKeys.all });
         });
-    }, [state.userProfile.id, queryClient]);
+    }, [userProfile.id, queryClient]);
 
     // Fetches notifications and messages, and subscribes to real-time updates.
     useEffect(() => {
-        const userId = state.userProfile.id;
+        const userId = userProfile.id;
         if (!userId) return;
 
         let notificationsChannel: any;
@@ -229,7 +236,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             if (notificationsChannel) supabase.removeChannel(notificationsChannel);
             if (messagesChannel) supabase.removeChannel(messagesChannel);
         };
-    }, [state.userProfile.id]);
+    }, [userProfile.id]);
 
     const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
         const id = `toast-${Date.now()}`;
@@ -251,22 +258,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         try {
             await ensureCurrentUserProfile();
 
-            // Use Promise.all to fetch profile, likes, reposts, follows, and stories concurrently for better performance.
-            const [profileResult, followingResult, myStoriesResult, storyLikesResult, unreadMessagesResult] = await Promise.all([
+            // The profile itself is a query now (ONE-15) — this no longer
+            // fetches it, it just records who is signed in and lets
+            // useCurrentUserQuery do the rest. What stays here is the state
+            // no server-side feature owns yet: stories, unread counts, the
+            // admin flag.
+            const [profileResult, myStoriesResult, storyLikesResult, unreadMessagesResult] = await Promise.all([
                 supabase
                     .from('profiles')
-                    .select('full_name, username, avatar_url, is_verified, is_admin, bio')
+                    .select('is_admin')
                     .eq('id', user.id)
                     .maybeSingle(),
-                getFollowingList(user.id),
                 getMyStories(user.id),
                 supabase.from('story_likes').select('story_id').eq('user_id', user.id),
                 supabase.from('messages').select('sender_id').eq('receiver_id', user.id).eq('seen', false)
             ]);
 
-            // Destructure results
             const { data: profileData } = profileResult as any;
-            const followingUsernames = followingResult as string[];
             const myStories = myStoriesResult as Story[];
             const { data: storyLikesData } = storyLikesResult as any;
             const { data: unreadMessagesData } = unreadMessagesResult;
@@ -276,36 +284,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
             // Update state in a single, batched call to avoid multiple re-renders.
             setState(prevState => {
-                const newUserProfile = {
-                    ...prevState.userProfile,
-                    id: user.id,
-                    name: user.user_metadata.full_name || profileData?.full_name || prevState.userProfile.name,
-                    username: user.user_metadata.username || profileData?.username || prevState.userProfile.username,
-                    profilePicture: user.user_metadata.avatar_url || profileData?.avatar_url || prevState.userProfile.profilePicture,
-                    isVerified: profileData?.is_verified ?? prevState.userProfile.isVerified,
-                    bio: profileData?.bio || prevState.userProfile.bio,
-                };
-
-                const isAdmin = profileData?.is_admin === true;
-
-
-                const newFollowedUsernames = new Set(
-                    (followingUsernames || []).map((username) => username.toLowerCase())
-                );
-
                 const newLikedStoryIds = (storyLikesData && Array.isArray(storyLikesData))
                     ? new Set(storyLikesData.map(l => l.story_id))
                     : prevState.likedStoryIds;
 
                 return {
                     ...prevState,
-                    userProfile: newUserProfile,
-                    followedUsernames: newFollowedUsernames,
+                    authUserId: user.id,
                     userStories: myStories,
                     likedStoryIds: newLikedStoryIds,
                     unreadMessageCount: unreadMessageCount,
                     unreadChats: unreadChats,
-                    isAdmin: isAdmin,
+                    isAdmin: profileData?.is_admin === true,
                 };
             });
         } catch (error) {
@@ -316,12 +306,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const refreshAllData = useCallback(async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-            await Promise.all([
-                syncUserData(user)
-            ]);
-        }
-    }, [syncUserData]);
+        if (!user) return;
+
+        // Pull-to-refresh now means both halves: the state this provider still
+        // owns, and every query — the profile, its posts, follows, blocks —
+        // which used to be fetched here by hand (ONE-15).
+        await Promise.all([
+            syncUserData(user),
+            queryClient.invalidateQueries(),
+        ]);
+    }, [syncUserData, queryClient]);
 
     useEffect(() => {
         const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -331,14 +325,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 setState(prevState => ({
                     ...prevState,
                     postComments: new Map(),
-                    profilePosts: [],
-                    userProfile: {
-                        id: '',
-                        name: 'OneTag User',
-                        username: 'onetag_user',
-                        bio: 'Hello, I am using OneTag',
-                        profilePicture: null,
-                    },
+                    authUserId: '',
                     userStories: [],
                     storyComments: new Map(),
                     likedStoryIds: new Set(),
@@ -346,7 +333,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     viewedStoryTimestamps: new Set(),
                     isViewingStory: false,
                     likedVideoIds: new Set(),
-                    followedUsernames: new Set(),
                     votedPolls: new Map(),
                     notifications: null,
                     unreadMessageCount: 0,
@@ -354,6 +340,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     topNotification: null,
                     isAdmin: false,
                 }));
+
+                // Every query cached under the previous account is about
+                // somebody who is no longer here — their profile, their
+                // follows, their blocks. Clearing is the only honest move;
+                // the keys are per-user but the cache outlives the session.
+                queryClient.clear();
             }
         });
 
@@ -394,8 +386,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const optimisticComment: Comment = {
             id: tempId,
             userId: user.id,
-            username: state.userProfile.username,
-            avatar: state.userProfile.profilePicture,
+            username: userProfile.username,
+            avatar: userProfile.profilePicture,
             text: content,
             timestamp: new Date(),
             likes: 0,
@@ -447,7 +439,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 return { ...prevState, postComments: newPostComments };
             });
         }
-    }, [addToast, state.userProfile.username, state.userProfile.profilePicture]);
+    }, [addToast, userProfile.username, userProfile.profilePicture]);
 
     const getComments = useCallback((postId: string) => state.postComments.get(postId) || [], [state.postComments]);
 
@@ -462,71 +454,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const areCommentsLoaded = useCallback((postId: string) => state.postComments.has(postId), [state.postComments]);
 
-    const addProfilePost = useCallback(async (post: Post) => {
-        // Local media is uploaded by publishPost, which is the function that
-        // knows what it is inserting. Uploading here as well meant every image
-        // went up twice and a failure was swallowed into a broken post.
-        try {
-            const realPost = await publishPost(post);
-            if (!realPost) {
-                throw new Error("API returned null post.");
-            }
-        } catch (error) {
-            console.error("Failed to publish post.", error);
-            addToast(
-                error instanceof MediaUploadError
-                    ? 'Your photo could not be uploaded. Nothing was posted.'
-                    : 'Failed to create post.',
-                'error',
-            );
-            throw error;
-        }
-    }, [addToast]);
+    // Publishing, editing and deleting a post moved to
+    // features/posts/mutations.ts in ONE-15: they existed here only to keep a
+    // a local array of the user's own posts in step, and that array is a
+    // query now. Screens
+    // call useCreatePost / useUpdatePost / useDeletePost.
 
-    const deleteProfilePost = useCallback((postId: string) => {
-        // Optimistic update
-        // FIX: Explicitly type prevState as AppState.
-        setState((prevState: AppState) => ({
-            ...prevState,
-            profilePosts: prevState.profilePosts.filter(p => p.id !== postId),
-        }));
-
-        // If admin is deleting, call admin delete function
-        if (state.isAdmin) {
-            adminDeletePost(postId).catch(err => {
-                 console.error("Failed to delete post as admin", err);
-                 addToast("Could not delete post.", "error");
-            });
-        } else {
-            deletePost(postId);
-        }
-    }, [state.isAdmin, addToast]);
-
-     const updateProfilePost = useCallback((updatedPost: Post) => {
-        // Optimistic update
-        // FIX: Explicitly type prevState as AppState.
-        setState((prevState: AppState) => ({
-            ...prevState,
-            profilePosts: prevState.profilePosts.map(p => p.id === updatedPost.id ? updatedPost : p),
-        }));
-        updatePost(updatedPost);
-    }, []);
-
-    const setProfilePosts = useCallback((posts: Post[]) => {
-        // FIX: Explicitly type prevState as AppState.
-        setState((prevState: AppState) => ({ ...prevState, profilePosts: posts }));
-    }, []);
-
-    const updateProfile = useCallback((newProfile: Partial<UserProfile>) => {
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => ({
-            ...prevState,
-            userProfile: {
-                ...prevState.userProfile,
-                ...newProfile,
-            }
-        }));
-    }, []);
+    // updateProfile moved to features/profiles/mutations.ts (useUpdateProfile).
 
     const setTheme = useCallback((theme: 'light' | 'dark') => {
         // FIX: Explicitly typed `prevState` as AppState.
@@ -543,7 +477,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, []);
 
     const deleteStory = useCallback(async (storyId: string) => {
-        const { id: userId } = state.userProfile;
+        const { id: userId } = userProfile;
         if (!userId) {
             addToast('You must be logged in to delete a story.', 'error');
             return;
@@ -576,7 +510,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             // FIX: Explicitly typed `prevState` as AppState.
             setState((prevState: AppState) => ({ ...prevState, userStories: originalStories }));
         }
-    }, [state.userStories, state.userProfile.id, addToast]);
+    }, [state.userStories, userProfile.id, addToast]);
 
     const replaceStory = useCallback((localId: string, realStory: Story) => {
         // FIX: Explicitly type prevState as AppState.
@@ -737,74 +671,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const isVideoLiked = useCallback((videoId: string) => state.likedVideoIds.has(videoId), [state.likedVideoIds]);
 
-    const toggleFollowUser = useCallback(async (username: string) => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            addToast('You must be logged in to follow users.', 'error');
-            return;
-        }
-
-        const normalizedUsername = username.trim().toLowerCase();
-        if (!normalizedUsername) return;
-
-        const { data: targetUserData, error: targetUserError } = await supabase
-            .from('profiles')
-            .select('id')
-            .ilike('username', normalizedUsername)
-            .single();
-
-        if (targetUserError || !targetUserData) {
-            addToast(`Could not find user @${username}.`, 'error');
-            return;
-        }
-        const targetUserId = targetUserData.id;
-        if (targetUserId === user.id) return;
-
-        const alreadyFollowing = state.followedUsernames.has(normalizedUsername);
-
-        // Optimistic update
-        setState((prevState: AppState) => {
-            const newFollowed = new Set(prevState.followedUsernames);
-            if (alreadyFollowing) {
-                newFollowed.delete(normalizedUsername);
-            } else {
-                newFollowed.add(normalizedUsername);
-            }
-            return { ...prevState, followedUsernames: newFollowed };
-        });
-
-        try {
-            if (alreadyFollowing) {
-                await unfollowUser(user.id, targetUserId);
-            } else {
-                await followUser(user.id, targetUserId);
-            }
-            // Re-sync with database after action to ensure consistency.
-            const usernames = await getFollowingList(user.id);
-            setState(prev => ({
-                ...prev,
-                followedUsernames: new Set(usernames.map((item) => item.toLowerCase())),
-            }));
-        } catch (error) {
-            console.error("Failed to toggle follow:", error);
-            addToast('Failed to update follow status.', 'error');
-            // Revert on failure
-            setState((prevState: AppState) => {
-                const newFollowed = new Set(prevState.followedUsernames);
-                if (alreadyFollowing) {
-                    newFollowed.add(normalizedUsername);
-                } else {
-                    newFollowed.delete(normalizedUsername);
-                }
-                return { ...prevState, followedUsernames: newFollowed };
-            });
-        }
-    }, [state.followedUsernames, addToast]);
-
-    const isUserFollowed = useCallback(
-        (username: string) => state.followedUsernames.has(username.trim().toLowerCase()),
-        [state.followedUsernames]
-    );
+    // Following moved to features/profiles/mutations.ts (useToggleFollow), on
+    // the shared optimistic helper. Follow state is read from the query by
+    // useFollowState.
 
     const voteInPoll = useCallback((postId: string, optionIndex: number) => {
         // FIX: Explicitly typed `prevState` as AppState.
@@ -852,7 +721,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, []);
 
     const markAllMessagesAsRead = useCallback(async () => {
-        const userId = state.userProfile.id;
+        const userId = userProfile.id;
         if (!userId || state.unreadMessageCount === 0) return;
 
         // Optimistic update
@@ -869,10 +738,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             console.error("Error marking all messages as read:", error.message || error);
         } else {
         }
-    }, [state.userProfile.id, state.unreadMessageCount]);
+    }, [userProfile.id, state.unreadMessageCount]);
 
     const markChatAsRead = useCallback(async (senderId: string) => {
-        const userId = state.userProfile.id;
+        const userId = userProfile.id;
         if (!userId) return;
 
         // 1️⃣ Veritabanını güncelle
@@ -895,7 +764,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             console.error("Failed to mark chat as read");
             addToast("Couldn't mark messages as read.", 'error');
         }
-    }, [state.userProfile.id, addToast]);
+    }, [userProfile.id, addToast]);
 
     const removeToast = useCallback((id: string) => {
         // FIX: Explicitly typed `prevState` as AppState.
@@ -916,11 +785,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         getComments,
         setComments,
         areCommentsLoaded,
-        addProfilePost,
-        deleteProfilePost,
-        updateProfilePost,
-        setProfilePosts,
-        updateProfile,
         setTheme,
         addUserStory,
         deleteStory,
@@ -937,8 +801,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isUserBlocked,
         toggleVideoLike,
         isVideoLiked,
-        toggleFollowUser,
-        isUserFollowed,
         voteInPoll,
         getPollVote,
         addToast,
@@ -951,17 +813,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         markAllMessagesAsRead,
         markChatAsRead,
         replaceStory,
+        userProfile,
     }), [
         state,
+        userProfile,
         postComment,
         getComments,
         setComments,
         areCommentsLoaded,
-        addProfilePost,
-        deleteProfilePost,
-        updateProfilePost,
-        setProfilePosts,
-        updateProfile,
         setTheme,
         addUserStory,
         deleteStory,
@@ -978,8 +837,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isUserBlocked,
         toggleVideoLike,
         isVideoLiked,
-        toggleFollowUser,
-        isUserFollowed,
         voteInPoll,
         getPollVote,
         addToast,

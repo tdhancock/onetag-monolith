@@ -51,7 +51,12 @@ jest.mock('../../services/apiService', () => ({ reportPost: jest.fn() }), { virt
 // framing rather than mutations — a stub keeps the mount free of both.
 jest.mock('../../features/posts', () => {
   const stub = () => ({ toggle: jest.fn(), isPending: false });
-  return { useLikePost: stub, useRepostPost: stub, useSavePost: stub };
+  return {
+    useLikePost: stub,
+    useRepostPost: stub,
+    useSavePost: stub,
+    useDeletePost: () => ({ mutate: jest.fn(), isPending: false }),
+  };
 }, { virtual: true });
 
 // PostCard reads a dozen actions off the context. None of them fire during a

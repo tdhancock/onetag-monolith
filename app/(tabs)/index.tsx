@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
+import { useFollowState, useToggleFollow } from '../../features/profiles';
 import {
   getStories,
   getSmartUserSuggestions,
@@ -54,12 +55,14 @@ export default function HomeFeedScreen() {
     userProfile,
     isUserBlocked,
     addToast,
-    followedUsernames,
-    isUserFollowed,
-    toggleFollowUser,
     notifications,
     unreadMessageCount,
   } = useApp();
+
+  // Follow state is a query now (ONE-15), shared with every other screen that
+  // renders a Follow button.
+  const { following, isFollowing: isUserFollowing } = useFollowState(userProfile?.id || undefined);
+  const follow = useToggleFollow(userProfile?.id || undefined);
   const router = useRouter();
   const unreadNotificationCount = notifications?.filter(n => !n.is_read).length ?? 0;
 
@@ -208,13 +211,13 @@ export default function HomeFeedScreen() {
 
   useEffect(() => {
     if (!userProfile?.id || isLoading) return;
-    const hasFollows = followedUsernames && followedUsernames.size > 0;
+    const hasFollows = following.length > 0;
     if (posts.length === 0 && !hasFollows) {
       void loadSuggestions(userProfile.id);
     } else if (suggestedUsers.length > 0) {
       setSuggestedUsers([]);
     }
-  }, [followedUsernames, isLoading, loadSuggestions, posts.length, suggestedUsers.length, userProfile?.id]);
+  }, [following, isLoading, loadSuggestions, posts.length, suggestedUsers.length, userProfile?.id]);
 
   // Realtime edits land in the query cache — the list is the query's data
   // now, so there is no local array to fold them into. ONE-16 generalizes
@@ -345,7 +348,7 @@ export default function HomeFeedScreen() {
   const ListEmpty = useCallback(() => {
     if (isLoading) return null;
 
-    const hasFollows = followedUsernames && followedUsernames.size > 0;
+    const hasFollows = following.length > 0;
 
     return (
       <View className="items-center mt-20 px-4">
@@ -372,7 +375,7 @@ export default function HomeFeedScreen() {
                 <Text className="text-white font-semibold mb-3 px-1">Suggested for you</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {suggestedUsers.map(user => {
-                    const isFollowing = isUserFollowed(user.username);
+                    const isFollowing = isUserFollowing(user.username);
                     return (
                       <View key={user.id} className="w-36 bg-gray-900 rounded-xl p-3 mr-3">
                         <Pressable
@@ -389,7 +392,7 @@ export default function HomeFeedScreen() {
                         </Pressable>
 
                         <Pressable
-                          onPress={() => { void toggleFollowUser(user.username); }}
+                          onPress={() => follow.toggle({ userId: user.id, username: user.username })}
                           className={`mt-3 py-2 rounded-full items-center ${isFollowing ? 'bg-gray-800' : 'bg-blue-600'}`}
                         >
                           <Text className="text-white text-sm font-semibold">
@@ -406,7 +409,7 @@ export default function HomeFeedScreen() {
         )}
       </View>
     );
-  }, [isLoading, followedUsernames, suggestedUsers, isUserFollowed, toggleFollowUser, handleViewProfile]);
+  }, [isLoading, following, suggestedUsers, isUserFollowing, follow, handleViewProfile]);
 
   const ListFooter = useCallback(() => {
     if (!feedQuery.isFetchingNextPage) return null;

@@ -146,6 +146,20 @@ jest.mock('../services/apiService', () => {
 // makes into it are asserted.
 const mockMigrateLocalBlocks = jest.fn(async () => null);
 
+jest.mock('../features/profiles', () => ({
+  useCurrentUserQuery: () => ({
+    data: undefined,
+    isPending: true,
+    userProfile: {
+      id: '',
+      name: 'OneTag User',
+      username: 'onetag_user',
+      bio: 'Hello, I am using OneTag',
+      profilePicture: null,
+    },
+  }),
+}), { virtual: true });
+
 jest.mock('../features/blocks', () => ({
   useBlockedUsers: () => ({
     blockedUsers: [],
@@ -422,75 +436,49 @@ describe('useApp (AppContext) — error when used outside provider', () => {
   });
 });
 
-// ─── 5. addProfilePost — the publish path (ONE-56) ──────────────────────
+// ─── 5. Publishing moved out (ONE-15) ───────────────────────────────────
 //
-// A failed media upload used to be swallowed and the post published anyway
-// with a device-local URI. addProfilePost must now reject, so the composer's
-// `router.back()` — which sits after the await — never runs and the draft
-// stays on screen.
+// `addProfilePost` lived here to keep a `profilePosts` array in step. That
+// array is a query now, so publishing is `useCreatePost` in features/posts and
+// the composer maps the failure to its message. What that leaves the provider
+// is nothing — asserted here so it is not quietly added back.
 
-describe('addProfilePost — media upload failures', () => {
-  const mockPublishPost = publishPost as unknown as jest.Mock;
+describe('post writes are not on the context any more', () => {
+  it.each(['addProfilePost', 'deleteProfilePost', 'updateProfilePost', 'setProfilePosts'])(
+    'does not expose %s',
+    (name) => {
+      const handle = mountWithProvider();
+      try {
+        expect(handle.capture.current!).not.toHaveProperty(name);
+      } finally {
+        unmount(handle);
+      }
+    },
+  );
 
-  const draft = () => ({ id: 'temp-1', content: 'keep my draft' }) as never;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockAsyncStore = {};
-  });
-
-  it('rejects when the media upload fails, so the composer stays open', async () => {
-    mockPublishPost.mockRejectedValue(new FakeMediaUploadError('upload failed'));
-    const handle = await mountAndHydrate();
+  it.each(['userProfile'])('still exposes %s, because it is the identity object', (name) => {
+    // ONE-15 moved it to a query but deliberately kept it on the context, and
+    // kept the placeholder's empty-string id, so `userProfile?.id` guards —
+    // push-notification registration above all — behave as they did.
+    const handle = mountWithProvider();
     try {
-      await act(async () => {
-        await expect(handle.capture.current!.addProfilePost(draft())).rejects.toBeInstanceOf(
-          FakeMediaUploadError,
-        );
-      });
+      expect(handle.capture.current!).toHaveProperty(name);
+      expect(handle.capture.current!.userProfile.id).toBe('');
+      expect(handle.capture.current!.userProfile.username).toBe('onetag_user');
     } finally {
       unmount(handle);
     }
   });
 
-  it('names the photo as the problem rather than toasting a generic failure', async () => {
-    mockPublishPost.mockRejectedValue(new FakeMediaUploadError('upload failed'));
-    const handle = await mountAndHydrate();
-    try {
-      await act(async () => {
-        await handle.capture.current!.addProfilePost(draft()).catch(() => undefined);
-      });
-      const messages = handle.capture.current!.toasts.map(t => t.message);
-      expect(messages.some(m => /photo could not be uploaded/i.test(m))).toBe(true);
-      expect(messages).not.toContain('Failed to create post.');
-    } finally {
-      unmount(handle);
-    }
-  });
-
-  it('still reports a non-media publish failure generically', async () => {
-    mockPublishPost.mockRejectedValue(new Error('row-level security'));
-    const handle = await mountAndHydrate();
-    try {
-      await act(async () => {
-        await handle.capture.current!.addProfilePost(draft()).catch(() => undefined);
-      });
-      expect(handle.capture.current!.toasts.map(t => t.message)).toContain('Failed to create post.');
-    } finally {
-      unmount(handle);
-    }
-  });
-
-  it('hands the draft straight to publishPost — nothing is uploaded here', async () => {
-    mockPublishPost.mockResolvedValue({ id: 'post-1' });
-    const handle = await mountAndHydrate();
-    try {
-      await act(async () => {
-        await handle.capture.current!.addProfilePost(draft());
-      });
-      expect(mockPublishPost).toHaveBeenCalledTimes(1);
-    } finally {
-      unmount(handle);
-    }
-  });
+  it.each(['followedUsernames', 'isUserFollowed', 'toggleFollowUser', 'updateProfile'])(
+    'does not expose %s — follows and profile edits are features/profiles now',
+    (name) => {
+      const handle = mountWithProvider();
+      try {
+        expect(handle.capture.current!).not.toHaveProperty(name);
+      } finally {
+        unmount(handle);
+      }
+    },
+  );
 });

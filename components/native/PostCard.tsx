@@ -6,7 +6,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { differenceInMinutes, differenceInHours, differenceInDays, differenceInWeeks, differenceInMonths, differenceInYears } from 'date-fns';
 import { useApp } from '../../store/AppContext.native';
-import { useLikePost, useRepostPost, useSavePost } from '../../features/posts';
+import { useLikePost, useRepostPost, useSavePost, useDeletePost } from '../../features/posts';
 import UserAvatar from './UserAvatar';
 import RenderUserContent from './RenderUserContent';
 import {
@@ -232,7 +232,6 @@ const PostCard: React.FC<PostCardProps> = ({
   const {
     areCommentsLoaded,
     userProfile,
-    deleteProfilePost,
     getComments,
     voteInPoll,
     getPollVote,
@@ -262,6 +261,7 @@ const PostCard: React.FC<PostCardProps> = ({
     [triggerHapticFeedback, addToast],
   );
 
+  const deletePost = useDeletePost();
   const like = useLikePost(userProfile.id, likeHaptic);
   const repost = useRepostPost(userProfile.id, repostHaptic);
   const save = useSavePost(userProfile.id, onSaveToggled);
@@ -330,11 +330,11 @@ const PostCard: React.FC<PostCardProps> = ({
         style: 'destructive',
         onPress: () => {
           if (onDelete) onDelete(post.id);
-          else deleteProfilePost(post.id);
+          else deletePost.mutate({ postId: post.id, asAdmin: isAdmin });
         },
       },
     ]);
-  }, [post.id, onDelete]);
+  }, [post.id, onDelete, deletePost, isAdmin]);
 
   const handleViewProfile = useCallback(() => {
     if (onViewProfile) {

@@ -25,107 +25,16 @@ import {
     mapPostData,
 } from '../features/posts';
 
-const DEFAULT_USER_BIO = 'Hello, I am using OneTag';
+// The profile-row bootstrap moved to services/profileBootstrap.ts in ONE-15 so
+// features/posts and features/profiles can both reach it without importing
+// each other.
+import {
+    ensureProfileRowForUser,
+    ensureProfileForNotificationUser,
+} from './profileBootstrap';
+import { readLocalFile } from './localFile';
 
-const sanitizeUsername = (value: string): string =>
-    value
-        .toLowerCase()
-        .replace(/[^a-z0-9_.]/g, '')
-        .replace(/^[._]+|[._]+$/g, '')
-        .slice(0, 20);
-
-const buildUsernameCandidate = (base: string, attempt: number, userId: string): string => {
-    const fallback = `user_${userId.slice(0, 6)}`;
-    const normalizedBase = sanitizeUsername(base) || fallback;
-
-    if (attempt === 0) {
-        return normalizedBase.length >= 3 ? normalizedBase : `${normalizedBase}${userId.slice(0, 3)}`.slice(0, 20);
-    }
-
-    const suffix = `${attempt}${userId.slice(0, 3)}`.toLowerCase();
-    const maxBaseLength = Math.max(3, 20 - suffix.length - 1);
-    const trimmedBase = normalizedBase.slice(0, maxBaseLength);
-    return `${trimmedBase}_${suffix}`.slice(0, 20);
-};
-
-const profileExists = async (userId: string): Promise<boolean> => {
-    const { data, error } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', userId)
-        .maybeSingle();
-
-    if (error) {
-        console.error('Profile check error:', error.message || error);
-        return false;
-    }
-
-    return Boolean(data);
-};
-
-const ensureProfileRowForUser = async (user: User): Promise<boolean> => {
-    if (await profileExists(user.id)) return true;
-
-    const metadata = user.user_metadata || {};
-    const fullName = typeof metadata.full_name === 'string' && metadata.full_name.trim().length > 0
-        ? metadata.full_name.trim()
-        : (user.email?.split('@')[0] || 'OneTag User');
-    const avatarUrl = typeof metadata.avatar_url === 'string' ? metadata.avatar_url : null;
-    const bio = typeof metadata.bio === 'string' && metadata.bio.trim().length > 0
-        ? metadata.bio.trim()
-        : DEFAULT_USER_BIO;
-    const baseUsername =
-        (typeof metadata.username === 'string' && metadata.username) ||
-        (typeof metadata.preferred_username === 'string' && metadata.preferred_username) ||
-        (user.email?.split('@')[0] || '');
-
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-        const username = buildUsernameCandidate(baseUsername, attempt, user.id);
-
-        const { error } = await supabase
-            .from('profiles')
-            .upsert(
-                {
-                    id: user.id,
-                    username,
-                    full_name: fullName,
-                    avatar_url: avatarUrl,
-                    bio,
-                },
-                { onConflict: 'id' },
-            );
-
-        if (!error) {
-            return true;
-        }
-
-        if (error.code === '23505') {
-            continue;
-        }
-
-        console.error('Error ensuring profile row:', error.message || error);
-        return false;
-    }
-
-    return profileExists(user.id);
-};
-
-const ensureProfileForNotificationUser = async (userId: string): Promise<boolean> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user && user.id === userId) {
-        return ensureProfileRowForUser(user);
-    }
-    return profileExists(userId);
-};
-
-export const ensureCurrentUserProfile = async (): Promise<boolean> => {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) {
-        console.error('Cannot ensure profile without an authenticated user.', error?.message || error);
-        return false;
-    }
-    return ensureProfileRowForUser(user);
-};
+export { ensureCurrentUserProfile } from './profileBootstrap';
 
 export async function sendNotification({
   sender_id,
@@ -235,34 +144,6 @@ async function localUrlToBlob(url: string): Promise<Blob> {
  * Uses fetch().arrayBuffer() which works reliably on React Native.
  * Returns the public URL of the uploaded file.
  */
-/**
- * Read a local media URI into an ArrayBuffer, alongside the content type and
- * extension implied by the URI. This is the React Native path — `fetch()` +
- * `arrayBuffer()` works for file:// and content:// URIs, where `.blob()` does
- * not, because RN's Blob is a shim with no accessible binary data.
- *
- * Shared by every upload path so none of them can drift back onto `.blob()`.
- */
-async function readLocalFile(localUri: string): Promise<{ arrayBuffer: ArrayBuffer; contentType: string; ext: string }> {
-    const response = await fetch(localUri);
-    if (!response.ok) {
-        throw new Error(`Failed to read local file: ${response.status} ${response.statusText}`);
-    }
-    const arrayBuffer = await response.arrayBuffer();
-
-    // Determine content type from URI extension
-    const uriLower = localUri.toLowerCase();
-    let contentType = 'image/jpeg'; // default
-    let ext = 'jpg';
-    if (uriLower.endsWith('.png')) { contentType = 'image/png'; ext = 'png'; }
-    else if (uriLower.endsWith('.webp')) { contentType = 'image/webp'; ext = 'webp'; }
-    else if (uriLower.endsWith('.gif')) { contentType = 'image/gif'; ext = 'gif'; }
-    else if (uriLower.endsWith('.mp4')) { contentType = 'video/mp4'; ext = 'mp4'; }
-    else if (uriLower.endsWith('.mov')) { contentType = 'video/quicktime'; ext = 'mov'; }
-
-    return { arrayBuffer, contentType, ext };
-}
-
 /**
  * Raised when a post's media could not be turned into a remotely readable URL.
  * Distinct from a generic publish failure so the composer can tell the author
@@ -594,11 +475,8 @@ export const setUserVerified = async (userId: string, username: string, status: 
         throw new Error("Update failed: No rows modified. Check permissions.");
     }
 
-    // Update local cache to prevent UI reversion
-    if (profileCache.has(username)) {
-        const cached = profileCache.get(username)!;
-        profileCache.set(username, { ...cached, isVerified: status });
-    }
+    // The username-keyed cache this used to poke is gone (ONE-15); the
+    // profile query is invalidated by the caller instead.
 };
 
 export const adminDeletePost = async (postId: string): Promise<void> => {
@@ -702,23 +580,6 @@ export const fetchCommentCount = async (postId: string): Promise<number> => {
 // cleanup, once nothing imports it.
 export { toggleLike, toggleRepost, toggleSavePost } from '../features/posts';
 
-export const checkUsernameExists = async (username: string): Promise<boolean> => {
-    const { data, error } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('username', username)
-        .maybeSingle();
-
-    if (error) {
-        console.error('Error checking username:', error);
-        throw new Error('Could not verify username availability.');
-    }
-    return !!data;
-};
-// FIX: Add all missing functions below and export them.
-// =========================================================
-// Stories
-// =========================================================
 export const getStories = async (): Promise<Story[]> => {
     try {
         // Get current user — don't return early if null, RLS will handle it
@@ -1023,96 +884,6 @@ type ProfileRow = {
     is_private: boolean;
 };
 
-export const mapProfileRow = (row: ProfileRow): UserProfile => ({
-    id: row.id,
-    name: row.full_name,
-    username: row.username,
-    bio: row.bio,
-    profilePicture: row.avatar_url,
-    isVerified: row.is_verified,
-    isPrivate: row.is_private,
-} as UserProfile);
-
-/** The inverse of `mapProfileRow`: client field names → `profiles` columns. */
-export type ProfileUpdates = Partial<Pick<UserProfile, 'name' | 'username' | 'bio' | 'profilePicture'>>;
-
-export const mapProfileUpdatesToRow = (updates: ProfileUpdates): Partial<ProfileRow> => {
-    const row: Partial<ProfileRow> = {};
-    if (updates.name !== undefined) row.full_name = updates.name;
-    if (updates.username !== undefined) row.username = updates.username;
-    if (updates.bio !== undefined) row.bio = updates.bio;
-    if (updates.profilePicture !== undefined) row.avatar_url = updates.profilePicture;
-    return row;
-};
-
-// FIX: Replaced undefined 'UserProfileType' with 'UserProfile'.
-const profileCache = new Map<string, UserProfile>();
-export const getUserProfile = async (username: string): Promise<UserProfile | null> => {
-    if (profileCache.has(username)) {
-        return profileCache.get(username)!;
-    }
-    const { data, error } = await supabase.from('profiles').select('*').eq('username', username).single();
-    if (error || !data) {
-        console.error("Error fetching profile", error);
-        return null;
-    }
-    const profile = mapProfileRow(data);
-    profileCache.set(username, profile);
-    return profile;
-};
-
-export const prefetchUserProfile = (username: string) => {
-    if (!profileCache.has(username)) {
-        getUserProfile(username);
-    }
-};
-
-export const getUserPosts = async (userId: string): Promise<Post[]> => {
-    const { data, error } = await supabase
-        .from('posts')
-        .select(POST_SELECT_QUERY)
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-    
-    if (error) return [];
-    return (data || []).map(mapPostData);
-};
-
-export const getUserReposts = async (userId: string): Promise<Post[]> => {
-    try {
-        const { data: repostIdsData, error: repostsError } = await supabase
-            .from('reposts')
-            .select('post_id, created_at')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false });
-
-        if (repostsError) throw repostsError;
-        if (!repostIdsData || repostIdsData.length === 0) return [];
-        
-        const postIds = repostIdsData.map(r => r.post_id);
-        const repostOrderMap = new Map<string, number>(repostIdsData.map((r: any) => [r.post_id, new Date(r.created_at).getTime()]));
-
-        const { data: postsData, error: postsError } = await supabase
-            .from('posts')
-            .select(POST_SELECT_QUERY)
-            .in('id', postIds);
-
-        if (postsError) throw postsError;
-        if (!postsData) return [];
-        const sortedPosts = [...postsData].sort((a, b) => {
-            // FIX: `repostOrderMap.get()` can return `undefined`. Using `?? 0` as a fallback ensures that `timeA` and `timeB` are always numbers, preventing a type error during the subtraction operation.
-            const timeA = repostOrderMap.get(a.id) ?? 0;
-            const timeB = repostOrderMap.get(b.id) ?? 0;
-            return timeB - timeA;
-        });
-
-        return sortedPosts.map(mapPostData);
-
-    } catch (error) {
-        console.error("Error fetching user reposts:", (error as Error).message || error);
-        return [];
-    }
-};
 
 export const getSavedPosts = async (userId: string): Promise<Post[]> => {
     try {
@@ -1149,135 +920,6 @@ export const getSavedPosts = async (userId: string): Promise<Post[]> => {
         console.error("Error fetching saved posts:", (error as Error).message || error);
         return [];
     }
-};
-
-export const updateUserProfileData = async (updates: ProfileUpdates): Promise<boolean> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
-
-    const row = mapProfileUpdatesToRow(updates);
-    if (Object.keys(row).length === 0) return true;
-
-    const { error } = await supabase.from('profiles').update(row).eq('id', user.id);
-    if (error) {
-        console.error('Profile update error:', error);
-        return false;
-    }
-
-    // The username-keyed read cache would otherwise keep serving the old row
-    // for the rest of the session.
-    if (updates.username) profileCache.delete(updates.username);
-    return true;
-};
-
-/**
- * Upload a new avatar from a local URI and return its public URL.
- *
- * Takes a local URI rather than a Blob: `fetch(uri).blob()` is the web path and
- * yields an empty upload on React Native, which is why this shares
- * `readLocalFile` with `uploadMedia`. The path shape is fixed by storage RLS —
- * the avatars policies match `(storage.foldername(name))[2]` against
- * `auth.uid()`, so the uid must stay the second segment.
- */
-export const uploadAvatar = async (localUri: string): Promise<string | null> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-
-    try {
-        const { arrayBuffer, contentType, ext } = await readLocalFile(localUri);
-        const filePath = `avatars/${user.id}/${Date.now()}.${ext}`;
-
-        const { error } = await supabase.storage
-            .from('avatars')
-            .upload(filePath, arrayBuffer, { upsert: true, contentType, cacheControl: '3600' });
-
-        if (error) {
-            console.error('Avatar upload error:', error);
-            return null;
-        }
-
-        const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
-        return data.publicUrl ?? null;
-    } catch (err) {
-        console.error('Avatar upload error:', (err as Error).message || err);
-        return null;
-    }
-};
-
-// =========================================================
-// Follows
-// =========================================================
-
-export const getFollowerCount = async (userId: string): Promise<number> => {
-    const { count, error } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followed_id', userId);
-    return error ? 0 : count || 0;
-};
-
-export const getFollowingCount = async (userId: string): Promise<number> => {
-    const { count, error } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId);
-    return error ? 0 : count || 0;
-};
-
-export const getFollowingList = async (userId: string): Promise<string[]> => {
-    const { data, error } = await supabase.from('follows').select('profiles!followed_id(username)').eq('follower_id', userId);
-    if (error) return [];
-    const unique = new Set<string>();
-    for (const item of data || []) {
-        const profile = Array.isArray(item?.profiles)
-            ? item.profiles[0]
-            : item?.profiles;
-        const username = profile?.username;
-        if (typeof username === 'string' && username.trim().length > 0) {
-            unique.add(username.toLowerCase());
-        }
-    }
-    return Array.from(unique);
-};
-
-export const getFollowerUsers = async (userId: string): Promise<SimpleUser[]> => {
-    const { data, error } = await supabase
-        .from('follows')
-        .select('profiles!follower_id(id, username, full_name, avatar_url, is_verified)')
-        .eq('followed_id', userId);
-    if (error || !data) return [];
-    const uniqueUsers = new Map<string, SimpleUser>();
-    data.forEach((item: any) => {
-        const profile = Array.isArray(item?.profiles)
-            ? item.profiles[0]
-            : item?.profiles;
-        if (!profile?.id || uniqueUsers.has(profile.id)) return;
-        uniqueUsers.set(profile.id, {
-            id: profile.id,
-            username: profile.username,
-            name: profile.full_name || profile.username,
-            avatar: profile.avatar_url,
-            isVerified: profile.is_verified || false,
-        });
-    });
-    return Array.from(uniqueUsers.values());
-};
-
-export const getFollowingUsers = async (userId: string): Promise<SimpleUser[]> => {
-    const { data, error } = await supabase
-        .from('follows')
-        .select('profiles!followed_id(id, username, full_name, avatar_url, is_verified)')
-        .eq('follower_id', userId);
-    if (error || !data) return [];
-    const uniqueUsers = new Map<string, SimpleUser>();
-    data.forEach((item: any) => {
-        const profile = Array.isArray(item?.profiles)
-            ? item.profiles[0]
-            : item?.profiles;
-        if (!profile?.id || uniqueUsers.has(profile.id)) return;
-        uniqueUsers.set(profile.id, {
-            id: profile.id,
-            username: profile.username,
-            name: profile.full_name || profile.username,
-            avatar: profile.avatar_url,
-            isVerified: profile.is_verified || false,
-        });
-    });
-    return Array.from(uniqueUsers.values());
 };
 
 export const getPostLikers = async (postId: string): Promise<SimpleUser[]> => {
@@ -1325,40 +967,6 @@ export const getPostReposters = async (postId: string): Promise<SimpleUser[]> =>
     });
     return Array.from(uniqueUsers.values());
 };
-
-export const followUser = async (follower_id: string, followed_id: string): Promise<void> => {
-    const { data: existingFollow, error: existingError } = await supabase
-        .from('follows')
-        .select('follower_id')
-        .eq('follower_id', follower_id)
-        .eq('followed_id', followed_id)
-        .maybeSingle();
-
-    if (existingError) {
-        throw existingError;
-    }
-    if (existingFollow) {
-        return;
-    }
-
-    const { error } = await supabase
-        .from('follows')
-        .insert({ follower_id, followed_id });
-
-    if (error && error.code !== '23505') throw error;
-    if (error?.code === '23505') return;
-
-    await sendNotification({ sender_id: follower_id, receiver_id: followed_id, type: 'follow' });
-};
-
-export const unfollowUser = async (follower_id: string, followed_id: string): Promise<void> => {
-    const { error } = await supabase.from('follows').delete().match({ follower_id, followed_id });
-    if (error) throw error;
-};
-
-// =========================================================
-// Comments
-// =========================================================
 
 export async function addComment(postId: string, userId: string, content: string) {
   const { data, error } = await supabase
@@ -1464,63 +1072,6 @@ export const toggleCommentLike = async (commentId: string): Promise<boolean> => 
 // away in the final M2 cleanup, once nothing imports it.
 export { fetchHashtags as getAllHashtags } from '../features/hashtags';
 
-export const searchUsers = async (query: string): Promise<any[]> => {
-    const { data, error } = await supabase
-        .from('profiles')
-        .select('id, username, full_name, avatar_url, is_verified, bio')
-        .ilike('username', `%${query}%`)
-        .limit(10);
-    if (error) return [];
-    return data || [];
-};
-
-export const getSmartUserSuggestions = async(userId: string): Promise<any[]> => {
-    // The original RPC function 'get_user_suggestions' causes a "column reference is ambiguous" SQL error.
-    // As we cannot modify the backend function, this implementation replaces it with a client-side query
-    // that suggests recent users the current user is not already following.
-
-    // 1. Get IDs of users the current user is following.
-    const { data: followingData, error: followingError } = await supabase
-        .from('follows')
-        .select('followed_id')
-        .eq('follower_id', userId);
-
-    if (followingError) {
-        console.error('Error fetching following list for suggestions:', followingError.message);
-        return [];
-    }
-
-    // Create a list of user IDs to exclude from suggestions (followed users + the user themselves).
-    const followingIds = followingData.map(f => f.followed_id);
-    const excludeIds = [...followingIds, userId];
-
-    // 2. Fetch a few recent profiles, excluding the ones in the `excludeIds` list.
-    const { data: suggestionsData, error: suggestionsError } = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, is_verified')
-        .not('id', 'in', `(${excludeIds.join(',')})`)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-    if (suggestionsError) {
-        console.error('Error fetching user suggestions:', suggestionsError.message);
-        return [];
-    }
-
-    // 3. Map the fetched profile data to the structure expected by the UserSuggestions component.
-    // The 'mutual_followers' field is set to 0 as this simplified query does not calculate them.
-    return (suggestionsData || []).map(profile => ({
-        suggested_user_id: profile.id,
-        username: profile.username,
-        avatar_url: profile.avatar_url,
-        is_verified: profile.is_verified,
-        mutual_followers: 0,
-    }));
-}
-
-// =========================================================
-// Chat / Messages
-// =========================================================
 export const getChatListUsers = async (userId: string): Promise<SimpleUser[]> => {
     try {
         // Get all messages involving the user, ordered by most recent.
@@ -1678,3 +1229,31 @@ export const reportUser = async (userId: string, reason: string): Promise<boolea
     }
     return true;
 };
+
+// Moved to features/profiles/api.ts in ONE-15. Re-exported here so existing
+// callers keep working while the strangler migration runs; these shims go
+// away in the final M2 cleanup (ONE-20), once nothing imports them.
+//
+// `prefetchUserProfile` has no shim: it fronted a module-level Map that the
+// query cache replaces. Its call sites use `queryClient.prefetchQuery`.
+export {
+    mapProfileRow,
+    mapProfileUpdatesToRow,
+    getUserProfile,
+    getUserPosts,
+    getUserReposts,
+    updateUserProfileData,
+    uploadAvatar,
+    getFollowerCount,
+    getFollowingCount,
+    getFollowingList,
+    getFollowerUsers,
+    getFollowingUsers,
+    followUser,
+    unfollowUser,
+    checkUsernameExists,
+    searchUsers,
+    getSmartUserSuggestions,
+} from '../features/profiles';
+export type { ProfileRow, ProfileUpdates } from '../features/profiles';
+

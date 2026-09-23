@@ -15,7 +15,9 @@ import {
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../store/AppContext.native';
+import { useFollowState, useToggleFollow, useFollowCountsQuery, profileKeys } from '../../features/profiles';
 import {
   getUserProfile,
   getUserPosts,
@@ -80,29 +82,32 @@ const REPORT_REASONS = [
 export default function UserProfileScreen() {
   const { username } = useLocalSearchParams<{ username: string }>();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const {
     userProfile: myProfile,
-    isUserFollowed,
-    toggleFollowUser,
     isUserBlocked,
     toggleBlockUser,
     addToast,
     isAdmin,
   } = useApp();
 
+  // Follow state and the counts are queries (ONE-15): the button and the
+  // follower number move together the moment it is tapped, and revert
+  // together if the server refuses.
+  const { isFollowing: isUserFollowing } = useFollowState(myProfile?.id || undefined);
+  const follow = useToggleFollow(myProfile?.id || undefined);
+
   const [profile, setProfile] = useState<UserProfileType | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [reposts, setReposts] = useState<Post[]>([]);
-  const [followerCount, setFollowerCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('posts');
   const [menuVisible, setMenuVisible] = useState(false);
   const [reportMenuVisible, setReportMenuVisible] = useState(false);
-  const [followPending, setFollowPending] = useState(false);
 
-  const isFollowing = isUserFollowed(username || '');
+  const { data: followCounts } = useFollowCountsQuery(profile?.id || undefined);
+  const isFollowing = isUserFollowing(username || '');
   const isBlocked = isUserBlocked(username || '');
   const isMyProfile = myProfile?.username === username;
 
@@ -112,16 +117,12 @@ export default function UserProfileScreen() {
       const profileData = await getUserProfile(username);
       setProfile(profileData);
       if (profileData) {
-        const [userPosts, userReposts, followers, following] = await Promise.all([
+        const [userPosts, userReposts] = await Promise.all([
           getUserPosts(profileData.id),
           getUserReposts(profileData.id),
-          getFollowerCount(profileData.id),
-          getFollowingCount(profileData.id),
         ]);
         setPosts(userPosts);
         setReposts(userReposts);
-        setFollowerCount(followers);
-        setFollowingCount(following);
       }
     } catch (error) {
       console.error('Failed to load user profile', error);
@@ -149,12 +150,8 @@ export default function UserProfileScreen() {
             f?.follower_id === profile.id || f?.followed_id === profile.id ||
             o?.follower_id === profile.id || o?.followed_id === profile.id
           ) {
-            const [followers, following] = await Promise.all([
-              getFollowerCount(profile.id),
-              getFollowingCount(profile.id),
-            ]);
-            setFollowerCount(followers);
-            setFollowingCount(following);
+            // The counts are a query now; realtime invalidates it.
+            queryClient.invalidateQueries({ queryKey: profileKeys.counts(profile.id) });
           }
         },
       )
@@ -168,25 +165,10 @@ export default function UserProfileScreen() {
     setRefreshing(false);
   }, [fetchData]);
 
-  const handleToggleFollow = useCallback(async () => {
-    if (!username || !profile?.id || isMyProfile || followPending) return;
-    const wasFollowing = isFollowing;
-
-    setFollowPending(true);
-    setFollowerCount(prev => Math.max(0, prev + (wasFollowing ? -1 : 1)));
-
-    try {
-      await toggleFollowUser(username);
-      const [followers, following] = await Promise.all([
-        getFollowerCount(profile.id),
-        getFollowingCount(profile.id),
-      ]);
-      setFollowerCount(followers);
-      setFollowingCount(following);
-    } finally {
-      setFollowPending(false);
-    }
-  }, [username, profile?.id, isMyProfile, followPending, isFollowing, toggleFollowUser]);
+  const handleToggleFollow = useCallback(() => {
+    if (!username || !profile?.id || isMyProfile) return;
+    follow.toggle({ userId: profile.id, username });
+  }, [username, profile?.id, isMyProfile, follow]);
 
   const handleBlockToggle = () => {
     setMenuVisible(false);
@@ -304,14 +286,14 @@ export default function UserProfileScreen() {
               onPress={() => profile?.id && router.push({ pathname: '/user-list', params: { type: 'followers', userId: profile.id, title: 'Followers' } })}
               className="items-center"
             >
-              <Text className="text-white font-bold text-lg">{followerCount}</Text>
+              <Text className="text-white font-bold text-lg">{followCounts?.followers ?? 0}</Text>
               <Text className="text-gray-500 text-sm">Followers</Text>
             </Pressable>
             <Pressable
               onPress={() => profile?.id && router.push({ pathname: '/user-list', params: { type: 'following', userId: profile.id, title: 'Following' } })}
               className="items-center"
             >
-              <Text className="text-white font-bold text-lg">{followingCount}</Text>
+              <Text className="text-white font-bold text-lg">{followCounts?.following ?? 0}</Text>
               <Text className="text-gray-500 text-sm">Following</Text>
             </Pressable>
           </View>
@@ -357,11 +339,11 @@ export default function UserProfileScreen() {
               <>
                 <Pressable
                   onPress={() => { void handleToggleFollow(); }}
-                  disabled={followPending}
-                  className={`flex-1 py-2 rounded-full items-center ${isFollowing ? 'border border-gray-700' : 'bg-blue-600'} ${followPending ? 'opacity-60' : ''}`}
+                  disabled={follow.isPending}
+                  className={`flex-1 py-2 rounded-full items-center ${isFollowing ? 'border border-gray-700' : 'bg-blue-600'} ${follow.isPending ? 'opacity-60' : ''}`}
                 >
                   <Text className="text-white font-semibold">
-                    {followPending ? '...' : (isFollowing ? 'Unfollow' : 'Follow')}
+                    {follow.isPending ? '...' : (isFollowing ? 'Unfollow' : 'Follow')}
                   </Text>
                 </Pressable>
                 <Pressable
