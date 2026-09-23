@@ -47,6 +47,13 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), back: jes
 });
 jest.mock('../../services/apiService', () => ({ reportPost: jest.fn() }), { virtual: true });
 
+// The toggle hooks need a QueryClientProvider, and this suite is about
+// framing rather than mutations — a stub keeps the mount free of both.
+jest.mock('../../features/posts', () => {
+  const stub = () => ({ toggle: jest.fn(), isPending: false });
+  return { useLikePost: stub, useRepostPost: stub, useSavePost: stub };
+}, { virtual: true });
+
 // PostCard reads a dozen actions off the context. None of them fire during a
 // plain render, so a no-op shape is enough to mount it.
 jest.mock('../../store/AppContext.native', () => ({

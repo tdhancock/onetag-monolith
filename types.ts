@@ -48,6 +48,12 @@ export interface Post {
     likes: number;
     reposts: number;
     replies: number;
+    // The viewer's own relationship to this post, read from the cached
+    // entity rather than from a parallel Set (ONE-13). Optional because a
+    // post built client-side before publishing has no viewer state yet.
+    isLiked?: boolean;
+    isReposted?: boolean;
+    isSaved?: boolean;
     isVerified?: boolean;
     poll?: Poll;
     timestamp?: string;

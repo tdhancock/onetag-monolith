@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { publishPost, deletePost, updatePost, toggleLike as apiToggleLike, toggleRepost as apiToggleRepost, addComment as apiAddComment, getFollowingList, unfollowUser, followUser, markNotificationsAsRead, getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, markMessagesAsRead as apiMarkMessagesAsRead, toggleSavePost as apiToggleSavePost, adminDeletePost, ensureCurrentUserProfile, MediaUploadError } from '../services/apiService';
+import { publishPost, deletePost, updatePost, addComment as apiAddComment, getFollowingList, unfollowUser, followUser, markNotificationsAsRead, getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, markMessagesAsRead as apiMarkMessagesAsRead, adminDeletePost, ensureCurrentUserProfile, MediaUploadError } from '../services/apiService';
 import { supabase } from '../services/supabase.native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -10,9 +10,6 @@ import type { Comment, Post, Story, UserProfile, Toast, Notification, Message } 
 import { normalizeNotifications } from '../types';
 
 interface AppState {
-    likedPosts: Set<string>;
-    repostedPosts: Set<string>;
-    savedPosts: Set<string>;
     postComments: Map<string, Comment[]>;
     profilePosts: Post[];
     userProfile: UserProfile;
@@ -37,12 +34,6 @@ interface AppState {
 }
 
 interface AppContextType extends AppState {
-    togglePostLike: (postId: string) => void;
-    isPostLiked: (postId: string) => boolean;
-    togglePostRepost: (postId: string) => void;
-    isPostReposted: (postId: string) => boolean;
-    toggleSavePost: (postId: string) => void;
-    isPostSaved: (postId: string) => boolean;
     postComment: (postId: string, content: string) => Promise<void>;
     getComments: (postId: string) => Comment[];
     setComments: (postId: string, comments: Comment[]) => void;
@@ -93,9 +84,6 @@ const BLOCKED_USERS_KEY = 'onetag-blocked-users';
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [state, setState] = useState<AppState>(() => {
         return {
-            likedPosts: new Set(),
-            repostedPosts: new Set(),
-            savedPosts: new Set(),
             postComments: new Map(),
             profilePosts: [],
             userProfile: {
@@ -270,15 +258,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             await ensureCurrentUserProfile();
 
             // Use Promise.all to fetch profile, likes, reposts, follows, and stories concurrently for better performance.
-            const [profileResult, likesResult, repostsResult, savedPostsResult, followingResult, myStoriesResult, storyLikesResult, unreadMessagesResult] = await Promise.all([
+            const [profileResult, followingResult, myStoriesResult, storyLikesResult, unreadMessagesResult] = await Promise.all([
                 supabase
                     .from('profiles')
                     .select('full_name, username, avatar_url, is_verified, is_admin, bio')
                     .eq('id', user.id)
                     .maybeSingle(),
-                supabase.from('likes').select('post_id').eq('user_id', user.id),
-                supabase.from('reposts').select('post_id').eq('user_id', user.id),
-                supabase.from('saved_posts').select('post_id').eq('user_id', user.id),
                 getFollowingList(user.id),
                 getMyStories(user.id),
                 supabase.from('story_likes').select('story_id').eq('user_id', user.id),
@@ -287,9 +272,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
             // Destructure results
             const { data: profileData } = profileResult as any;
-            const { data: likedPostsData } = likesResult as any;
-            const { data: repostedPostsData } = repostsResult as any;
-            const { data: savedPostsData } = savedPostsResult as any;
             const followingUsernames = followingResult as string[];
             const myStories = myStoriesResult as Story[];
             const { data: storyLikesData } = storyLikesResult as any;
@@ -312,17 +294,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
                 const isAdmin = profileData?.is_admin === true;
 
-                const newLikedPosts = (likedPostsData && Array.isArray(likedPostsData))
-                    ? new Set(likedPostsData.map(l => l.post_id))
-                    : prevState.likedPosts;
-
-                const newRepostedPosts = (repostedPostsData && Array.isArray(repostedPostsData))
-                    ? new Set(repostedPostsData.map(r => r.post_id))
-                    : prevState.repostedPosts;
-
-                const newSavedPosts = (savedPostsData && Array.isArray(savedPostsData))
-                    ? new Set(savedPostsData.map(s => s.post_id))
-                    : prevState.savedPosts;
 
                 const newFollowedUsernames = new Set(
                     (followingUsernames || []).map((username) => username.toLowerCase())
@@ -335,9 +306,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 return {
                     ...prevState,
                     userProfile: newUserProfile,
-                    likedPosts: newLikedPosts,
-                    repostedPosts: newRepostedPosts,
-                    savedPosts: newSavedPosts,
                     followedUsernames: newFollowedUsernames,
                     userStories: myStories,
                     likedStoryIds: newLikedStoryIds,
@@ -368,9 +336,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             } else if (event === 'SIGNED_OUT') {
                 setState(prevState => ({
                     ...prevState,
-                    likedPosts: new Set(),
-                    repostedPosts: new Set(),
-                    savedPosts: new Set(),
                     postComments: new Map(),
                     profilePosts: [],
                     userProfile: {
@@ -417,129 +382,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
     }, []);
 
-    const togglePostLike = useCallback(async (postId: string) => {
-        triggerHapticFeedback();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            addToast('You must be logged in to like posts.', 'error');
-            return;
-        }
+    // Like, Repost and Save moved to features/posts/mutations.ts in ONE-13.
+    // They are cache operations now, not context state: the boolean lives on
+    // the cached post and the rollback lives in lib/optimisticToggle.ts, so
+    // there is nothing left for AppContext to hold. Screens call
+    // useLikePost / useRepostPost / useSavePost.
 
-        const alreadyLiked = state.likedPosts.has(postId);
-        // Optimistic update
-        setState(prevState => {
-            const newLikedPosts = new Set(prevState.likedPosts);
-            if (alreadyLiked) {
-                newLikedPosts.delete(postId);
-            } else {
-                newLikedPosts.add(postId);
-            }
-            return { ...prevState, likedPosts: newLikedPosts };
-        });
-
-        try {
-            await apiToggleLike(postId, user.id);
-        } catch (error) {
-            console.error("Failed to toggle like:", error);
-            addToast('Failed to update like status.', 'error');
-            // Revert on failure
-            setState(prevState => {
-                const newLikedPosts = new Set(prevState.likedPosts);
-                if (alreadyLiked) {
-                    newLikedPosts.add(postId);
-                } else {
-                    newLikedPosts.delete(postId);
-                }
-                return { ...prevState, likedPosts: newLikedPosts };
-            });
-        }
-    }, [triggerHapticFeedback, state.likedPosts, addToast]);
-
-    const isPostLiked = useCallback((postId: string) => state.likedPosts.has(postId), [state.likedPosts]);
-
-    const togglePostRepost = useCallback(async (postId: string) => {
-        triggerHapticFeedback();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            addToast('You must be logged in to repost.', 'error');
-            return;
-        }
-
-        const alreadyReposted = state.repostedPosts.has(postId);
-        // Optimistic update
-        setState(prevState => {
-            const newRepostedPosts = new Set(prevState.repostedPosts);
-            if (alreadyReposted) {
-                newRepostedPosts.delete(postId);
-                addToast('Repost removed', 'info');
-            } else {
-                newRepostedPosts.add(postId);
-                addToast('Post reposted!', 'success');
-            }
-            return { ...prevState, repostedPosts: newRepostedPosts };
-        });
-
-        try {
-            await apiToggleRepost(postId, user.id);
-        } catch (error) {
-            console.error("Failed to toggle repost:", error);
-            addToast('Failed to update repost status.', 'error');
-            // Revert on failure
-            setState(prevState => {
-                const newRepostedPosts = new Set(prevState.repostedPosts);
-                if (alreadyReposted) {
-                    newRepostedPosts.add(postId);
-                } else {
-                    newRepostedPosts.delete(postId);
-                }
-                return { ...prevState, repostedPosts: newRepostedPosts };
-            });
-        }
-    }, [triggerHapticFeedback, state.repostedPosts, addToast]);
-
-    const isPostReposted = useCallback((postId: string) => state.repostedPosts.has(postId), [state.repostedPosts]);
-
-    const toggleSavePost = useCallback(async (postId: string) => {
-        triggerHapticFeedback();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            addToast('You must be logged in to save posts.', 'error');
-            return;
-        }
-
-        const alreadySaved = state.savedPosts.has(postId);
-        // Optimistic update
-        setState(prevState => {
-            const newSavedPosts = new Set(prevState.savedPosts);
-            if (alreadySaved) {
-                newSavedPosts.delete(postId);
-                addToast('Removed from your collection.', 'info');
-            } else {
-                newSavedPosts.add(postId);
-                addToast('Saved to your collection!', 'success');
-            }
-            return { ...prevState, savedPosts: newSavedPosts };
-        });
-
-        try {
-            await apiToggleSavePost(postId, user.id);
-        } catch (error) {
-            console.error("Failed to toggle save:", error);
-            addToast('Failed to update saved status.', 'error');
-            // Revert on failure
-            setState(prevState => {
-                const newSavedPosts = new Set(prevState.savedPosts);
-                if (alreadySaved) {
-                    newSavedPosts.add(postId);
-                } else {
-                    newSavedPosts.delete(postId);
-                }
-                return { ...prevState, savedPosts: newSavedPosts };
-            });
-        }
-    }, [triggerHapticFeedback, state.savedPosts, addToast]);
-
-    const isPostSaved = useCallback((postId: string) => state.savedPosts.has(postId), [state.savedPosts]);
 
     const postComment = useCallback(async (postId: string, content: string) => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -1049,12 +897,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const contextValue = useMemo(() => ({
         ...state,
-        togglePostLike,
-        isPostLiked,
-        togglePostRepost,
-        isPostReposted,
-        toggleSavePost,
-        isPostSaved,
         postComment,
         getComments,
         setComments,
@@ -1096,12 +938,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         replaceStory,
     }), [
         state,
-        togglePostLike,
-        isPostLiked,
-        togglePostRepost,
-        isPostReposted,
-        toggleSavePost,
-        isPostSaved,
         postComment,
         getComments,
         setComments,

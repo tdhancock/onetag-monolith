@@ -164,11 +164,11 @@ const Probe: React.FC<{ capture: Captured }> = ({ capture }) => {
     capture.current = ctx;
   });
   return React.createElement('div', { 'data-testid': 'probe' }, JSON.stringify({
-    hasToggleLike: typeof ctx.togglePostLike === 'function',
+    hasToggleStoryLike: typeof ctx.toggleStoryLike === 'function',
     hasAddToast: typeof ctx.addToast === 'function',
     theme: ctx.theme,
     userProfileName: ctx.userProfile.name,
-    likedPostsSize: ctx.likedPosts.size,
+    blockedUsersSize: ctx.blockedUsers.size,
     unreadMessageCount: ctx.unreadMessageCount,
     isAdmin: ctx.isAdmin,
   }));
@@ -232,7 +232,7 @@ describe('useApp (AppContext) — provider wrapper', () => {
       // The probe should be present in the rendered DOM.
       const probe = handle.container.querySelector('[data-testid="probe"]');
       expect(probe).not.toBeNull();
-      expect(probe!.textContent).toContain('"hasToggleLike":true');
+      expect(probe!.textContent).toContain('"hasToggleStoryLike":true');
     } finally {
       unmount(handle);
     }
@@ -252,11 +252,13 @@ describe('useApp (AppContext) — provider wrapper', () => {
       expect(ctx!.userProfile.username).toBe('onetag_user');
       // Default theme.
       expect(ctx!.theme).toBe('dark');
-      // Empty sets for interaction state.
-      expect(ctx!.likedPosts).toBeInstanceOf(Set);
-      expect(ctx!.likedPosts.size).toBe(0);
-      expect(ctx!.repostedPosts.size).toBe(0);
-      expect(ctx!.savedPosts.size).toBe(0);
+      // Post interaction state is no longer here: likes, reposts and saves
+      // live on the cached post entity and are toggled through
+      // features/posts/mutations.ts (ONE-13). AppContext holds only UI state
+      // no server owns, which is what blockedUsers still is.
+      expect(ctx).not.toHaveProperty('likedPosts');
+      expect(ctx).not.toHaveProperty('repostedPosts');
+      expect(ctx).not.toHaveProperty('savedPosts');
       expect(ctx!.blockedUsers.size).toBe(0);
       expect(ctx!.unreadMessageCount).toBe(0);
       expect(ctx!.isAdmin).toBe(false);
@@ -273,9 +275,6 @@ describe('useApp (AppContext) — provider wrapper', () => {
       // Spot-check a representative slice of the action API. The full
       // surface is huge; we just confirm the provider is actually wiring
       // functions (not returning undefined) for the most-used actions.
-      expect(typeof ctx.togglePostLike).toBe('function');
-      expect(typeof ctx.togglePostRepost).toBe('function');
-      expect(typeof ctx.toggleSavePost).toBe('function');
       expect(typeof ctx.postComment).toBe('function');
       expect(typeof ctx.addToast).toBe('function');
       expect(typeof ctx.removeToast).toBe('function');

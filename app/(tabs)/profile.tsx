@@ -71,7 +71,9 @@ export default function ProfileScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('posts');
   const [posts, setPosts] = useState<Post[]>([]);
   const [reposts, setReposts] = useState<Post[]>([]);
-  const [savedPosts, setSavedPosts] = useState<Post[]>([]);
+  // The posts on the Saved tab, not the viewer's set of saved ids — that
+  // moved onto the cached post as `isSaved` in ONE-13.
+  const [savedTabPosts, setSavedTabPosts] = useState<Post[]>([]);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,7 +91,7 @@ export default function ProfileScreen() {
       ]);
       setPosts(userPosts);
       setReposts(userReposts);
-      setSavedPosts(userSaved);
+      setSavedTabPosts(userSaved);
       setFollowerCount(followers);
       setFollowingCount(following);
     } catch (error) {
@@ -157,7 +159,7 @@ export default function ProfileScreen() {
     }
   }, [fetchAll, refreshAllData]);
 
-  const currentData = activeTab === 'posts' ? posts : activeTab === 'reposts' ? reposts : savedPosts;
+  const currentData = activeTab === 'posts' ? posts : activeTab === 'reposts' ? reposts : savedTabPosts;
 
   const handlePostPress = useCallback((post: Post) => {
     router.push(`/post/${post.id}`);

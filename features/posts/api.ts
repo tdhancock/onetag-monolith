@@ -27,8 +27,40 @@ export const POST_SELECT_QUERY = `
     ),
     likes:likes(count),
     comments:comments(count),
-    reposts:reposts(count)
+    reposts:reposts(count),
+    viewer_like:likes(user_id),
+    viewer_repost:reposts(user_id),
+    viewer_save:saved_posts(user_id)
 `;
+
+/**
+ * Restrict the viewer-scoped embeds to one user's rows.
+ *
+ * `likes:likes(count)` and `viewer_like:likes(user_id)` are separate aliases
+ * over the same table, so filtering the alias leaves the total count alone —
+ * verified against a local stack: a post liked by two people, one of them the
+ * viewer, comes back with `likes: [{count: 2}]` and a one-row `viewer_like`.
+ * The embeds are left joins, so a post the viewer has not touched still
+ * appears, with an empty array.
+ *
+ * Signed out there is no viewer, and an impossible id is cheaper than
+ * branching the select: every embed comes back empty, which is the truth.
+ */
+const NO_VIEWER = '00000000-0000-0000-0000-000000000000';
+
+const scopeToViewer = <T>(query: T, viewerId: string | undefined): T => {
+  // Cast through a minimal shape: chaining three `.eq()` calls on the
+  // PostgREST builder's own generics makes tsc give up with "type
+  // instantiation is excessively deep". The runtime chain is the ordinary
+  // one; only the types are being stepped around.
+  const viewer = viewerId || NO_VIEWER;
+  const builder = query as unknown as { eq: (column: string, value: string) => typeof builder };
+
+  return builder
+    .eq('viewer_like.user_id', viewer)
+    .eq('viewer_repost.user_id', viewer)
+    .eq('viewer_save.user_id', viewer) as unknown as T;
+};
 
 const toNumber = (value: unknown): number => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -118,8 +150,17 @@ export const mapPostData = (p: any): Post => {
     likes: extractCount(p.likes, p.likes_count),
     reposts: extractCount(p.reposts, p.reposts_count),
     replies: extractCount(p.comments, p.comments_count),
+    // The viewer's own state, carried on the entity rather than in a Set
+    // beside it — the toggle helper reads and writes it here (ONE-13).
+    isLiked: hasViewerRow(p.viewer_like),
+    isReposted: hasViewerRow(p.viewer_repost),
+    isSaved: hasViewerRow(p.viewer_save),
   };
 };
+
+/** A viewer-scoped embed is an array: one row if the viewer is in it. */
+const hasViewerRow = (embedded: unknown): boolean =>
+  Array.isArray(embedded) ? embedded.length > 0 : Boolean(embedded);
 
 /**
  * A cursor into the feed: the `created_at` of the last post on the previous
@@ -150,9 +191,12 @@ export const fetchFeedPage = async ({
 }: FetchFeedPageArgs): Promise<Post[]> => {
   const userIdsToFetch = await getFeedUserIds(userId);
 
-  let query = supabase
-    .from('posts')
-    .select(POST_SELECT_QUERY)
+  let query = scopeToViewer(
+    supabase
+      .from('posts')
+      .select(POST_SELECT_QUERY),
+    userId,
+  )
     .in('user_id', userIdsToFetch)
     .order('created_at', { ascending: false })
     .limit(FEED_PAGE_SIZE);
@@ -185,11 +229,15 @@ export const nextFeedCursor = (page: Post[]): string | undefined => {
  * caller expects — the post detail, edit, share and message screens all
  * treat a missing post as "not found" rather than as an error to surface.
  */
-export const fetchPostById = async (postId: string): Promise<Post | undefined> => {
+export const fetchPostById = async (
+  postId: string,
+  viewerId?: string,
+): Promise<Post | undefined> => {
   try {
-    const { data, error } = await supabase
-      .from('posts')
-      .select(POST_SELECT_QUERY)
+    const { data, error } = await scopeToViewer(
+      supabase.from('posts').select(POST_SELECT_QUERY),
+      viewerId,
+    )
       .eq('id', postId)
       .single();
 
@@ -202,11 +250,12 @@ export const fetchPostById = async (postId: string): Promise<Post | undefined> =
 };
 
 /** Recent posts from everyone, for the Explore grid. */
-export const fetchTrendingPosts = async (): Promise<Post[]> => {
+export const fetchTrendingPosts = async (viewerId?: string): Promise<Post[]> => {
   try {
-    const { data, error } = await supabase
-      .from('posts')
-      .select(POST_SELECT_QUERY)
+    const { data, error } = await scopeToViewer(
+      supabase.from('posts').select(POST_SELECT_QUERY),
+      viewerId,
+    )
       .order('created_at', { ascending: false })
       .limit(FEED_PAGE_SIZE + 1);
 
@@ -217,3 +266,110 @@ export const fetchTrendingPosts = async (): Promise<Post[]> => {
     return [];
   }
 };
+
+// ---------------------------------------------------------------------------
+// Toggles
+// ---------------------------------------------------------------------------
+//
+// Like, Repost and Save are one operation over three join tables: read the
+// viewer's row, delete it if it is there, insert it if it is not. The
+// optimistic cache work that wraps them is generic and lives in
+// `lib/optimisticToggle.ts`; what varies is only the table and, for two of
+// them, the notification.
+
+type JoinTable = 'likes' | 'reposts' | 'saved_posts';
+
+/**
+ * Flip the viewer's row in a join table. Resolves to the state it left
+ * behind, so a caller that is not driving the cache can still tell.
+ *
+ * Throws on failure — the toggle hooks roll their optimistic write back on a
+ * rejection, so swallowing the error here would leave the UI claiming
+ * something the database never agreed to.
+ */
+const toggleJoinRow = async (
+  table: JoinTable,
+  postId: string,
+  userId: string,
+): Promise<boolean> => {
+  const { data: existing, error: readError } = await supabase
+    .from(table)
+    .select('post_id')
+    .eq('post_id', postId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (readError) throw readError;
+
+  if (existing) {
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .eq('post_id', postId)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return false;
+  }
+
+  const { error } = await supabase.from(table).insert([{ post_id: postId, user_id: userId }]);
+  if (error) throw error;
+  return true;
+};
+
+/**
+ * Tell a post's author that someone interacted with it.
+ *
+ * Failures are logged, never thrown: a notification that does not arrive is
+ * not a reason to tell the user their like failed and roll it back.
+ *
+ * ONE-17 moves notifications into their own feature folder; this is the shape
+ * it needs to absorb.
+ */
+const notifyPostAuthor = async (
+  postId: string,
+  senderId: string,
+  type: 'like' | 'repost',
+): Promise<void> => {
+  try {
+    const { data: post } = await supabase
+      .from('posts')
+      .select('user_id')
+      .eq('id', postId)
+      .single();
+
+    // Nobody needs telling about their own like.
+    if (!post || post.user_id === senderId) return;
+
+    const { error } = await supabase.from('notifications').insert([
+      { sender_id: senderId, receiver_id: post.user_id, type, post_id: postId },
+    ]);
+
+    if (error) console.error(`Failed to send ${type} notification:`, error.message || error);
+  } catch (error) {
+    console.error(`Failed to send ${type} notification:`, (error as Error).message || error);
+  }
+};
+
+/** Like or unlike a post as `userId`. Notifies the author on a new like. */
+export const toggleLike = async (postId: string, userId: string): Promise<boolean> => {
+  const isOn = await toggleJoinRow('likes', postId, userId);
+  if (isOn) await notifyPostAuthor(postId, userId, 'like');
+  return isOn;
+};
+
+/** Repost or un-repost a post as `userId`. Notifies the author on a new repost. */
+export const toggleRepost = async (postId: string, userId: string): Promise<boolean> => {
+  const isOn = await toggleJoinRow('reposts', postId, userId);
+  if (isOn) await notifyPostAuthor(postId, userId, 'repost');
+  return isOn;
+};
+
+/**
+ * Save or unsave a post as `userId`.
+ *
+ * No notification: a Save is private to the person who made it, unlike a Like
+ * or a Repost.
+ */
+export const toggleSavePost = async (postId: string, userId: string): Promise<boolean> =>
+  toggleJoinRow('saved_posts', postId, userId);
