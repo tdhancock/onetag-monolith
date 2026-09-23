@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../store/AppContext.native';
 import { useFollowCountsQuery, profileKeys } from '../../features/profiles';
+import { useRealtimeSync } from '../../lib/realtimeBridge';
 import {
   getUserPosts,
   getUserReposts,
@@ -107,42 +108,32 @@ export default function ProfileScreen() {
     fetchAll();
   }, [fetchAll]);
 
-  // Realtime: own posts
-  useEffect(() => {
-    if (!userProfile?.id) return;
-    const channel = supabase
-      .channel(`profile-posts-${userProfile.id}-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'posts', filter: `user_id=eq.${userProfile.id}` },
-        () => { fetchAll(); }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [userProfile?.id, fetchAll]);
+  // Realtime, through the shared bridge (ONE-16).
+  useRealtimeSync({
+    table: 'posts',
+    filter: `user_id=eq.${userProfile?.id ?? ''}`,
+    queryKey: profileKeys.posts(userProfile?.id ?? ''),
+    enabled: Boolean(userProfile?.id),
+    onInsert: () => { fetchAll(); return true; },
+    onUpdate: () => { fetchAll(); return true; },
+    onDelete: () => { fetchAll(); return true; },
+  });
 
-  // Realtime: follow counts
-  useEffect(() => {
-    if (!userProfile?.id) return;
-    const channel = supabase
-      .channel(`profile-follows-${userProfile.id}-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'follows' },
-        async (payload) => {
-          const f = payload.new as any;
-          const o = payload.old as any;
-          if (f?.follower_id === userProfile.id || f?.followed_id === userProfile.id ||
-              o?.follower_id === userProfile.id || o?.followed_id === userProfile.id) {
-            // The counts are a query now; a realtime follow invalidates it
-            // rather than writing to local state.
-            queryClient.invalidateQueries({ queryKey: profileKeys.counts(userProfile.id) });
-          }
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [userProfile?.id]);
+  // Two streams rather than one client-side check over every follow in the
+  // system: a follow of this user, and a follow made by them.
+  useRealtimeSync({
+    table: 'follows',
+    filter: `followed_id=eq.${userProfile?.id ?? ''}`,
+    queryKey: profileKeys.counts(userProfile?.id ?? ''),
+    enabled: Boolean(userProfile?.id),
+  });
+
+  useRealtimeSync({
+    table: 'follows',
+    filter: `follower_id=eq.${userProfile?.id ?? ''}`,
+    queryKey: profileKeys.counts(userProfile?.id ?? ''),
+    enabled: Boolean(userProfile?.id),
+  });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../store/AppContext.native';
 import { useFollowState, useToggleFollow, useFollowCountsQuery, profileKeys } from '../../features/profiles';
+import { useRealtimeSync } from '../../lib/realtimeBridge';
 import {
   getUserProfile,
   getUserPosts,
@@ -135,29 +136,22 @@ export default function UserProfileScreen() {
     fetchData();
   }, [fetchData]);
 
-  // Realtime follow count updates
-  useEffect(() => {
-    if (!profile?.id) return;
-    const channel = supabase
-      .channel(`user-profile-follows-${profile.id}-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'follows' },
-        async (payload) => {
-          const f = payload.new as any;
-          const o = payload.old as any;
-          if (
-            f?.follower_id === profile.id || f?.followed_id === profile.id ||
-            o?.follower_id === profile.id || o?.followed_id === profile.id
-          ) {
-            // The counts are a query now; realtime invalidates it.
-            queryClient.invalidateQueries({ queryKey: profileKeys.counts(profile.id) });
-          }
-        },
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [profile?.id]);
+  // Realtime follow counts, through the shared bridge (ONE-16). Two streams
+  // rather than one subscription to every follow in the system: followers of
+  // this profile, and the people it follows.
+  useRealtimeSync({
+    table: 'follows',
+    filter: `followed_id=eq.${profile?.id ?? ''}`,
+    queryKey: profileKeys.counts(profile?.id ?? ''),
+    enabled: Boolean(profile?.id),
+  });
+
+  useRealtimeSync({
+    table: 'follows',
+    filter: `follower_id=eq.${profile?.id ?? ''}`,
+    queryKey: profileKeys.counts(profile?.id ?? ''),
+    enabled: Boolean(profile?.id),
+  });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

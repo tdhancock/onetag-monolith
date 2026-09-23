@@ -5,6 +5,7 @@ import type { User } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { useBlockedUsers, useBlockToggle, migrateLocalBlocks, blockKeys } from '../features/blocks';
 import { useCurrentUserQuery } from '../features/profiles';
+import { useRealtimeSync } from '../lib/realtimeBridge';
 import { publishPost, deletePost, updatePost, addComment as apiAddComment, getFollowingList, unfollowUser, followUser, markNotificationsAsRead, getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, markMessagesAsRead as apiMarkMessagesAsRead, adminDeletePost, ensureCurrentUserProfile, MediaUploadError } from '../services/apiService';
 import { supabase } from '../services/supabase.native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -132,105 +133,79 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         });
     }, [userProfile.id, queryClient]);
 
-    // Fetches notifications and messages, and subscribes to real-time updates.
-    useEffect(() => {
+    // Notifications and unread-message counts, fetched once per session.
+    //
+    // ONE-16 took the raw channel out of here: it was a second
+    // write path competing with the cache, and its channel name embedded
+    // Date.now(), so every re-subscribe leaked a channel the registry could
+    // never dedupe. The live half now goes through the bridge below, and moves
+    // to features/notifications and features/messages in ONE-17 and ONE-18 —
+    // which is why the fetches are still here and still write to AppState.
+    const refreshUnreadMessages = useCallback(async () => {
         const userId = userProfile.id;
         if (!userId) return;
 
-        let notificationsChannel: any;
-        let messagesChannel: any;
+        const { data, error } = await supabase
+            .from('messages')
+            .select('sender_id')
+            .eq('receiver_id', userId)
+            .eq('seen', false);
 
-        const setupSubscriptions = async () => {
-            const { data, error } = await supabase
-                .from("notifications")
-                .select(`
-                    id, type, is_read, created_at, content, comment_id,
-                    sender:profiles!notifications_sender_id_fkey(id, username, avatar_url),
-                    post:posts!notifications_post_id_fkey(id, content, media:image_url, media_type),
-                    comment:comments!notifications_comment_id_fkey(id, text:content),
-                    story:stories!notifications_story_id_fkey(id, media_url)
-                `)
-                .eq("receiver_id", userId)
-                .order("created_at", { ascending: false });
+        if (error || !data) return;
 
-            if (error) {
-                console.error("Error fetching initial notifications:", error.message || error);
-            } else {
-                 setState(prev => ({
-                    ...prev,
-                    notifications: normalizeNotifications(data || [])
-                }));
-            }
-
-            // Listen for new messages in real-time
-            const fetchUnreadData = async () => {
-                const { data, error } = await supabase
-                    .from('messages')
-                    .select('sender_id')
-                    .eq('receiver_id', userId)
-                    .eq('seen', false);
-                if (!error && data) {
-                    const senderIds = data.map(m => m.sender_id);
-                    const unreadChatsSet = new Set(senderIds);
-                    setState(prev => ({
-                        ...prev,
-                        unreadMessageCount: unreadChatsSet.size,
-                        unreadChats: unreadChatsSet,
-                    }));
-                }
-            };
-            fetchUnreadData();
-
-            messagesChannel = supabase
-                .channel(`public:messages-realtime-${userId}-${Date.now()}`)
-                .on(
-                    'postgres_changes',
-                    { event: '*', schema: 'public', table: 'messages' },
-                    (payload) => {
-                        const newMessage = payload.new as any;
-                        const oldMessage = payload.old as any;
-
-                        if (payload.eventType === 'INSERT') {
-                            // Yeni mesaj geldi
-                            if (newMessage.receiver_id === userId) {
-                                setState(prev => {
-                                    const updatedUnreadChats = new Set(prev.unreadChats);
-                                    updatedUnreadChats.add(newMessage.sender_id);
-                                    return {
-                                        ...prev,
-                                        unreadChats: updatedUnreadChats,
-                                        unreadMessageCount: updatedUnreadChats.size,
-                                    };
-                                });
-                            }
-                        }
-
-                        if (payload.eventType === 'UPDATE') {
-                            // Mesaj 'seen' olduysa bildirimi kaldır
-                            if (oldMessage?.seen === false && newMessage?.seen === true && newMessage.receiver_id === userId) {
-                                setState(prev => {
-                                    const updatedUnreadChats = new Set(prev.unreadChats);
-                                    updatedUnreadChats.delete(newMessage.sender_id);
-                                    return {
-                                        ...prev,
-                                        unreadChats: updatedUnreadChats,
-                                        unreadMessageCount: updatedUnreadChats.size,
-                                    };
-                                });
-                            }
-                        }
-                    }
-                )
-                .subscribe();
-        };
-
-        setupSubscriptions();
-
-        return () => {
-            if (notificationsChannel) supabase.removeChannel(notificationsChannel);
-            if (messagesChannel) supabase.removeChannel(messagesChannel);
-        };
+        const unreadChats = new Set(data.map(m => m.sender_id));
+        setState(prev => ({ ...prev, unreadChats, unreadMessageCount: unreadChats.size }));
     }, [userProfile.id]);
+
+    const refreshNotifications = useCallback(async () => {
+        const userId = userProfile.id;
+        if (!userId) return;
+
+        const { data, error } = await supabase
+            .from("notifications")
+            .select(`
+                id, type, is_read, created_at, content, comment_id,
+                sender:profiles!notifications_sender_id_fkey(id, username, avatar_url),
+                post:posts!notifications_post_id_fkey(id, content, media:image_url, media_type),
+                comment:comments!notifications_comment_id_fkey(id, text:content),
+                story:stories!notifications_story_id_fkey(id, media_url)
+            `)
+            .eq("receiver_id", userId)
+            .order("created_at", { ascending: false });
+
+        if (error) {
+            console.error("Error fetching initial notifications:", error.message || error);
+            return;
+        }
+
+        setState(prev => ({ ...prev, notifications: normalizeNotifications(data || []) }));
+    }, [userProfile.id]);
+
+    useEffect(() => {
+        refreshNotifications();
+        refreshUnreadMessages();
+    }, [refreshNotifications, refreshUnreadMessages]);
+
+    // Live updates, through the bridge. Both streams re-read rather than
+    // patching state from the payload: these two slices are AppState until
+    // ONE-17 and ONE-18 move them, and the bridge's business is the cache.
+    useRealtimeSync({
+        table: 'notifications',
+        filter: `receiver_id=eq.${userProfile.id}`,
+        queryKey: ['notifications'],
+        enabled: Boolean(userProfile.id),
+        onInsert: () => { refreshNotifications(); return true; },
+        onUpdate: () => { refreshNotifications(); return true; },
+    });
+
+    useRealtimeSync({
+        table: 'messages',
+        filter: `receiver_id=eq.${userProfile.id}`,
+        queryKey: ['messages'],
+        enabled: Boolean(userProfile.id),
+        onInsert: () => { refreshUnreadMessages(); return true; },
+        onUpdate: () => { refreshUnreadMessages(); return true; },
+    });
 
     const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
         const id = `toast-${Date.now()}`;

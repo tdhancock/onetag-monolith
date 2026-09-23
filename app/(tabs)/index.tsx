@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
 import { useFollowState, useToggleFollow } from '../../features/profiles';
+import { useRealtimeSync } from '../../lib/realtimeBridge';
 import {
   getStories,
   getSmartUserSuggestions,
@@ -172,42 +173,29 @@ export default function HomeFeedScreen() {
     }
   }, [feedQuery.isError, feedQuery.error, addToast]);
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`public:stories-home-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'stories' },
-        () => { void refreshStories(); },
-      )
-      .subscribe();
+  // Stories, follows and posts all arrive through the shared bridge now
+  // (ONE-16). Each stream is one stably named channel, so remounting this
+  // screen re-uses it rather than leaking a new one per mount.
+  useRealtimeSync({
+    table: 'stories',
+    filter: '',
+    queryKey: ['stories'],
+    onInsert: () => { void refreshStories(); return true; },
+    onUpdate: () => { void refreshStories(); return true; },
+    onDelete: () => { void refreshStories(); return true; },
+  });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [refreshStories]);
-
-  useEffect(() => {
-    if (!userProfile?.id) return;
-    const channel = supabase
-      .channel(`public:follows-home-${userProfile.id}-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'follows' },
-        (payload) => {
-          const next = payload.new as { follower_id?: string } | null;
-          const prev = payload.old as { follower_id?: string } | null;
-          if (next?.follower_id === userProfile.id || prev?.follower_id === userProfile.id) {
-            void refreshStories();
-          }
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [userProfile?.id, refreshStories]);
+  // Server-side filtering rather than the client-side check this replaced:
+  // the old subscription received every follow in the system and discarded
+  // the ones that were not the viewer's.
+  useRealtimeSync({
+    table: 'follows',
+    filter: `follower_id=eq.${userProfile?.id ?? ''}`,
+    queryKey: ['profiles'],
+    enabled: Boolean(userProfile?.id),
+    onInsert: () => { void refreshStories(); return true; },
+    onDelete: () => { void refreshStories(); return true; },
+  });
 
   useEffect(() => {
     if (!userProfile?.id || isLoading) return;
@@ -252,20 +240,14 @@ export default function HomeFeedScreen() {
     }
   }, [isUserBlocked, queryClient, feedKey, userProfile?.id]);
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`public:posts-home-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'posts' },
-        payload => { void handlePostUpdates(payload); },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [handlePostUpdates]);
+  useRealtimeSync({
+    table: 'posts',
+    filter: '',
+    queryKey: postKeys.all,
+    onInsert: (row) => { void handlePostUpdates({ eventType: 'INSERT', new: row }); return true; },
+    onUpdate: (row) => { void handlePostUpdates({ eventType: 'UPDATE', new: row }); return true; },
+    onDelete: (row) => { void handlePostUpdates({ eventType: 'DELETE', old: row }); return true; },
+  });
 
   // Refetching an infinite query refetches every loaded page from the first
   // cursor, so the list rebuilds from the top without duplicating.
