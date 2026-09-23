@@ -230,9 +230,7 @@ const PostCard: React.FC<PostCardProps> = ({
   isPreview = false,
 }) => {
   const {
-    areCommentsLoaded,
     userProfile,
-    getComments,
     voteInPoll,
     getPollVote,
     addToast,
@@ -281,9 +279,11 @@ const PostCard: React.FC<PostCardProps> = ({
   const isImage = post.media_type === 'image';
   const timeAgo = getTimeAgo(post.timestamp);
 
-  const comments = getComments(post.id);
-  const hasLoadedComments = areCommentsLoaded(post.id);
-  const commentCount = hasLoadedComments ? comments.length : post.replies;
+  // The reply count comes off the post itself. It used to prefer the length
+  // of a locally cached comment list when one had been loaded, which is the
+  // same number by a longer route — and the comment mutations now move
+  // `replies` on the cached post as they go (ONE-14).
+  const commentCount = post.replies;
   const isMyPost = post.username === userProfile?.username;
 
   const userPollVote = getPollVote(post.id);

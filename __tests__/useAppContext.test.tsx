@@ -316,7 +316,6 @@ describe('useApp (AppContext) — provider wrapper', () => {
       // Spot-check a representative slice of the action API. The full
       // surface is huge; we just confirm the provider is actually wiring
       // functions (not returning undefined) for the most-used actions.
-      expect(typeof ctx.postComment).toBe('function');
       expect(typeof ctx.addToast).toBe('function');
       expect(typeof ctx.removeToast).toBe('function');
       expect(typeof ctx.setTheme).toBe('function');
@@ -469,6 +468,18 @@ describe('post writes are not on the context any more', () => {
       unmount(handle);
     }
   });
+
+  it.each(['postComments', 'getComments', 'setComments', 'areCommentsLoaded', 'postComment'])(
+    'does not expose %s — comments are a query now (ONE-14)',
+    (name) => {
+      const handle = mountWithProvider();
+      try {
+        expect(handle.capture.current!).not.toHaveProperty(name);
+      } finally {
+        unmount(handle);
+      }
+    },
+  );
 
   it.each(['followedUsernames', 'isUserFollowed', 'toggleFollowUser', 'updateProfile'])(
     'does not expose %s — follows and profile edits are features/profiles now',

@@ -16,16 +16,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
 import { formatDistanceToNow } from 'date-fns';
 import { useApp } from '../../store/AppContext.native';
-import { createLikeGuard } from '../../services/likeGuard';
-import { createFetchGuard, runFetchGuarded } from '../../services/fetchGuard';
 import {
-  getCommentsForPost,
-  toggleCommentLike,
-  getCommentLikesCount,
-  isCommentLikedByUser,
-  deleteComment as apiDeleteComment,
-  cleanHtml,
-} from '../../services/apiService';
+  useCommentsQuery,
+  useCommentLikesQuery,
+  useAddComment,
+  useDeleteComment,
+  useToggleCommentLike,
+} from '../../features/comments';
+import { cleanHtml } from '../../services/apiService';
 import UserAvatar from '../../components/native/UserAvatar';
 import RenderUserContent from '../../components/native/RenderUserContent';
 import { HeartIcon, TrashIcon } from '../../components/native/Icons';
@@ -68,43 +66,19 @@ const CommentItem: React.FC<{
   currentAvatar?: string;
   onViewProfile: (username: string) => void;
 }> = React.memo(({ comment, onDelete, currentUserId, currentUsername, onViewProfile }) => {
-  const [isLiked, setIsLiked] = useState(false);
-  const [likesCount, setLikesCount] = useState(0);
   const { triggerHapticFeedback } = useApp();
 
-  useEffect(() => {
-    if (!comment.id || comment.id.startsWith('temp-')) return;
-    const fetchLikes = async () => {
-      try {
-        const [count, liked] = await Promise.all([
-          getCommentLikesCount(comment.id),
-          isCommentLikedByUser(comment.id),
-        ]);
-        setLikesCount(count);
-        setIsLiked(liked);
-      } catch (error) {
-        console.error('Failed to fetch comment likes', error);
-      }
-    };
-    fetchLikes();
-  }, [comment.id]);
+  // Likes are a query and an optimistic toggle (ONE-14). The double-tap
+  // protection this screen used to hand-roll is the mutation's own pending
+  // state now, so those 110 lines are gone.
+  const { data: likes } = useCommentLikesQuery(comment.id);
+  const likeHaptic = useCallback(() => triggerHapticFeedback(), [triggerHapticFeedback]);
+  const like = useToggleCommentLike(likeHaptic);
 
-  const likeGuardRef = useRef(createLikeGuard());
+  const isLiked = Boolean(likes?.isLiked);
+  const likesCount = likes?.count ?? 0;
 
-  const handleLike = async () => {
-    if (!comment.id || comment.id.startsWith('temp-')) return;
-    if (!likeGuardRef.current.tryAcquire()) return;
-    triggerHapticFeedback();
-    try {
-      const newLiked = await toggleCommentLike(comment.id);
-      setIsLiked(newLiked);
-      setLikesCount(prev => (newLiked ? prev + 1 : Math.max(0, prev - 1)));
-    } catch (error) {
-      console.error('Failed to toggle like', error);
-    } finally {
-      likeGuardRef.current.release();
-    }
-  };
+  const handleLike = () => like.toggle(comment.id);
 
   const canDelete = comment.userId
     ? comment.userId === currentUserId
@@ -178,103 +152,58 @@ const CommentItem: React.FC<{
 export default function CommentsScreen() {
   const { postId } = useLocalSearchParams<{ postId: string }>();
   const router = useRouter();
-  const { getComments, setComments, userProfile, isUserBlocked, postComment, addToast } = useApp();
+  const { userProfile, isUserBlocked, addToast } = useApp();
   const inputRef = useRef<TextInput>(null);
 
-  const [localComments, setLocalComments] = useState<Comment[]>([]);
-  const [loading, setLoading] = useState(true);
   const [newCommentText, setNewCommentText] = useState('');
 
-  const commentsFromContext = useMemo(
-    () => (postId ? getComments(postId) : EMPTY_COMMENTS),
-    [getComments, postId],
-  );
+  // One query, keyed by post. Two mounts in quick succession share a single
+  // request because TanStack dedupes by key — which is what made the 209-line
+  // fetch guard, its abort plumbing and its cooldown unnecessary (ONE-14).
+  const { data: comments, isPending: loading } = useCommentsQuery(postId);
+  const addCommentMutation = useAddComment();
+  const deleteCommentMutation = useDeleteComment();
 
-  // Per-postId in-flight guard. Recreated when postId changes so a
-  // previous post's request can never race with a new one.
-  const fetchGuardRef = useRef(createFetchGuard());
-
-  useEffect(() => {
-    // When the route param changes, drop any in-flight request for
-    // the previous postId and start fresh.
-    fetchGuardRef.current.abort();
-    fetchGuardRef.current = createFetchGuard();
-  }, [postId]);
-
-  const loadAndSetComments = useCallback(async () => {
-    if (!postId) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    const result = await runFetchGuarded(fetchGuardRef.current, async (signal) => {
-      try {
-        const fetched = await getCommentsForPost(postId);
-        if (signal?.aborted) {
-          // The fetch was cancelled while in flight; do not apply
-          // the stale result.
-          return [];
-        }
-        setComments(postId, fetched);
-        return fetched;
-      } catch (error) {
-        if ((error as { name?: string } | undefined)?.name === 'AbortError') {
-          return [];
-        }
-        console.error('Failed to load comments', error);
-        throw error;
-      }
-    });
-    if (result.ran) {
-      setLoading(false);
-    }
-    // When result.ran === false, a newer fetch is taking over; it
-    // owns the loading state from here on, so we leave it alone.
-  }, [postId, setComments]);
-
-  useEffect(() => {
-    loadAndSetComments();
-    return () => {
-      // On unmount, cancel any in-flight request so it can't call
-      // setComments / setLoading on an unmounted component.
-      fetchGuardRef.current.abort();
-    };
-  }, [loadAndSetComments]);
-
-  useEffect(() => {
-    const filterBlocked = (comments: Comment[]): Comment[] =>
-      comments
+  // A blocked account's comments are filtered out of what is rendered; the
+  // cache keeps the server's answer intact.
+  const localComments = useMemo(() => {
+    const filterBlocked = (list: Comment[]): Comment[] =>
+      list
         .filter(c => !isUserBlocked(c.username))
         .map(c => ({ ...c, replies: c.replies ? filterBlocked(c.replies) : [] }));
-    setLocalComments(filterBlocked(commentsFromContext));
-  }, [commentsFromContext, isUserBlocked]);
+
+    return filterBlocked(comments ?? EMPTY_COMMENTS);
+  }, [comments, isUserBlocked]);
 
   const handleAddComment = () => {
     const text = newCommentText.trim();
-    if (!text || !postId) return;
+    if (!text || !postId || addCommentMutation.isPending) return;
+
     setNewCommentText('');
-    postComment(postId, cleanHtml(text));
+    addCommentMutation.mutate({
+      postId,
+      text: cleanHtml(text),
+      author: {
+        id: userProfile?.id,
+        username: userProfile?.username || '',
+        avatar: userProfile?.profilePicture,
+      },
+    });
   };
 
-  const handleDeleteComment = useCallback(async (commentId: string) => {
-    const previous = localComments;
-    const updated = removeCommentById(localComments, commentId);
-    if (updated === localComments) return;
+  const handleDeleteComment = useCallback((commentId: string) => {
+    if (!postId) return;
 
-    setLocalComments(updated);
-    if (postId) setComments(postId, updated);
-
-    if (commentId.startsWith('temp-')) return;
-
-    try {
-      await apiDeleteComment(commentId);
-    } catch (error) {
-      console.error('Failed to delete comment', error);
-      addToast('Failed to delete comment.', 'error');
-      setLocalComments(previous);
-      if (postId) setComments(postId, previous);
-    }
-  }, [addToast, localComments, postId, setComments]);
+    deleteCommentMutation.mutate(
+      { postId, commentId },
+      {
+        onError: (error) => {
+          console.error('Failed to delete comment', error);
+          addToast('Failed to delete comment.', 'error');
+        },
+      },
+    );
+  }, [addToast, deleteCommentMutation, postId]);
 
   const handleViewProfile = useCallback((username: string) => {
     router.push(`/user/${username}`);
@@ -353,9 +282,15 @@ export default function CommentsScreen() {
             </View>
             <Pressable
               onPress={handleAddComment}
-              disabled={!newCommentText.trim()}
+              disabled={!newCommentText.trim() || addCommentMutation.isPending}
             >
-              <Text className={`font-semibold ${newCommentText.trim() ? 'text-blue-500' : 'text-gray-500'}`}>
+              <Text
+                className={`font-semibold ${
+                  newCommentText.trim() && !addCommentMutation.isPending
+                    ? 'text-blue-500'
+                    : 'text-gray-500'
+                }`}
+              >
                 Post
               </Text>
             </Pressable>

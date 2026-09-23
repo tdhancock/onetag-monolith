@@ -13,7 +13,6 @@ import type { Comment, Post, Story, UserProfile, Toast, Notification, Message } 
 import { normalizeNotifications } from '../types';
 
 interface AppState {
-    postComments: Map<string, Comment[]>;
     /**
      * The signed-in auth user's id — the session, not their profile row.
      *
@@ -48,10 +47,6 @@ interface AppContextType extends AppState {
      * `userProfile?.id` guards read as "not ready" exactly as before.
      */
     userProfile: UserProfile;
-    postComment: (postId: string, content: string) => Promise<void>;
-    getComments: (postId: string) => Comment[];
-    setComments: (postId: string, comments: Comment[]) => void;
-    areCommentsLoaded: (postId: string) => boolean;
     setTheme: (theme: 'light' | 'dark') => void;
     addUserStory: (story: Story) => void;
     deleteStory: (storyId: string) => void;
@@ -87,7 +82,6 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [state, setState] = useState<AppState>(() => {
         return {
-            postComments: new Map(),
             authUserId: '',
             theme: 'dark',
             userStories: [],
@@ -324,7 +318,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             } else if (event === 'SIGNED_OUT') {
                 setState(prevState => ({
                     ...prevState,
-                    postComments: new Map(),
                     authUserId: '',
                     userStories: [],
                     storyComments: new Map(),
@@ -375,84 +368,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // useLikePost / useRepostPost / useSavePost.
 
 
-    const postComment = useCallback(async (postId: string, content: string) => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            addToast('You must be logged in to comment.', 'error');
-            return;
-        }
-
-        const tempId = `temp-comment-${Date.now()}`;
-        const optimisticComment: Comment = {
-            id: tempId,
-            userId: user.id,
-            username: userProfile.username,
-            avatar: userProfile.profilePicture,
-            text: content,
-            timestamp: new Date(),
-            likes: 0,
-            isLiked: false,
-            replies: [],
-        };
-
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => {
-            const newPostComments = new Map(prevState.postComments);
-            const existingComments = newPostComments.get(postId);
-            const allComments = Array.isArray(existingComments) ? existingComments : [];
-            newPostComments.set(postId, [optimisticComment, ...allComments]);
-            return { ...prevState, postComments: newPostComments };
-        });
-
-        try {
-            const newCommentData = await apiAddComment(postId, user.id, content);
-
-            const realComment: Comment = {
-                id: newCommentData.id,
-                userId: newCommentData.user_id,
-                username: newCommentData.profiles.username,
-                avatar: newCommentData.profiles.avatar_url,
-                text: newCommentData.content,
-                timestamp: new Date(newCommentData.created_at),
-                likes: 0,
-                isLiked: false,
-                replies: [],
-            };
-
-            // FIX: Explicitly typed `prevState` as AppState.
-            setState((prevState: AppState) => {
-                const newPostComments = new Map(prevState.postComments);
-                const postComments = newPostComments.get(postId) || [];
-                const updatedComments = postComments.map(c => c.id === tempId ? realComment : c);
-                newPostComments.set(postId, updatedComments);
-                return { ...prevState, postComments: newPostComments };
-            });
-
-        } catch (error) {
-            addToast('Failed to post comment.', 'error');
-            console.error(error);
-            // FIX: Explicitly typed `prevState` as AppState.
-            setState((prevState: AppState) => {
-                const newPostComments = new Map(prevState.postComments);
-                const postComments = newPostComments.get(postId) || [];
-                newPostComments.set(postId, postComments.filter(c => c.id !== tempId));
-                return { ...prevState, postComments: newPostComments };
-            });
-        }
-    }, [addToast, userProfile.username, userProfile.profilePicture]);
-
-    const getComments = useCallback((postId: string) => state.postComments.get(postId) || [], [state.postComments]);
-
-    const setComments = useCallback((postId: string, comments: Comment[]) => {
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => {
-            const newPostComments = new Map(prevState.postComments);
-            newPostComments.set(postId, comments);
-            return { ...prevState, postComments: newPostComments };
-        });
-    }, []);
-
-    const areCommentsLoaded = useCallback((postId: string) => state.postComments.has(postId), [state.postComments]);
+    // Comments moved to features/comments in ONE-14: the cache they were
+    // kept in here was a query cache, hand-rolled, with a loaded flag and a
+    // 209-line fetch guard in front of it. Screens use useCommentsQuery and
+    // useAddComment / useDeleteComment.
 
     // Publishing, editing and deleting a post moved to
     // features/posts/mutations.ts in ONE-15: they existed here only to keep a
@@ -781,10 +700,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const contextValue = useMemo(() => ({
         ...state,
-        postComment,
-        getComments,
-        setComments,
-        areCommentsLoaded,
         setTheme,
         addUserStory,
         deleteStory,
@@ -817,10 +732,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }), [
         state,
         userProfile,
-        postComment,
-        getComments,
-        setComments,
-        areCommentsLoaded,
         setTheme,
         addUserStory,
         deleteStory,
