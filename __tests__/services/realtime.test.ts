@@ -90,16 +90,61 @@ describe('realtime subscribe / unsubscribe lifecycle', () => {
     expect(activeSubscriptionCount()).toBe(1);
   });
 
-  it('returns the existing handle when subscribing twice to the same channel name', () => {
+  it('shares the existing channel when subscribing twice to the same channel name', () => {
     const onChangeA = jest.fn();
     const onChangeB = jest.fn();
 
     const first = subscribe('dup', 'likes', 'user_id=eq.u1', onChangeA);
     const second = subscribe('dup', 'likes', 'user_id=eq.u1', onChangeB);
 
-    expect(first).toBe(second);
+    // One channel, but a handle per caller — each releases only itself.
+    expect(first.channel).toBe(second.channel);
+    expect(first).not.toBe(second);
     expect(channelMock).toHaveBeenCalledTimes(1);
     expect(activeSubscriptionCount()).toBe(1);
+  });
+
+  it('a later caller letting go leaves the earlier caller listening', () => {
+    const earlier = jest.fn();
+    const later = jest.fn();
+
+    subscribe('shared', 'messages', 'receiver_id=eq.u1', earlier);
+    const laterHandle = subscribe('shared', 'messages', 'receiver_id=eq.u1', later);
+
+    // The chat screen unmounts; AppContext must still hear new messages.
+    unsubscribe(laterHandle);
+
+    const pgHandler = channelsCreated[0].on.mock.calls[0][2];
+    pgHandler({ eventType: 'INSERT', schema: 'public', table: 'messages', new: { id: 'm1' }, old: null });
+
+    expect(earlier).toHaveBeenCalledTimes(1);
+    expect(later).not.toHaveBeenCalled();
+    expect(removeChannel).not.toHaveBeenCalled();
+    expect(activeSubscriptionCount()).toBe(1);
+  });
+
+  it('two callers passing the same function each hold their own registration', () => {
+    const onChange = jest.fn();
+
+    const a = subscribe('same-fn', 'posts', 'user_id=eq.u1', onChange);
+    subscribe('same-fn', 'posts', 'user_id=eq.u1', onChange);
+    unsubscribe(a);
+
+    const pgHandler = channelsCreated[0].on.mock.calls[0][2];
+    pgHandler({ eventType: 'INSERT', schema: 'public', table: 'posts', new: { id: 'p1' }, old: null });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('a caller joining an open channel is told it is already connected', () => {
+    subscribe('late', 'notifications', 'receiver_id=eq.u1', jest.fn());
+    const statusCallback = channelsCreated[0].subscribe.mock.calls[0][0];
+    statusCallback('SUBSCRIBED');
+
+    const onStatus = jest.fn();
+    subscribe('late', 'notifications', 'receiver_id=eq.u1', jest.fn(), onStatus);
+
+    expect(onStatus).toHaveBeenCalledWith('SUBSCRIBED');
   });
 
   it('removeChannel is called and the handle is dropped on unsubscribe', () => {
