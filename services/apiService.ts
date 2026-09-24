@@ -140,11 +140,6 @@ async function localUrlToBlob(url: string): Promise<Blob> {
 }
 
 /**
- * Upload a local media file (from expo-image-picker or camera) to Supabase Storage.
- * Uses fetch().arrayBuffer() which works reliably on React Native.
- * Returns the public URL of the uploaded file.
- */
-/**
  * Raised when a post's media could not be turned into a remotely readable URL.
  * Distinct from a generic publish failure so the composer can tell the author
  * the *image* is the problem, not their text.
@@ -174,6 +169,11 @@ export function assertRemoteMediaUrl(url: string | null | undefined): void {
     }
 }
 
+/**
+ * Upload a local media file (from expo-image-picker or camera) to Supabase Storage.
+ * Uses fetch().arrayBuffer() which works reliably on React Native.
+ * Returns the public URL of the uploaded file.
+ */
 export async function uploadMedia(localUri: string, userId: string): Promise<string> {
     const { arrayBuffer, contentType, ext } = await readLocalFile(localUri);
 

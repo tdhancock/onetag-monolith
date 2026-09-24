@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
-import { useFollowState, useToggleFollow } from '../../features/profiles';
+import { useFollowState, useToggleFollow, profileKeys } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
 import {
   getStories,
@@ -191,7 +191,7 @@ export default function HomeFeedScreen() {
   useRealtimeSync({
     table: 'follows',
     filter: `follower_id=eq.${userProfile?.id ?? ''}`,
-    queryKey: ['profiles'],
+    queryKey: profileKeys.all,
     enabled: Boolean(userProfile?.id),
     onInsert: () => { void refreshStories(); return true; },
     onDelete: () => { void refreshStories(); return true; },
