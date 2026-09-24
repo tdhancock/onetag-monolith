@@ -1,4 +1,12 @@
 -- Migration: storage buckets for post/story media and avatars
+--
+-- RULE (ONE-21): media upload paths are keyed by the AUTH USER id, never by a
+-- profile id. Every policy below gates on (SELECT auth.uid()) appearing in the
+-- folder name. Since the multi-profile migration a profile id can differ from
+-- its account's auth id, so an upload pathed by profile id is rejected here --
+-- a failure that surfaces far from its cause. Do not route these policies
+-- through public.owns_profile(); build paths from the auth user id instead
+-- (services/mediaUpload.ts, services/storyUpload.ts, features/profiles uploadAvatar).
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES

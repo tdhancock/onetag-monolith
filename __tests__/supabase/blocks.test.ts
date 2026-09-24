@@ -127,3 +127,39 @@ describe('enforcement', () => {
     expect(sql).not.toContain('DROP POLICY "Posts visible unless author is private"');
   });
 });
+
+// ─── Multi-profile (ONE-21) ─────────────────────────────────────────────
+//
+// Blocks stay account-level: a person blocks a person. The policies pass
+// `is_blocked_by` a *profile* id (messages.receiver_id, posts.user_id), which
+// after ONE-21 can differ from its account's auth id — so the function must
+// resolve the profile to its account before comparing. Behaviour is pinned
+// against a real database in supabase/tests/rls_multi_profile.test.sql: a
+// message and a comment from a blocked account are rejected through both of
+// its profiles.
+
+describe('blocks under multi-profile', () => {
+  const multiProfileRls = (): string => {
+    const file = readdirSync(MIGRATIONS).find((name) => name.endsWith('_multi_profile_rls.sql'));
+    if (!file) throw new Error('No *_multi_profile_rls.sql migration found');
+    return flat(readFileSync(join(MIGRATIONS, file), 'utf8'));
+  };
+
+  it('resolves the target profile to its owning account before comparing', () => {
+    const sql = multiProfileRls();
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION public.is_blocked_by(target UUID)');
+    expect(sql).toContain('JOIN public.blocks b ON b.blocker_id = p.user_id');
+    expect(sql).toContain('WHERE p.id = target AND b.blocked_id = (SELECT auth.uid())');
+  });
+
+  it('keeps blocks on the account: its own policies are not rewritten', () => {
+    const sql = multiProfileRls();
+    expect(sql).not.toMatch(/DROP POLICY "[^"]*" ON public\.blocks/);
+  });
+
+  it('keeps enforcing blocks on messages and comments', () => {
+    const sql = multiProfileRls();
+    expect(sql).toContain('AND NOT public.is_blocked_by(receiver_id)');
+    expect(sql).toContain('public.is_blocked_by(p.user_id)');
+  });
+});
