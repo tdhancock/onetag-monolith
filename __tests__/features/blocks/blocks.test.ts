@@ -23,6 +23,7 @@ import { QueryClient, MutationObserver } from '@tanstack/react-query';
 import { toggleMutationOptions } from '../../../lib/optimisticToggle';
 import type { BlockedUser } from '../../../features/blocks/types';
 import { migrateLocalBlocks, LOCAL_BLOCKS_KEY } from '../../../features/blocks/localMigration';
+import { shouldBlockAfterFlip } from '../../../features/blocks/mutations';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────
 
@@ -128,9 +129,7 @@ describe('block toggle', () => {
     const calls: string[] = [];
 
     const mutationFn = async (userId: string) => {
-      const shouldBlock = (client.getQueryData<BlockedUser[]>(LIST_KEY) ?? []).some(
-        (u) => u.userId === userId,
-      );
+      const shouldBlock = shouldBlockAfterFlip(client.getQueryData<BlockedUser[]>(LIST_KEY), userId);
       calls.push(shouldBlock ? 'block' : 'unblock');
     };
 
@@ -138,6 +137,22 @@ describe('block toggle', () => {
     await runToggle(client, mutationFn, 'u1');
 
     expect(calls).toEqual(['block', 'unblock']);
+  });
+
+  it('blocks, rather than silently unblocking, when the list has not loaded', async () => {
+    // Nothing cached yet — the block list is still loading, or onMutate has
+    // just cancelled its fetch — so there is nothing for the flip to act on.
+    const client = newClient();
+    const calls: string[] = [];
+
+    const mutationFn = async (userId: string) => {
+      const shouldBlock = shouldBlockAfterFlip(client.getQueryData<BlockedUser[]>(LIST_KEY), userId);
+      calls.push(shouldBlock ? 'block' : 'unblock');
+    };
+
+    await runToggle(client, mutationFn, 'u1');
+
+    expect(calls).toEqual(['block']);
   });
 });
 

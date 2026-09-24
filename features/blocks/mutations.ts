@@ -29,6 +29,22 @@ export interface BlockToggle {
 }
 
 /**
+ * Whether the toggle now under way is a block, read off the cached list after
+ * onMutate has flipped it — so there is no separate record of intent to
+ * disagree with the cache.
+ *
+ * With no list cached — still loading, or its fetch just cancelled by
+ * onMutate — there was nothing to flip, and reading that as "not in the
+ * list" turned a block into a silent unblock. It blocks instead: an unblock
+ * can only start from a rendered, and so loaded, block list, and blocking
+ * someone already blocked is a harmless upsert.
+ */
+export const shouldBlockAfterFlip = (
+  list: BlockedUser[] | undefined,
+  userId: string,
+): boolean => list === undefined || list.some((user) => user.userId === userId);
+
+/**
  * Block or unblock, optimistically.
  *
  * The optimistic row is built from what the caller already has on screen, so
@@ -72,11 +88,9 @@ export const useBlockToggle = (blockerId: string | undefined): BlockToggle => {
     mutationFn: async (userId: string) => {
       if (!blockerId) throw new Error('You must be signed in to block someone.');
 
-      // onMutate has already flipped the cache, so what the list says now is
-      // the state being asked for — no separate record of intent to disagree
-      // with it.
-      const shouldBlock = (queryClient.getQueryData<BlockedUser[]>(listKey) ?? []).some(
-        (user) => user.userId === userId,
+      const shouldBlock = shouldBlockAfterFlip(
+        queryClient.getQueryData<BlockedUser[]>(listKey),
+        userId,
       );
 
       return shouldBlock
