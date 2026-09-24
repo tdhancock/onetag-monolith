@@ -36,6 +36,7 @@ export const mapProfileUpdatesToRow = (updates: ProfileUpdates): Partial<Profile
     if (updates.username !== undefined) row.username = updates.username;
     if (updates.bio !== undefined) row.bio = updates.bio;
     if (updates.profilePicture !== undefined) row.avatar_url = updates.profilePicture;
+    if (updates.isPrivate !== undefined) row.is_private = updates.isPrivate;
     return row;
 };
 
