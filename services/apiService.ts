@@ -32,6 +32,7 @@ import {
     ensureProfileRowForUser,
     ensureProfileForNotificationUser,
 } from './profileBootstrap';
+import { sendMessage } from '../features/messages';
 import { isLikelyStoragePolicyError, isStorageBucketMissingError } from './mediaUpload';
 
 // Post media upload moved to services/mediaUpload.ts, and publishing, editing
@@ -753,121 +754,15 @@ export const getPostReposters = async (postId: string): Promise<SimpleUser[]> =>
     return Array.from(uniqueUsers.values());
 };
 
-export const getChatListUsers = async (userId: string): Promise<SimpleUser[]> => {
-    try {
-        // Get all messages involving the user, ordered by most recent.
-        const { data: messages, error: messagesError } = await supabase
-            .from('messages')
-            .select('sender_id, receiver_id, created_at')
-            .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
-            .order('created_at', { ascending: false });
-
-        if (messagesError) throw messagesError;
-
-        // Get unique partner IDs and store the timestamp of their latest message
-        const latestMessageTimestamps = new Map<string, string>();
-        const partnerIds = new Set<string>();
-
-        for (const message of messages) {
-            const partnerId = message.sender_id === userId ? message.receiver_id : message.sender_id;
-            if (!latestMessageTimestamps.has(partnerId)) {
-                latestMessageTimestamps.set(partnerId, message.created_at);
-            }
-            partnerIds.add(partnerId);
-        }
-
-        if (partnerIds.size === 0) {
-            return [];
-        }
-
-        // Fetch profiles for the unique partner IDs
-        const { data: profiles, error: profilesError } = await supabase
-            .from('profiles')
-            .select('id, full_name, username, avatar_url, is_verified')
-            .in('id', Array.from(partnerIds));
-        
-        if (profilesError) {
-            throw profilesError;
-        }
-
-        // Map profiles to SimpleUser objects
-        const users: SimpleUser[] = (profiles || []).map((u: any) => ({
-            id: u.id,
-            name: u.full_name,
-            username: u.username,
-            avatar: u.avatar_url,
-            isVerified: u.is_verified,
-        }));
-
-        // Sort users based on the timestamp of their last message
-        users.sort((a, b) => {
-            // FIX: Using a fallback of 0 for `new Date()` ensures a valid timestamp (the Unix epoch) if a message time is not found, preventing `NaN` results from invalid date subtractions which was causing the arithmetic operation error.
-            const timeA = new Date(latestMessageTimestamps.get(a.id) || 0).getTime();
-            const timeB = new Date(latestMessageTimestamps.get(b.id) || 0).getTime();
-            return timeB - timeA;
-        });
-
-        return users;
-
-    } catch (error) {
-        // Log the full error object for better debugging.
-        console.error("Error fetching chat list users:", error);
-        return [];
-    }
-};
-
-export const sendMessage = async (
-    { sender_id, receiver_id, text, post, user, replied_story_id, reply_to }: 
-    { sender_id: string, receiver_id: string, text?: string | null, post?: Post | null, user?: SimpleUser | null, replied_story_id?: string | null, reply_to?: string | null }
-): Promise<Message> => {
-    let type: Message['type'] = 'text';
-    if(post) type = 'post_share';
-    if(user) type = 'profile_share';
-    if(replied_story_id) type = 'story_reply';
-    
-    const { data, error } = await supabase
-        .from('messages')
-        .insert({
-            sender_id,
-            receiver_id,
-            text,
-            type,
-            shared_post_id: post?.id,
-            shared_profile_id: user?.id,
-            replied_story_id,
-            reply_to
-        })
-        .select()
-        .single();
-
-    if (error) throw error;
-    return data as Message;
-};
-
-export const markMessagesAsRead = async (receiverId: string, senderId: string): Promise<boolean> => {
-    const { error } = await supabase
-        .from('messages')
-        .update({ seen: true })
-        .match({ receiver_id: receiverId, sender_id: senderId, seen: false });
-    return !error;
-};
-
-export const deleteChatHistory = async (userId1: string, userId2: string): Promise<void> => {
-    const { error } = await supabase.rpc('delete_chat_history', { user_id_1: userId1, user_id_2: userId2 });
-    if (error) throw error;
-};
-
-export const deleteConversationForBothSides = async (myId: string, otherId: string): Promise<boolean> => {
-    const { error } = await supabase.rpc("delete_conversation", {
-        user1: myId,
-        user2: otherId,
-    });
-    if (error) {
-        console.error("Error deleting conversation:", error);
-        return false;
-    }
-    return true;
-};
+// Moved to features/messages/api.ts in ONE-18. Re-exported until the final
+// M2 cleanup (ONE-20).
+export {
+    getChatListUsers,
+    sendMessage,
+    markMessagesAsRead,
+    deleteChatHistory,
+    deleteConversationForBothSides,
+} from '../features/messages';
 
 // --- REPORT FUNCTIONS ---
 

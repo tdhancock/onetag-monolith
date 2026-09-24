@@ -134,7 +134,6 @@ jest.mock('../services/apiService', () => {
     getMyStories: jest.fn(async () => []),
     deleteStoryFromDatabase: jest.fn(),
     toggleStoryLikeInDatabase: jest.fn(),
-    markMessagesAsRead: jest.fn(),
     toggleSavePost: jest.fn(),
     adminDeletePost: jest.fn(),
     ensureCurrentUserProfile: jest.fn(),
@@ -162,6 +161,10 @@ jest.mock('../features/profiles', () => ({
 
 jest.mock('../features/notifications', () => ({
   useNotificationsRealtime: jest.fn(),
+}), { virtual: true });
+
+jest.mock('../features/messages', () => ({
+  useMessagesRealtime: jest.fn(),
 }), { virtual: true });
 
 jest.mock('../features/blocks', () => ({
@@ -205,7 +208,6 @@ const Probe: React.FC<{ capture: Captured }> = ({ capture }) => {
     theme: ctx.theme,
     userProfileName: ctx.userProfile.name,
     hasIsUserBlocked: typeof ctx.isUserBlocked === 'function',
-    unreadMessageCount: ctx.unreadMessageCount,
     isAdmin: ctx.isAdmin,
   }));
 };
@@ -305,7 +307,9 @@ describe('useApp (AppContext) — provider wrapper', () => {
       expect(ctx).not.toHaveProperty('repostedPosts');
       expect(ctx).not.toHaveProperty('savedPosts');
       expect(ctx).not.toHaveProperty('blockedUsers');
-      expect(ctx!.unreadMessageCount).toBe(0);
+      // Unread messages are a query too (ONE-18).
+      expect(ctx).not.toHaveProperty('unreadMessageCount');
+      expect(ctx).not.toHaveProperty('unreadChats');
       expect(ctx!.isAdmin).toBe(false);
       // The notification list is a query now (ONE-17); the transient
       // top-of-screen banner is UI state and stays.
@@ -327,7 +331,8 @@ describe('useApp (AppContext) — provider wrapper', () => {
       expect(typeof ctx.removeToast).toBe('function');
       expect(typeof ctx.setTheme).toBe('function');
       expect(typeof ctx.refreshAllData).toBe('function');
-      expect(typeof ctx.markAllMessagesAsRead).toBe('function');
+      expect(ctx).not.toHaveProperty('markAllMessagesAsRead');
+      expect(ctx).not.toHaveProperty('markChatAsRead');
     } finally {
       unmount(handle);
     }

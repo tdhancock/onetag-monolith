@@ -16,6 +16,7 @@ import { useApp } from '../../store/AppContext.native';
 import { useFollowState, useToggleFollow, profileKeys } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
 import { useUnreadNotificationCount } from '../../features/notifications';
+import { useUnreadMessageCount } from '../../features/messages';
 import {
   getStories,
   getSmartUserSuggestions,
@@ -57,7 +58,6 @@ export default function HomeFeedScreen() {
     userProfile,
     isUserBlocked,
     addToast,
-    unreadMessageCount,
   } = useApp();
 
   // Follow state is a query now (ONE-15), shared with every other screen that
@@ -66,6 +66,7 @@ export default function HomeFeedScreen() {
   const follow = useToggleFollow(userProfile?.id || undefined);
   const router = useRouter();
   const unreadNotificationCount = useUnreadNotificationCount(userProfile?.id || undefined);
+  const unreadMessageCount = useUnreadMessageCount(userProfile?.id || undefined);
 
   const queryClient = useQueryClient();
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);

@@ -1,6 +1,6 @@
 
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,28 +17,27 @@ import { Image } from 'expo-image';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
-import { useRealtimeSync } from '../lib/realtimeBridge';
+import { getUserProfile, searchUsers } from '../features/profiles';
 import {
-  getChatListUsers,
-  getUserProfile,
-  sendMessage,
-  searchUsers,
-  deleteConversationForBothSides,
-  mapPostData,
-  getPostById,
-  getStoryById,
-  cleanHtml,
-} from '../services/apiService';
-import { supabase } from '../services/supabase.native';
+  useConversationsQuery,
+  useThreadQuery,
+  useUnreadChats,
+  useSendMessage,
+  useMarkChatRead,
+  useMarkAllMessagesRead,
+  useDeleteConversation,
+  isPendingMessage,
+} from '../features/messages';
+import { cleanHtml } from '../services/apiService';
 import UserAvatar from '../components/native/UserAvatar';
 import RenderUserContent from '../components/native/RenderUserContent';
 import { SearchIcon, VerifiedIcon, CheckIcon, DoubleCheckIcon, ArrowLeftIcon } from '../components/native/Icons';
-import type { Message, Post, SimpleUser, Story } from '../types';
+import type { Message, Post, SimpleUser } from '../types';
 
 // ─── Message Status ───────────────────────────
 
 const MessageStatus: React.FC<{ message: Message; isMyMessage: boolean }> = ({ message, isMyMessage }) => {
-  const isTempMessage = message.id.startsWith('temp-');
+  const isTempMessage = isPendingMessage(message);
   const creationTime = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
   if (!isMyMessage) {
@@ -108,15 +107,24 @@ const SharedUserPreview: React.FC<{ user: SimpleUser; onPress: () => void }> = (
 export default function MessagesScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ chatWith?: string }>();
-  const { userProfile, addToast, markAllMessagesAsRead, markChatAsRead, unreadChats, triggerHapticFeedback } = useApp();
+  const { userProfile, addToast, triggerHapticFeedback } = useApp();
+  const userId = userProfile?.id || undefined;
 
-  const [chatUsers, setChatUsers] = useState<SimpleUser[]>([]);
-  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [chatWith, setChatWith] = useState<SimpleUser | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+
+  // Conversations, the open thread and unread state are queries (ONE-18),
+  // kept live by the realtime hook AppContext mounts for the session.
+  const { data: chatUsers = [], isLoading: isLoadingUsers } = useConversationsQuery(userId);
+  const { data: messages = [] } = useThreadQuery(userId, chatWith?.id);
+  const unreadChats = useUnreadChats(userId);
+
+  const sendMessage = useSendMessage(userId);
+  const markChatRead = useMarkChatRead(userId);
+  const markAllRead = useMarkAllMessagesRead(userId);
+  const deleteConversation = useDeleteConversation(userId);
 
   // Search
   const [userSearchResults, setUserSearchResults] = useState<SimpleUser[]>([]);
@@ -129,27 +137,10 @@ export default function MessagesScreen() {
 
   // Mark messages read on mount (list view)
   useEffect(() => {
-    if (userProfile?.id && !params.chatWith) {
-      markAllMessagesAsRead();
+    if (userId && !params.chatWith) {
+      markAllRead.mutate();
     }
-  }, [userProfile?.id, params.chatWith]);
-
-  // Load chat list
-  useEffect(() => {
-    const fetchUsers = async () => {
-      if (!userProfile?.id) { setIsLoadingUsers(false); return; }
-      setIsLoadingUsers(true);
-      try {
-        const users = await getChatListUsers(userProfile.id);
-        setChatUsers(users);
-      } catch (err) {
-        console.error('Could not fetch chat users', err);
-      } finally {
-        setIsLoadingUsers(false);
-      }
-    };
-    fetchUsers();
-  }, [userProfile?.id]);
+  }, [userId, params.chatWith]);
 
   // Open chat from params (e.g. from profile "Message" button)
   useEffect(() => {
@@ -173,13 +164,14 @@ export default function MessagesScreen() {
     findAndOpen();
   }, [params.chatWith]);
 
-  const openChat = async (user: SimpleUser) => {
+  const openChat = (user: SimpleUser) => {
     setSearchTerm('');
     setUserSearchResults([]);
     setChatWith(user);
-    setMessages([]);
-    if (userProfile?.id && user.id) {
-      await markChatAsRead(user.id);
+    if (userId && user.id) {
+      markChatRead.mutate(user.id, {
+        onError: () => addToast("Couldn't mark messages as read.", 'error'),
+      });
     }
   };
 
@@ -203,7 +195,7 @@ export default function MessagesScreen() {
           isVerified: u.is_verified,
           bio: u.bio || undefined,
         }));
-        setUserSearchResults(mapped.filter(u => u.id !== userProfile?.id));
+        setUserSearchResults(mapped.filter(u => u.id !== userId));
       } catch (error) {
         console.error('Error searching users:', error);
       } finally {
@@ -212,195 +204,48 @@ export default function MessagesScreen() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchTerm, userProfile?.id]);
-
-  // Load messages when chat opens
-  useEffect(() => {
-    if (!chatWith?.id || !userProfile?.id) return;
-
-    const loadMessages = async () => {
-      const { data, error } = await supabase
-        .from('messages')
-        .select(`
-          *,
-          sharedPost:shared_post_id (
-            *,
-            profiles (username, avatar_url, full_name, is_verified),
-            likes(count),
-            comments(count),
-            reposts(count)
-          ),
-          sharedUser:shared_profile_id(id, username, full_name, avatar_url, is_verified, bio)
-        `)
-        .or(`and(sender_id.eq.${userProfile.id},receiver_id.eq.${chatWith.id}),and(sender_id.eq.${chatWith.id},receiver_id.eq.${userProfile.id})`)
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error('Error loading messages:', error);
-      } else {
-        const hydrated = (data || []).map((msg: any) => {
-          const full: Message = { ...msg, sharedPost: null, sharedUser: null, repliedStory: null, repliedMessage: null };
-          if (msg.sharedPost) full.sharedPost = mapPostData(msg.sharedPost);
-          if (msg.sharedUser) {
-            full.sharedUser = {
-              id: msg.sharedUser.id,
-              name: msg.sharedUser.full_name,
-              username: msg.sharedUser.username,
-              avatar: msg.sharedUser.avatar_url,
-              isVerified: msg.sharedUser.is_verified,
-              bio: msg.sharedUser.bio,
-            };
-          }
-          return full;
-        });
-
-        // Link replies
-        const withReplies = hydrated.map(msg => {
-          if (msg.reply_to) {
-            const replied = hydrated.find(m => m.id === msg.reply_to);
-            return { ...msg, repliedMessage: replied || null };
-          }
-          return msg;
-        });
-        setMessages(withReplies);
-      }
-    };
-    loadMessages();
-  }, [chatWith?.id, userProfile?.id]);
-
-  // Realtime messages, through the shared bridge (ONE-16).
-  //
-  // Filtered to messages addressed to the signed-in user; the sender's own
-  // outgoing message is already in the list from the send itself. The id check
-  // in `setMessages` stays regardless — it is what stops a message appearing
-  // twice when the send response and the realtime echo race (ONE-18 moves this
-  // list into a query, where the bridge's own upsert takes over).
-  const handleIncomingMessage = useCallback((row: Record<string, unknown>) => {
-    const newMsg = row as unknown as Message;
-    if (!chatWith?.id || !userProfile?.id) return true;
-
-    const belongsToThisChat =
-      (newMsg.sender_id === userProfile.id && newMsg.receiver_id === chatWith.id) ||
-      (newMsg.sender_id === chatWith.id && newMsg.receiver_id === userProfile.id);
-
-    if (!belongsToThisChat) return true;
-
-    const hydrateAndSet = async () => {
-      let sharedPost: Post | null = null;
-      let sharedUser: SimpleUser | null = null;
-
-      if (newMsg.shared_post_id) {
-        sharedPost = (await getPostById(newMsg.shared_post_id)) || null;
-      }
-
-      if (newMsg.shared_profile_id) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('id, full_name, username, bio, avatar_url, is_verified')
-          .eq('id', newMsg.shared_profile_id)
-          .single();
-
-        if (profile) {
-          sharedUser = {
-            id: profile.id,
-            name: profile.full_name,
-            username: profile.username,
-            avatar: profile.avatar_url,
-            isVerified: profile.is_verified,
-            bio: profile.bio,
-          };
-        }
-      }
-
-      const hydrated: Message = { ...newMsg, sharedPost, sharedUser, repliedStory: null };
-
-      setMessages(prev => {
-        if (hydrated.reply_to) {
-          const replied = prev.find(m => m.id === hydrated.reply_to);
-          hydrated.repliedMessage = replied || null;
-        }
-        if (prev.some(m => m.id === hydrated.id)) return prev;
-        return [...prev, hydrated];
-      });
-    };
-
-    hydrateAndSet();
-    return true;
-  }, [chatWith?.id, userProfile?.id]);
-
-  useRealtimeSync({
-    table: 'messages',
-    filter: `receiver_id=eq.${userProfile?.id ?? ''}`,
-    queryKey: ['messages'],
-    enabled: Boolean(chatWith?.id && userProfile?.id),
-    onInsert: handleIncomingMessage,
-  });
+  }, [searchTerm, userId]);
 
   const closeChat = () => {
     setChatWith(null);
     setReplyingTo(null);
-    setMessages([]);
   };
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !chatWith || !userProfile?.id) return;
+  const handleSendMessage = () => {
+    if (!newMessage.trim() || !chatWith || !userId) return;
 
-    const tempId = `temp-message-${Date.now()}`;
-    const textToSend = cleanHtml(newMessage.trim());
-    const reply_to = replyingTo ? replyingTo.id : null;
+    // The mutation appends the message with a temporary id at once, swaps in
+    // the server row where it sits, and takes it out again if the send fails.
+    sendMessage.mutate(
+      {
+        receiverId: chatWith.id,
+        text: cleanHtml(newMessage.trim()),
+        replyTo: replyingTo,
+      },
+      {
+        onError: (error) => {
+          console.error('Error sending message:', error);
+          addToast('Failed to send message.', 'error');
+        },
+      },
+    );
 
-    const optimistic: Message = {
-      id: tempId,
-      sender_id: userProfile.id,
-      receiver_id: chatWith.id,
-      text: textToSend,
-      created_at: new Date().toISOString(),
-      type: 'text',
-      shared_post_id: null,
-      shared_profile_id: null,
-      sharedPost: null,
-      sharedUser: null,
-      reply_to,
-      repliedMessage: replyingTo,
-    };
-
-    setMessages(prev => [...prev, optimistic]);
     setNewMessage('');
     setReplyingTo(null);
-
-    try {
-      const data = await sendMessage({
-        sender_id: userProfile.id,
-        receiver_id: chatWith.id,
-        text: textToSend,
-        reply_to,
-      });
-      setMessages(prev => prev.map(msg => msg.id === tempId ? { ...msg, ...data, repliedMessage: optimistic.repliedMessage } : msg));
-    } catch (error) {
-      console.error('Error sending message:', error);
-      addToast('Failed to send message.', 'error');
-      setMessages(prev => prev.filter(msg => msg.id !== tempId));
-    }
   };
 
-  const handleDeleteChat = async () => {
-    if (!userToDelete || !userProfile?.id) return;
-    const userId = userToDelete.id;
+  const handleDeleteChat = () => {
+    if (!userToDelete || !userId) return;
+    const otherUserId = userToDelete.id;
     setUserToDelete(null);
-    setChatUsers(prev => prev.filter(u => u.id !== userId));
-    addToast('Conversation deleted.', 'info');
 
-    try {
-      const success = await deleteConversationForBothSides(userProfile.id, userId);
-      if (!success) {
+    deleteConversation.mutate(otherUserId, {
+      onSuccess: () => addToast('Conversation deleted.', 'info'),
+      onError: (error) => {
+        console.error('Failed to delete chat:', error);
         addToast('Failed to delete conversation.', 'error');
-        const users = await getChatListUsers(userProfile.id);
-        setChatUsers(users);
-      }
-    } catch (error) {
-      console.error('Failed to delete chat:', error);
-      addToast('Could not delete chat.', 'error');
-    }
+      },
+    });
   };
 
   // ─── Chat View ────────────────────────────────
@@ -415,7 +260,7 @@ export default function MessagesScreen() {
       return (
         <Pressable
           onLongPress={() => {
-            if (!msg.id.startsWith('temp-')) {
+            if (!isPendingMessage(msg)) {
               triggerHapticFeedback();
               setReplyingTo(msg);
             }

@@ -5,9 +5,9 @@ import type { User } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { useBlockedUsers, useBlockToggle, migrateLocalBlocks, blockKeys } from '../features/blocks';
 import { useCurrentUserQuery } from '../features/profiles';
-import { useRealtimeSync } from '../lib/realtimeBridge';
 import { useNotificationsRealtime } from '../features/notifications';
-import { getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, markMessagesAsRead as apiMarkMessagesAsRead, ensureCurrentUserProfile } from '../services/apiService';
+import { useMessagesRealtime } from '../features/messages';
+import { getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, ensureCurrentUserProfile } from '../services/apiService';
 import { supabase } from '../services/supabase.native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -32,8 +32,6 @@ interface AppState {
     votedPolls: Map<string, number>;
     toasts: Toast[];
     tooltip: { text: string } | null;
-    unreadMessageCount: number;
-    unreadChats: Set<string>;
     topNotification: { title: string; message: string } | null;
     isAdmin: boolean;
 }
@@ -68,8 +66,6 @@ interface AppContextType extends AppState {
     triggerHapticFeedback: (style?: 'light' | 'medium' | 'heavy') => void;
     setTooltip: (tooltip: { text: string } | null) => void;
     refreshAllData: () => Promise<void>;
-    markAllMessagesAsRead: () => Promise<void>;
-    markChatAsRead: (senderId: string) => Promise<void>;
     replaceStory: (localId: string, realStory: Story) => void;
 }
 
@@ -89,8 +85,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             votedPolls: new Map(),
             toasts: [],
             tooltip: null,
-            unreadMessageCount: 0,
-            unreadChats: new Set(),
             topNotification: null,
             isAdmin: false,
         };
@@ -126,51 +120,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         });
     }, [userProfile.id, queryClient]);
 
-    // Unread-message counts, fetched once per session.
-    //
-    // ONE-16 took the raw channel out of here: it was a second
-    // write path competing with the cache, and its channel name embedded
-    // Date.now(), so every re-subscribe leaked a channel the registry could
-    // never dedupe. The live half now goes through the bridge below.
-    // Notifications moved to features/notifications in ONE-17; messages move
-    // to features/messages in ONE-18, which is why this fetch is still here
-    // and still writes to AppState.
-    const refreshUnreadMessages = useCallback(async () => {
-        const userId = userProfile.id;
-        if (!userId) return;
-
-        const { data, error } = await supabase
-            .from('messages')
-            .select('sender_id')
-            .eq('receiver_id', userId)
-            .eq('seen', false);
-
-        if (error || !data) return;
-
-        const unreadChats = new Set(data.map(m => m.sender_id));
-        setState(prev => ({ ...prev, unreadChats, unreadMessageCount: unreadChats.size }));
-    }, [userProfile.id]);
-
-    useEffect(() => {
-        refreshUnreadMessages();
-    }, [refreshUnreadMessages]);
-
-    // Notifications are a query now (ONE-17), with their own realtime hook
-    // inside features/notifications. AppContext keeps only the unread-message
-    // half, until ONE-18 takes that too.
+    // Notifications (ONE-17) and direct messages (ONE-18) are queries, each
+    // kept live by its own realtime hook. They are mounted here because this
+    // provider lives exactly as long as a signed-in session does — the
+    // unread badge has to move whichever screen is open.
     useNotificationsRealtime(userProfile.id || undefined);
-
-    // Live unread-message updates, through the bridge. This re-reads rather
-    // than patching state from the payload: the slice is AppState until
-    // ONE-18 moves it, and the bridge's business is the cache.
-    useRealtimeSync({
-        table: 'messages',
-        filter: `receiver_id=eq.${userProfile.id}`,
-        queryKey: ['messages'],
-        enabled: Boolean(userProfile.id),
-        onInsert: () => { refreshUnreadMessages(); return true; },
-        onUpdate: () => { refreshUnreadMessages(); return true; },
-    });
+    useMessagesRealtime(userProfile.id || undefined);
 
     const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
         const id = `toast-${Date.now()}`;
@@ -195,9 +150,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             // The profile itself is a query now (ONE-15) — this no longer
             // fetches it, it just records who is signed in and lets
             // useCurrentUserQuery do the rest. What stays here is the state
-            // no server-side feature owns yet: stories, unread counts, the
-            // admin flag.
-            const [profileResult, myStoriesResult, storyLikesResult, unreadMessagesResult] = await Promise.all([
+            // no server-side feature owns yet: stories and the admin flag.
+            const [profileResult, myStoriesResult, storyLikesResult] = await Promise.all([
                 supabase
                     .from('profiles')
                     .select('is_admin')
@@ -205,16 +159,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     .maybeSingle(),
                 getMyStories(user.id),
                 supabase.from('story_likes').select('story_id').eq('user_id', user.id),
-                supabase.from('messages').select('sender_id').eq('receiver_id', user.id).eq('seen', false)
             ]);
 
             const { data: profileData } = profileResult as any;
             const myStories = myStoriesResult as Story[];
             const { data: storyLikesData } = storyLikesResult as any;
-            const { data: unreadMessagesData } = unreadMessagesResult;
-
-            const unreadChats = new Set(unreadMessagesData?.map(m => m.sender_id) || []);
-            const unreadMessageCount = unreadChats.size;
 
             // Update state in a single, batched call to avoid multiple re-renders.
             setState(prevState => {
@@ -227,8 +176,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     authUserId: user.id,
                     userStories: myStories,
                     likedStoryIds: newLikedStoryIds,
-                    unreadMessageCount: unreadMessageCount,
-                    unreadChats: unreadChats,
                     isAdmin: profileData?.is_admin === true,
                 };
             });
@@ -266,8 +213,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     viewedStoryTimestamps: new Set(),
                     isViewingStory: false,
                     votedPolls: new Map(),
-                    unreadMessageCount: 0,
-                    unreadChats: new Set(),
                     topNotification: null,
                     isAdmin: false,
                 }));
@@ -527,52 +472,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const getPollVote = useCallback((postId: string) => state.votedPolls.get(postId), [state.votedPolls]);
 
-    const markAllMessagesAsRead = useCallback(async () => {
-        const userId = userProfile.id;
-        if (!userId || state.unreadMessageCount === 0) return;
-
-        // Optimistic update
-        // FIX: Explicitly type prev as AppState.
-        setState((prev: AppState) => ({ ...prev, unreadMessageCount: 0, unreadChats: new Set() }));
-
-        const { error } = await supabase
-            .from("messages")
-            .update({ seen: true })
-            .eq("receiver_id", userId)
-            .eq("seen", false);
-
-        if (error) {
-            console.error("Error marking all messages as read:", error.message || error);
-        } else {
-        }
-    }, [userProfile.id, state.unreadMessageCount]);
-
-    const markChatAsRead = useCallback(async (senderId: string) => {
-        const userId = userProfile.id;
-        if (!userId) return;
-
-        // 1️⃣ Veritabanını güncelle
-        const success = await apiMarkMessagesAsRead(userId, senderId);
-
-        if (success) {
-            // 2️⃣ UI'daki unread state'ini güncelle
-            // FIX: Explicitly type prev as AppState.
-            setState((prev: AppState) => {
-                const updatedUnreadChats = new Set(prev.unreadChats);
-                updatedUnreadChats.delete(senderId); // mavi/kırmızı noktayı kaldır
-
-                return {
-                    ...prev,
-                    unreadChats: updatedUnreadChats,
-                    unreadMessageCount: updatedUnreadChats.size,
-                };
-            });
-        } else {
-            console.error("Failed to mark chat as read");
-            addToast("Couldn't mark messages as read.", 'error');
-        }
-    }, [userProfile.id, addToast]);
-
     const removeToast = useCallback((id: string) => {
         // FIX: Explicitly typed `prevState` as AppState.
         setState((prevState: AppState) => ({
@@ -610,8 +509,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         triggerHapticFeedback,
         setTooltip,
         refreshAllData,
-        markAllMessagesAsRead,
-        markChatAsRead,
         replaceStory,
         userProfile,
     }), [
@@ -639,8 +536,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         triggerHapticFeedback,
         setTooltip,
         refreshAllData,
-        markAllMessagesAsRead,
-        markChatAsRead,
         replaceStory,
     ]);
 
