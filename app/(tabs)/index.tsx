@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
 import { useFollowState, useToggleFollow, profileKeys } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
+import { useUnreadNotificationCount } from '../../features/notifications';
 import {
   getStories,
   getSmartUserSuggestions,
@@ -56,7 +57,6 @@ export default function HomeFeedScreen() {
     userProfile,
     isUserBlocked,
     addToast,
-    notifications,
     unreadMessageCount,
   } = useApp();
 
@@ -65,7 +65,7 @@ export default function HomeFeedScreen() {
   const { following, isFollowing: isUserFollowing } = useFollowState(userProfile?.id || undefined);
   const follow = useToggleFollow(userProfile?.id || undefined);
   const router = useRouter();
-  const unreadNotificationCount = notifications?.filter(n => !n.is_read).length ?? 0;
+  const unreadNotificationCount = useUnreadNotificationCount(userProfile?.id || undefined);
 
   const queryClient = useQueryClient();
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);

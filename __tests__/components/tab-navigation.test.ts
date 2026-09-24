@@ -22,9 +22,12 @@ import * as path from 'path';
 const mockPush = jest.fn();
 const mockInsets = { top: 0, bottom: 0, left: 0, right: 0 };
 const mockAppState: {
-  notifications: { is_read: boolean }[];
+  userProfile: { id: string };
   unreadMessageCount: number;
-} = { notifications: [], unreadMessageCount: 0 };
+} = { userProfile: { id: 'u1' }, unreadMessageCount: 0 };
+// The cached notifications list. The badge reads its unread count through
+// useUnreadNotificationCount (ONE-17), not through the context.
+const mockNotifications: { current: { is_read: boolean }[] } = { current: [] };
 
 jest.mock('react-native', () => {
   const React = require('react');
@@ -66,6 +69,11 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('../../store/AppContext.native', () => ({
   __esModule: true,
   useApp: () => mockAppState,
+}), { virtual: true });
+
+jest.mock('../../features/notifications', () => ({
+  __esModule: true,
+  useUnreadNotificationCount: () => mockNotifications.current.filter((n) => !n.is_read).length,
 }), { virtual: true });
 
 import TabLayout from '../../app/(tabs)/_layout';
@@ -155,7 +163,7 @@ const layoutSource = fs.readFileSync(
 beforeEach(() => {
   mockPush.mockClear();
   mockInsets.bottom = 0;
-  mockAppState.notifications = [];
+  mockNotifications.current = [];
   mockAppState.unreadMessageCount = 0;
 });
 
@@ -347,13 +355,13 @@ describe('tab bar — unread badge', () => {
   });
 
   it('counts unread notifications and unread messages together', () => {
-    mockAppState.notifications = [{ is_read: false }, { is_read: true }, { is_read: false }];
+    mockNotifications.current = [{ is_read: false }, { is_read: true }, { is_read: false }];
     mockAppState.unreadMessageCount = 3;
     expect(badgeOf().text).toBe('5');
   });
 
   it('ignores notifications already read', () => {
-    mockAppState.notifications = [{ is_read: true }, { is_read: true }];
+    mockNotifications.current = [{ is_read: true }, { is_read: true }];
     expect(badgeOf().container).toBeUndefined();
   });
 

@@ -160,6 +160,10 @@ jest.mock('../features/profiles', () => ({
   }),
 }), { virtual: true });
 
+jest.mock('../features/notifications', () => ({
+  useNotificationsRealtime: jest.fn(),
+}), { virtual: true });
+
 jest.mock('../features/blocks', () => ({
   useBlockedUsers: () => ({
     blockedUsers: [],
@@ -303,7 +307,10 @@ describe('useApp (AppContext) — provider wrapper', () => {
       expect(ctx).not.toHaveProperty('blockedUsers');
       expect(ctx!.unreadMessageCount).toBe(0);
       expect(ctx!.isAdmin).toBe(false);
-      expect(ctx!.notifications).toBeNull();
+      // The notification list is a query now (ONE-17); the transient
+      // top-of-screen banner is UI state and stays.
+      expect(ctx).not.toHaveProperty('notifications');
+      expect(ctx!.topNotification).toBeNull();
     } finally {
       unmount(handle);
     }
@@ -320,7 +327,6 @@ describe('useApp (AppContext) — provider wrapper', () => {
       expect(typeof ctx.removeToast).toBe('function');
       expect(typeof ctx.setTheme).toBe('function');
       expect(typeof ctx.refreshAllData).toBe('function');
-      expect(typeof ctx.markAllNotificationsAsRead).toBe('function');
       expect(typeof ctx.markAllMessagesAsRead).toBe('function');
     } finally {
       unmount(handle);
@@ -464,6 +470,28 @@ describe('post writes are not on the context any more', () => {
       expect(handle.capture.current!).toHaveProperty(name);
       expect(handle.capture.current!.userProfile.id).toBe('');
       expect(handle.capture.current!.userProfile.username).toBe('onetag_user');
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it.each(['notifications', 'markAllNotificationsAsRead'])(
+    'does not expose %s — notifications are a query now (ONE-17)',
+    (name) => {
+      const handle = mountWithProvider();
+      try {
+        expect(handle.capture.current!).not.toHaveProperty(name);
+      } finally {
+        unmount(handle);
+      }
+    },
+  );
+
+  it('keeps the transient top notification, which no server owns', () => {
+    const handle = mountWithProvider();
+    try {
+      expect(handle.capture.current!).toHaveProperty('topNotification');
+      expect(typeof handle.capture.current!.showTopNotification).toBe('function');
     } finally {
       unmount(handle);
     }

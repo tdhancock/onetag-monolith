@@ -6,12 +6,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useBlockedUsers, useBlockToggle, migrateLocalBlocks, blockKeys } from '../features/blocks';
 import { useCurrentUserQuery } from '../features/profiles';
 import { useRealtimeSync } from '../lib/realtimeBridge';
-import { publishPost, deletePost, updatePost, addComment as apiAddComment, getFollowingList, unfollowUser, followUser, markNotificationsAsRead, getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, markMessagesAsRead as apiMarkMessagesAsRead, adminDeletePost, ensureCurrentUserProfile, MediaUploadError } from '../services/apiService';
+import { useNotificationsRealtime } from '../features/notifications';
+import { getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, markMessagesAsRead as apiMarkMessagesAsRead, ensureCurrentUserProfile } from '../services/apiService';
 import { supabase } from '../services/supabase.native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import type { Comment, Post, Story, UserProfile, Toast, Notification, Message } from '../types';
-import { normalizeNotifications } from '../types';
+import type { Comment, Story, UserProfile, Toast } from '../types';
 
 interface AppState {
     /**
@@ -33,7 +33,6 @@ interface AppState {
     votedPolls: Map<string, number>;
     toasts: Toast[];
     tooltip: { text: string } | null;
-    notifications: Notification[] | null;
     unreadMessageCount: number;
     unreadChats: Set<string>;
     topNotification: { title: string; message: string } | null;
@@ -72,7 +71,6 @@ interface AppContextType extends AppState {
     triggerHapticFeedback: (style?: 'light' | 'medium' | 'heavy') => void;
     setTooltip: (tooltip: { text: string } | null) => void;
     refreshAllData: () => Promise<void>;
-    markAllNotificationsAsRead: (userId?: string) => Promise<void>;
     markAllMessagesAsRead: () => Promise<void>;
     markChatAsRead: (senderId: string) => Promise<void>;
     replaceStory: (localId: string, realStory: Story) => void;
@@ -95,7 +93,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             votedPolls: new Map(),
             toasts: [],
             tooltip: null,
-            notifications: null,
             unreadMessageCount: 0,
             unreadChats: new Set(),
             topNotification: null,
@@ -133,14 +130,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         });
     }, [userProfile.id, queryClient]);
 
-    // Notifications and unread-message counts, fetched once per session.
+    // Unread-message counts, fetched once per session.
     //
     // ONE-16 took the raw channel out of here: it was a second
     // write path competing with the cache, and its channel name embedded
     // Date.now(), so every re-subscribe leaked a channel the registry could
-    // never dedupe. The live half now goes through the bridge below, and moves
-    // to features/notifications and features/messages in ONE-17 and ONE-18 —
-    // which is why the fetches are still here and still write to AppState.
+    // never dedupe. The live half now goes through the bridge below.
+    // Notifications moved to features/notifications in ONE-17; messages move
+    // to features/messages in ONE-18, which is why this fetch is still here
+    // and still writes to AppState.
     const refreshUnreadMessages = useCallback(async () => {
         const userId = userProfile.id;
         if (!userId) return;
@@ -157,47 +155,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setState(prev => ({ ...prev, unreadChats, unreadMessageCount: unreadChats.size }));
     }, [userProfile.id]);
 
-    const refreshNotifications = useCallback(async () => {
-        const userId = userProfile.id;
-        if (!userId) return;
-
-        const { data, error } = await supabase
-            .from("notifications")
-            .select(`
-                id, type, is_read, created_at, content, comment_id,
-                sender:profiles!notifications_sender_id_fkey(id, username, avatar_url),
-                post:posts!notifications_post_id_fkey(id, content, media:image_url, media_type),
-                comment:comments!notifications_comment_id_fkey(id, text:content),
-                story:stories!notifications_story_id_fkey(id, media_url)
-            `)
-            .eq("receiver_id", userId)
-            .order("created_at", { ascending: false });
-
-        if (error) {
-            console.error("Error fetching initial notifications:", error.message || error);
-            return;
-        }
-
-        setState(prev => ({ ...prev, notifications: normalizeNotifications(data || []) }));
-    }, [userProfile.id]);
-
     useEffect(() => {
-        refreshNotifications();
         refreshUnreadMessages();
-    }, [refreshNotifications, refreshUnreadMessages]);
+    }, [refreshUnreadMessages]);
 
-    // Live updates, through the bridge. Both streams re-read rather than
-    // patching state from the payload: these two slices are AppState until
-    // ONE-17 and ONE-18 move them, and the bridge's business is the cache.
-    useRealtimeSync({
-        table: 'notifications',
-        filter: `receiver_id=eq.${userProfile.id}`,
-        queryKey: ['notifications'],
-        enabled: Boolean(userProfile.id),
-        onInsert: () => { refreshNotifications(); return true; },
-        onUpdate: () => { refreshNotifications(); return true; },
-    });
+    // Notifications are a query now (ONE-17), with their own realtime hook
+    // inside features/notifications. AppContext keeps only the unread-message
+    // half, until ONE-18 takes that too.
+    useNotificationsRealtime(userProfile.id || undefined);
 
+    // Live unread-message updates, through the bridge. This re-reads rather
+    // than patching state from the payload: the slice is AppState until
+    // ONE-18 moves it, and the bridge's business is the cache.
     useRealtimeSync({
         table: 'messages',
         filter: `receiver_id=eq.${userProfile.id}`,
@@ -302,7 +271,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     isViewingStory: false,
                     likedVideoIds: new Set(),
                     votedPolls: new Map(),
-                    notifications: null,
                     unreadMessageCount: 0,
                     unreadChats: new Set(),
                     topNotification: null,
@@ -580,40 +548,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const getPollVote = useCallback((postId: string) => state.votedPolls.get(postId), [state.votedPolls]);
 
-    const markAllNotificationsAsRead = useCallback(async (userId?: string) => {
-      if (!userId) return;
-      const { error } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("receiver_id", userId)
-        .eq("is_read", false);
-
-      if (error) {
-        console.error("Error marking notifications as read:", error.message || error);
-      } else {
-        const { data, error: fetchError } = await supabase
-          .from("notifications")
-          .select(`
-              id, type, is_read, created_at, content, comment_id,
-              sender:profiles!notifications_sender_id_fkey(id, username, avatar_url),
-              post:posts!notifications_post_id_fkey(id, content, media:image_url, media_type),
-              comment:comments!notifications_comment_id_fkey(id, text:content),
-              story:stories!notifications_story_id_fkey(id, media_url)
-          `)
-          .eq("receiver_id", userId)
-          .order("created_at", { ascending: false });
-
-        if (fetchError) {
-            console.error("Error refetching notifications after marking as read:", fetchError.message || fetchError);
-        } else {
-            setState((prev: AppState) => ({
-                ...prev,
-                notifications: normalizeNotifications(data || []),
-            }));
-        }
-      }
-    }, []);
-
     const markAllMessagesAsRead = useCallback(async () => {
         const userId = userProfile.id;
         if (!userId || state.unreadMessageCount === 0) return;
@@ -699,7 +633,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         triggerHapticFeedback,
         setTooltip,
         refreshAllData,
-        markAllNotificationsAsRead,
         markAllMessagesAsRead,
         markChatAsRead,
         replaceStory,
@@ -731,7 +664,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         triggerHapticFeedback,
         setTooltip,
         refreshAllData,
-        markAllNotificationsAsRead,
         markAllMessagesAsRead,
         markChatAsRead,
         replaceStory,

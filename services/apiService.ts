@@ -518,19 +518,9 @@ export const cleanHtml = (html: string): string => {
         .trim();
 };
 
-export const markNotificationsAsRead = async (userId: string): Promise<boolean> => {
-    const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('receiver_id', userId)
-        .eq('is_read', false);
-    
-    if (error) {
-        console.error("Error marking notifications as read:", error.message || error);
-        return false;
-    }
-    return true;
-};
+// Moved to features/notifications in ONE-17; re-exported until the final M2
+// cleanup.
+export { markNotificationsAsRead } from '../features/notifications';
 
 export const fetchLikeCount = async (postId: string): Promise<number> => {
   const { count, error } = await supabase

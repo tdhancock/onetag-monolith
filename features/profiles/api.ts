@@ -13,6 +13,7 @@
 // callers use `queryClient.prefetchQuery` with `profileKeys`.
 
 import { supabase } from '../../services/supabase.native';
+import { sendNotification } from '../../services/notificationWrites';
 import { readLocalFile } from '../../services/localFile';
 import { POST_SELECT_QUERY, mapPostData } from '../posts';
 import type { Post } from '../posts';
@@ -242,7 +243,7 @@ export const followUser = async (follower_id: string, followed_id: string): Prom
     if (error && error.code !== '23505') throw error;
     if (error?.code === '23505') return;
 
-    await notifyFollow(follower_id, followed_id);
+    await sendNotification({ senderId: follower_id, receiverId: followed_id, type: 'follow' });
 };
 
 export const unfollowUser = async (follower_id: string, followed_id: string): Promise<void> => {
@@ -328,26 +329,3 @@ export const getSmartUserSuggestions = async(userId: string): Promise<any[]> => 
 // =========================================================
 // Chat / Messages
 // =========================================================
-
-/**
- * Tell someone they have a new follower.
- *
- * Inlined rather than calling `sendNotification` in `services/apiService.ts`:
- * that module re-exports this one, so importing it back would be a cycle.
- * Failures are logged, never thrown — a notification that does not arrive is
- * no reason to undo a follow. ONE-17 folds this into a notifications feature,
- * along with the same helper in `features/posts/api.ts`.
- */
-const notifyFollow = async (followerId: string, followedId: string): Promise<void> => {
-    if (followerId === followedId) return;
-
-    try {
-        const { error } = await supabase
-            .from('notifications')
-            .insert([{ sender_id: followerId, receiver_id: followedId, type: 'follow' }]);
-
-        if (error) console.error('Failed to send follow notification:', error.message || error);
-    } catch (error) {
-        console.error('Failed to send follow notification:', (error as Error).message || error);
-    }
-};

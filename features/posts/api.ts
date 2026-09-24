@@ -6,6 +6,7 @@
 // second mount starts from the top without anyone having to reset anything.
 
 import { supabase } from '../../services/supabase.native';
+import { notifyPostAuthor } from '../../services/notificationWrites';
 import type { Post } from './types';
 
 /** Posts requested per feed page. */
@@ -317,40 +318,6 @@ const toggleJoinRow = async (
   return true;
 };
 
-/**
- * Tell a post's author that someone interacted with it.
- *
- * Failures are logged, never thrown: a notification that does not arrive is
- * not a reason to tell the user their like failed and roll it back.
- *
- * ONE-17 moves notifications into their own feature folder; this is the shape
- * it needs to absorb.
- */
-const notifyPostAuthor = async (
-  postId: string,
-  senderId: string,
-  type: 'like' | 'repost',
-): Promise<void> => {
-  try {
-    const { data: post } = await supabase
-      .from('posts')
-      .select('user_id')
-      .eq('id', postId)
-      .single();
-
-    // Nobody needs telling about their own like.
-    if (!post || post.user_id === senderId) return;
-
-    const { error } = await supabase.from('notifications').insert([
-      { sender_id: senderId, receiver_id: post.user_id, type, post_id: postId },
-    ]);
-
-    if (error) console.error(`Failed to send ${type} notification:`, error.message || error);
-  } catch (error) {
-    console.error(`Failed to send ${type} notification:`, (error as Error).message || error);
-  }
-};
-
 /** Like or unlike a post as `userId`. Notifies the author on a new like. */
 export const toggleLike = async (postId: string, userId: string): Promise<boolean> => {
   const isOn = await toggleJoinRow('likes', postId, userId);
@@ -373,3 +340,4 @@ export const toggleRepost = async (postId: string, userId: string): Promise<bool
  */
 export const toggleSavePost = async (postId: string, userId: string): Promise<boolean> =>
   toggleJoinRow('saved_posts', postId, userId);
+

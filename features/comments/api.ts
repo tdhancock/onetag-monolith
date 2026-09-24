@@ -1,12 +1,12 @@
 // Pure Supabase access for the comments domain.
 //
-// Moved out of `services/apiService.ts` in ONE-14. The implementations are
-// unchanged except for the notification and mention side effects, which are
-// inlined below rather than imported back from `apiService` — that module
-// re-exports this one, so importing it would be a cycle. ONE-17 folds all
-// three copies (here, posts, profiles) into a notifications feature.
+// Moved out of `services/apiService.ts` in ONE-14. The notification and
+// mention side effects come from `services/notificationWrites.ts`, which
+// ONE-17 consolidated out of the three copies that briefly existed here, in
+// posts and in profiles.
 
 import { supabase } from '../../services/supabase.native';
+import { notifyPostAuthor, notifyMentionedUsers } from '../../services/notificationWrites';
 import type { Comment } from './types';
 
 export const getCommentsForPost = async (postId: string): Promise<Comment[]> => {
@@ -43,7 +43,10 @@ export async function addComment(postId: string, userId: string, content: string
   }
   
   if (data) {
-    await notifyPostAuthorOfComment(postId, userId, data.id, content);
+    await notifyPostAuthor(postId, userId, 'comment', {
+      commentId: data.id,
+      content: content.substring(0, 50),
+    });
     await notifyMentionedUsers(content, userId, postId, data.id);
   }
 
@@ -91,75 +94,5 @@ export const toggleCommentLike = async (commentId: string): Promise<boolean> => 
     } else {
         await supabase.from('comment_likes').insert({ comment_id: commentId, user_id: user.id });
         return true;
-    }
-};
-
-
-// ---------------------------------------------------------------------------
-// Side effects
-// ---------------------------------------------------------------------------
-//
-// Both are best-effort: a notification that does not arrive is no reason to
-// fail a comment that the database already accepted.
-
-const notifyPostAuthorOfComment = async (
-    postId: string,
-    senderId: string,
-    commentId: string,
-    content: string,
-): Promise<void> => {
-    try {
-        const { data: post } = await supabase
-            .from('posts')
-            .select('user_id')
-            .eq('id', postId)
-            .single();
-
-        if (!post || post.user_id === senderId) return;
-
-        await supabase.from('notifications').insert([{
-            sender_id: senderId,
-            receiver_id: post.user_id,
-            type: 'comment',
-            post_id: postId,
-            comment_id: commentId,
-            content: content.substring(0, 50),
-        }]);
-    } catch (error) {
-        console.error('Failed to send comment notification:', (error as Error).message || error);
-    }
-};
-
-/** Tell anyone @mentioned in the comment. Each name is notified once. */
-const notifyMentionedUsers = async (
-    content: string,
-    senderId: string,
-    postId: string,
-    commentId: string,
-): Promise<void> => {
-    const mentions = content.match(/@(\w+)/g);
-    if (!mentions) return;
-
-    for (const username of new Set(mentions.map(m => m.replace('@', '')))) {
-        try {
-            const { data: user } = await supabase
-                .from('profiles')
-                .select('id')
-                .eq('username', username)
-                .single();
-
-            if (!user || user.id === senderId) continue;
-
-            await supabase.from('notifications').insert([{
-                sender_id: senderId,
-                receiver_id: user.id,
-                type: 'mention',
-                post_id: postId,
-                comment_id: commentId,
-                content: content.substring(0, 50),
-            }]);
-        } catch (error) {
-            console.error('Failed to notify mentioned user:', (error as Error).message || error);
-        }
     }
 };
