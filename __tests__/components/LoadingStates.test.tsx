@@ -32,7 +32,7 @@ jest.mock('react-native', () => require('../support/reactNativeDom'), { virtual:
 // ─── 2. Imports ─────────────────────────────────────────────────────────
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react-dom/test-utils';
+import { act } from 'react';
 import { Animated } from 'react-native';
 import PostSkeleton from '../../components/native/PostSkeleton';
 

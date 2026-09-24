@@ -20,7 +20,7 @@
 
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react-dom/test-utils';
+import { act } from 'react';
 
 // ─── 1. Mock the native runtime and everything PostCard reaches for ─────
 

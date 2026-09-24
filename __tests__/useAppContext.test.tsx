@@ -179,7 +179,7 @@ jest.mock('../features/blocks', () => ({
 // ─── 2. Imports under test ──────────────────────────────────────────────
 import React, { useEffect } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react-dom/test-utils';
+import { act } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useApp } from '../store/AppContext.native';
 import { publishPost } from '../services/apiService';
