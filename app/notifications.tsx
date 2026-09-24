@@ -5,6 +5,7 @@ import { View, Text, FlatList, RefreshControl, Pressable } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
+import { useNotificationsQuery, useMarkAllRead } from '../features/notifications';
 import { supabase } from '../services/supabase.native';
 import UserAvatar from '../components/native/UserAvatar';
 import type { Notification } from '../types';
@@ -35,21 +36,25 @@ const getTimeAgo = (dateStr: string): string => {
 };
 
 export default function NotificationsScreen() {
-  const { notifications, userProfile, markAllNotificationsAsRead } = useApp();
+  const { userProfile } = useApp();
   const router = useRouter();
-  const [refreshing, setRefreshing] = useState(false);
 
+  const { data: notifications, isFetching, refetch } = useNotificationsQuery(
+    userProfile?.id || undefined,
+  );
+  const markAllRead = useMarkAllRead(userProfile?.id || undefined);
+
+  // Opening the screen marks everything read. The rows and the tab badge
+  // change immediately and revert together if the server refuses (ONE-17).
+  const { mutate: markAll } = markAllRead;
   useEffect(() => {
-    if (userProfile?.id) {
-      markAllNotificationsAsRead(userProfile.id);
-    }
-  }, [userProfile?.id]);
+    if (userProfile?.id) markAll();
+  }, [userProfile?.id, markAll]);
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    if (userProfile?.id) await markAllNotificationsAsRead(userProfile.id);
-    setRefreshing(false);
-  }, [userProfile?.id]);
+    await refetch();
+    markAll();
+  }, [refetch, markAll]);
 
   const handlePress = useCallback((n: Notification) => {
     if (n.type === 'follow') {
@@ -96,7 +101,7 @@ export default function NotificationsScreen() {
         keyExtractor={item => item.id}
         renderItem={renderItem}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3b82f6" />
+          <RefreshControl refreshing={isFetching} onRefresh={onRefresh} tintColor="#3b82f6" />
         }
         ListEmptyComponent={
           <View className="py-20 items-center">

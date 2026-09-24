@@ -5,7 +5,7 @@
 // ProfileScreen snapshot baseline tests. The component delegates
 // avatar-source resolution, bio display, follower/following stat
 // rendering, and the Edit Profile button label/target to a sidecar
-// utils module (`app/(tabs)/profile.utils.ts`). The existing
+// utils module (`lib/screens/profile.ts`). The existing
 // `__tests__/components/ProfileScreen.test.ts` already covers the
 // behaviour of every helper in detail; this file pins the *public
 // surface* of the utils module so any future refactor cannot
@@ -19,7 +19,7 @@
 //   4. Cross-helper invariants (getStatCell vs PROFILE_STAT_COLUMNS,
 //      getEditButtonProps vs its label/target constants)
 
-import * as ProfileUtils from '../../app/(tabs)/profile.utils';
+import * as ProfileUtils from '../../lib/screens/profile';
 import {
     EDIT_PROFILE_LABEL,
     EDIT_PROFILE_TARGET,
@@ -31,7 +31,7 @@ import {
     getStatCell,
     hasBio,
     resolveAvatarSource,
-} from '../../app/(tabs)/profile.utils';
+} from '../../lib/screens/profile';
 
 // ---------------------------------------------------------------------------
 // 1. Public symbol inventory

@@ -5,7 +5,7 @@
 // HomeScreen pure-logic snapshot tests. The component delegates the
 // screen-shell decisions — header brand, empty-state copy, the
 // unread-badge label, and the two header action routes — to a sidecar
-// utils module (`app/(tabs)/home.utils.ts`) so those rules can be
+// utils module (`lib/screens/home.ts`) so those rules can be
 // exercised without spinning up React Native, expo-router, or the
 // AppContext provider. These tests pin every value the user actually
 // sees on the Home / Feed tab so a refactor cannot silently change
@@ -28,7 +28,7 @@ import {
     getHomeEmptyState,
     getHomeHeaderTarget,
     getUnreadBadgeLabel,
-} from '../../app/(tabs)/home.utils';
+} from '../../lib/screens/home';
 
 // ---------------------------------------------------------------------------
 // 1. Header brand

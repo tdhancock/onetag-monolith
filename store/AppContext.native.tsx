@@ -2,20 +2,26 @@
 
 import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { publishPost, deletePost, updatePost, toggleLike as apiToggleLike, toggleRepost as apiToggleRepost, addComment as apiAddComment, getFollowingList, unfollowUser, followUser, markNotificationsAsRead, getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, markMessagesAsRead as apiMarkMessagesAsRead, toggleSavePost as apiToggleSavePost, adminDeletePost, ensureCurrentUserProfile, uploadMedia } from '../services/apiService';
+import { useQueryClient } from '@tanstack/react-query';
+import { useBlockedUsers, useBlockToggle, migrateLocalBlocks, blockKeys } from '../features/blocks';
+import { useCurrentUserQuery } from '../features/profiles';
+import { useRealtimeSync } from '../lib/realtimeBridge';
+import { useNotificationsRealtime } from '../features/notifications';
+import { getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, markMessagesAsRead as apiMarkMessagesAsRead, ensureCurrentUserProfile } from '../services/apiService';
 import { supabase } from '../services/supabase.native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import type { Comment, Post, Story, UserProfile, Toast, Notification, Message } from '../types';
-import { normalizeNotifications } from '../types';
+import type { Comment, Story, UserProfile, Toast } from '../types';
 
 interface AppState {
-    likedPosts: Set<string>;
-    repostedPosts: Set<string>;
-    savedPosts: Set<string>;
-    postComments: Map<string, Comment[]>;
-    profilePosts: Post[];
-    userProfile: UserProfile;
+    /**
+     * The signed-in auth user's id — the session, not their profile row.
+     *
+     * The profile itself is a query (ONE-15); this is what keys it, and it is
+     * the one piece of identity AppContext still owns because it comes from
+     * the auth listener rather than from a table.
+     */
+    authUserId: string;
     theme: 'light' | 'dark';
     userStories: Story[];
     storyComments: Map<string, Comment[]>;
@@ -23,13 +29,10 @@ interface AppState {
     hasNewStory: boolean;
     viewedStoryTimestamps: Set<string>;
     isViewingStory: boolean;
-    blockedUsers: Set<string>;
     likedVideoIds: Set<string>;
-    followedUsernames: Set<string>;
     votedPolls: Map<string, number>;
     toasts: Toast[];
     tooltip: { text: string } | null;
-    notifications: Notification[] | null;
     unreadMessageCount: number;
     unreadChats: Set<string>;
     topNotification: { title: string; message: string } | null;
@@ -37,21 +40,13 @@ interface AppState {
 }
 
 interface AppContextType extends AppState {
-    togglePostLike: (postId: string) => void;
-    isPostLiked: (postId: string) => boolean;
-    togglePostRepost: (postId: string) => void;
-    isPostReposted: (postId: string) => boolean;
-    toggleSavePost: (postId: string) => void;
-    isPostSaved: (postId: string) => boolean;
-    postComment: (postId: string, content: string) => Promise<void>;
-    getComments: (postId: string) => Comment[];
-    setComments: (postId: string, comments: Comment[]) => void;
-    areCommentsLoaded: (postId: string) => boolean;
-    addProfilePost: (post: Post) => void;
-    deleteProfilePost: (postId: string) => void;
-    updateProfilePost: (updatedPost: Post) => void;
-    setProfilePosts: (posts: Post[]) => void;
-    updateProfile: (newProfile: Partial<UserProfile>) => void;
+    /**
+     * The signed-in user. Sourced from `features/profiles` rather than from
+     * AppState (ONE-15), but still handed out here because it is the app's
+     * identity object. While loading it is the placeholder with `id: ''`, so
+     * `userProfile?.id` guards read as "not ready" exactly as before.
+     */
+    userProfile: UserProfile;
     setTheme: (theme: 'light' | 'dark') => void;
     addUserStory: (story: Story) => void;
     deleteStory: (storyId: string) => void;
@@ -68,8 +63,6 @@ interface AppContextType extends AppState {
     isUserBlocked: (username: string) => boolean;
     toggleVideoLike: (videoId: string) => void;
     isVideoLiked: (videoId: string) => boolean;
-    toggleFollowUser: (username: string) => Promise<void>;
-    isUserFollowed: (username: string) => boolean;
     voteInPoll: (postId: string, optionIndex: number) => void;
     getPollVote: (postId: string) => number | undefined;
     addToast: (message: string, type?: Toast['type']) => void;
@@ -78,7 +71,6 @@ interface AppContextType extends AppState {
     triggerHapticFeedback: (style?: 'light' | 'medium' | 'heavy') => void;
     setTooltip: (tooltip: { text: string } | null) => void;
     refreshAllData: () => Promise<void>;
-    markAllNotificationsAsRead: (userId?: string) => Promise<void>;
     markAllMessagesAsRead: () => Promise<void>;
     markChatAsRead: (senderId: string) => Promise<void>;
     replaceStory: (localId: string, realStory: Story) => void;
@@ -86,23 +78,10 @@ interface AppContextType extends AppState {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const BLOCKED_USERS_KEY = 'onetag-blocked-users';
-
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [state, setState] = useState<AppState>(() => {
         return {
-            likedPosts: new Set(),
-            repostedPosts: new Set(),
-            savedPosts: new Set(),
-            postComments: new Map(),
-            profilePosts: [],
-            userProfile: {
-                id: '',
-                name: 'OneTag User',
-                username: 'onetag_user',
-                bio: 'Hello, I am using OneTag',
-                profilePicture: null,
-            },
+            authUserId: '',
             theme: 'dark',
             userStories: [],
             storyComments: new Map(),
@@ -110,13 +89,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             hasNewStory: false,
             viewedStoryTimestamps: new Set(),
             isViewingStory: false,
-            blockedUsers: new Set(),
             likedVideoIds: new Set(),
-            followedUsernames: new Set(),
             votedPolls: new Map(),
             toasts: [],
             tooltip: null,
-            notifications: null,
             unreadMessageCount: 0,
             unreadChats: new Set(),
             topNotification: null,
@@ -124,128 +100,81 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         };
     });
 
-    // Load blocked users from AsyncStorage after mount
-    useEffect(() => {
-        const loadBlockedUsers = async () => {
-            try {
-                const savedBlockedUsers = await AsyncStorage.getItem(BLOCKED_USERS_KEY);
-                if (savedBlockedUsers) {
-                    const parsed = JSON.parse(savedBlockedUsers);
-                    if (Array.isArray(parsed)) {
-                        const validBlockedUsers = parsed.filter(item => typeof item === 'string');
-                        setState(prevState => ({
-                            ...prevState,
-                            blockedUsers: new Set(validBlockedUsers),
-                        }));
-                    }
-                }
-            } catch (e) {
-                console.error("Could not parse blocked users from AsyncStorage", e);
-            }
-        };
+    const queryClient = useQueryClient();
 
-        loadBlockedUsers();
-    }, []);
+    /**
+     * The signed-in user's profile.
+     *
+     * Still on the context because it is the app's identity object and a
+     * dozen screens read it, but it is a query now, not AppState (ONE-15).
+     * The loading shape keeps `id: ''`, so every existing `userProfile?.id`
+     * guard — push-notification registration in app/_layout.tsx above all —
+     * behaves exactly as it did.
+     */
+    const { userProfile } = useCurrentUserQuery(state.authUserId || undefined);
 
-    // Fetches notifications and messages, and subscribes to real-time updates.
+    // Blocking lives on the server now (ONE-54). The list is a query, and
+    // `isUserBlocked` reads from it rather than from AppState — a block that
+    // only this device knows about is not a block.
+    const blocks = useBlockedUsers(userProfile.id || undefined);
+    const blockToggle = useBlockToggle(userProfile.id || undefined);
+
+    // One-time migration of the device-local list (ONE-54). The logic lives
+    // in features/blocks so the tests drive the same code this does.
     useEffect(() => {
-        const userId = state.userProfile.id;
+        const blockerId = userProfile.id;
+        if (!blockerId) return;
+
+        migrateLocalBlocks(AsyncStorage, blockerId).then(imported => {
+            if (imported) queryClient.invalidateQueries({ queryKey: blockKeys.all });
+        });
+    }, [userProfile.id, queryClient]);
+
+    // Unread-message counts, fetched once per session.
+    //
+    // ONE-16 took the raw channel out of here: it was a second
+    // write path competing with the cache, and its channel name embedded
+    // Date.now(), so every re-subscribe leaked a channel the registry could
+    // never dedupe. The live half now goes through the bridge below.
+    // Notifications moved to features/notifications in ONE-17; messages move
+    // to features/messages in ONE-18, which is why this fetch is still here
+    // and still writes to AppState.
+    const refreshUnreadMessages = useCallback(async () => {
+        const userId = userProfile.id;
         if (!userId) return;
 
-        let notificationsChannel: any;
-        let messagesChannel: any;
+        const { data, error } = await supabase
+            .from('messages')
+            .select('sender_id')
+            .eq('receiver_id', userId)
+            .eq('seen', false);
 
-        const setupSubscriptions = async () => {
-            const { data, error } = await supabase
-                .from("notifications")
-                .select(`
-                    id, type, is_read, created_at, content, comment_id,
-                    sender:profiles!notifications_sender_id_fkey(id, username, avatar_url),
-                    post:posts!notifications_post_id_fkey(id, content, media:image_url, media_type),
-                    comment:comments!notifications_comment_id_fkey(id, text:content),
-                    story:stories!notifications_story_id_fkey(id, media_url)
-                `)
-                .eq("receiver_id", userId)
-                .order("created_at", { ascending: false });
+        if (error || !data) return;
 
-            if (error) {
-                console.error("Error fetching initial notifications:", error.message || error);
-            } else {
-                 setState(prev => ({
-                    ...prev,
-                    notifications: normalizeNotifications(data || [])
-                }));
-            }
+        const unreadChats = new Set(data.map(m => m.sender_id));
+        setState(prev => ({ ...prev, unreadChats, unreadMessageCount: unreadChats.size }));
+    }, [userProfile.id]);
 
-            // Listen for new messages in real-time
-            const fetchUnreadData = async () => {
-                const { data, error } = await supabase
-                    .from('messages')
-                    .select('sender_id')
-                    .eq('receiver_id', userId)
-                    .eq('seen', false);
-                if (!error && data) {
-                    const senderIds = data.map(m => m.sender_id);
-                    const unreadChatsSet = new Set(senderIds);
-                    setState(prev => ({
-                        ...prev,
-                        unreadMessageCount: unreadChatsSet.size,
-                        unreadChats: unreadChatsSet,
-                    }));
-                }
-            };
-            fetchUnreadData();
+    useEffect(() => {
+        refreshUnreadMessages();
+    }, [refreshUnreadMessages]);
 
-            messagesChannel = supabase
-                .channel(`public:messages-realtime-${userId}-${Date.now()}`)
-                .on(
-                    'postgres_changes',
-                    { event: '*', schema: 'public', table: 'messages' },
-                    (payload) => {
-                        const newMessage = payload.new as any;
-                        const oldMessage = payload.old as any;
+    // Notifications are a query now (ONE-17), with their own realtime hook
+    // inside features/notifications. AppContext keeps only the unread-message
+    // half, until ONE-18 takes that too.
+    useNotificationsRealtime(userProfile.id || undefined);
 
-                        if (payload.eventType === 'INSERT') {
-                            // Yeni mesaj geldi
-                            if (newMessage.receiver_id === userId) {
-                                setState(prev => {
-                                    const updatedUnreadChats = new Set(prev.unreadChats);
-                                    updatedUnreadChats.add(newMessage.sender_id);
-                                    return {
-                                        ...prev,
-                                        unreadChats: updatedUnreadChats,
-                                        unreadMessageCount: updatedUnreadChats.size,
-                                    };
-                                });
-                            }
-                        }
-
-                        if (payload.eventType === 'UPDATE') {
-                            // Mesaj 'seen' olduysa bildirimi kaldır
-                            if (oldMessage?.seen === false && newMessage?.seen === true && newMessage.receiver_id === userId) {
-                                setState(prev => {
-                                    const updatedUnreadChats = new Set(prev.unreadChats);
-                                    updatedUnreadChats.delete(newMessage.sender_id);
-                                    return {
-                                        ...prev,
-                                        unreadChats: updatedUnreadChats,
-                                        unreadMessageCount: updatedUnreadChats.size,
-                                    };
-                                });
-                            }
-                        }
-                    }
-                )
-                .subscribe();
-        };
-
-        setupSubscriptions();
-
-        return () => {
-            if (notificationsChannel) supabase.removeChannel(notificationsChannel);
-            if (messagesChannel) supabase.removeChannel(messagesChannel);
-        };
-    }, [state.userProfile.id]);
+    // Live unread-message updates, through the bridge. This re-reads rather
+    // than patching state from the payload: the slice is AppState until
+    // ONE-18 moves it, and the bridge's business is the cache.
+    useRealtimeSync({
+        table: 'messages',
+        filter: `receiver_id=eq.${userProfile.id}`,
+        queryKey: ['messages'],
+        enabled: Boolean(userProfile.id),
+        onInsert: () => { refreshUnreadMessages(); return true; },
+        onUpdate: () => { refreshUnreadMessages(); return true; },
+    });
 
     const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
         const id = `toast-${Date.now()}`;
@@ -267,28 +196,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         try {
             await ensureCurrentUserProfile();
 
-            // Use Promise.all to fetch profile, likes, reposts, follows, and stories concurrently for better performance.
-            const [profileResult, likesResult, repostsResult, savedPostsResult, followingResult, myStoriesResult, storyLikesResult, unreadMessagesResult] = await Promise.all([
+            // The profile itself is a query now (ONE-15) — this no longer
+            // fetches it, it just records who is signed in and lets
+            // useCurrentUserQuery do the rest. What stays here is the state
+            // no server-side feature owns yet: stories, unread counts, the
+            // admin flag.
+            const [profileResult, myStoriesResult, storyLikesResult, unreadMessagesResult] = await Promise.all([
                 supabase
                     .from('profiles')
-                    .select('full_name, username, avatar_url, is_verified, is_admin, bio')
+                    .select('is_admin')
                     .eq('id', user.id)
                     .maybeSingle(),
-                supabase.from('likes').select('post_id').eq('user_id', user.id),
-                supabase.from('reposts').select('post_id').eq('user_id', user.id),
-                supabase.from('saved_posts').select('post_id').eq('user_id', user.id),
-                getFollowingList(user.id),
                 getMyStories(user.id),
                 supabase.from('story_likes').select('story_id').eq('user_id', user.id),
                 supabase.from('messages').select('sender_id').eq('receiver_id', user.id).eq('seen', false)
             ]);
 
-            // Destructure results
             const { data: profileData } = profileResult as any;
-            const { data: likedPostsData } = likesResult as any;
-            const { data: repostedPostsData } = repostsResult as any;
-            const { data: savedPostsData } = savedPostsResult as any;
-            const followingUsernames = followingResult as string[];
             const myStories = myStoriesResult as Story[];
             const { data: storyLikesData } = storyLikesResult as any;
             const { data: unreadMessagesData } = unreadMessagesResult;
@@ -298,50 +222,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
             // Update state in a single, batched call to avoid multiple re-renders.
             setState(prevState => {
-                const newUserProfile = {
-                    ...prevState.userProfile,
-                    id: user.id,
-                    name: user.user_metadata.full_name || profileData?.full_name || prevState.userProfile.name,
-                    username: user.user_metadata.username || profileData?.username || prevState.userProfile.username,
-                    profilePicture: user.user_metadata.avatar_url || profileData?.avatar_url || prevState.userProfile.profilePicture,
-                    isVerified: profileData?.is_verified ?? prevState.userProfile.isVerified,
-                    bio: profileData?.bio || prevState.userProfile.bio,
-                };
-
-                const isAdmin = profileData?.is_admin === true;
-
-                const newLikedPosts = (likedPostsData && Array.isArray(likedPostsData))
-                    ? new Set(likedPostsData.map(l => l.post_id))
-                    : prevState.likedPosts;
-
-                const newRepostedPosts = (repostedPostsData && Array.isArray(repostedPostsData))
-                    ? new Set(repostedPostsData.map(r => r.post_id))
-                    : prevState.repostedPosts;
-
-                const newSavedPosts = (savedPostsData && Array.isArray(savedPostsData))
-                    ? new Set(savedPostsData.map(s => s.post_id))
-                    : prevState.savedPosts;
-
-                const newFollowedUsernames = new Set(
-                    (followingUsernames || []).map((username) => username.toLowerCase())
-                );
-
                 const newLikedStoryIds = (storyLikesData && Array.isArray(storyLikesData))
                     ? new Set(storyLikesData.map(l => l.story_id))
                     : prevState.likedStoryIds;
 
                 return {
                     ...prevState,
-                    userProfile: newUserProfile,
-                    likedPosts: newLikedPosts,
-                    repostedPosts: newRepostedPosts,
-                    savedPosts: newSavedPosts,
-                    followedUsernames: newFollowedUsernames,
+                    authUserId: user.id,
                     userStories: myStories,
                     likedStoryIds: newLikedStoryIds,
                     unreadMessageCount: unreadMessageCount,
                     unreadChats: unreadChats,
-                    isAdmin: isAdmin,
+                    isAdmin: profileData?.is_admin === true,
                 };
             });
         } catch (error) {
@@ -352,12 +244,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const refreshAllData = useCallback(async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-            await Promise.all([
-                syncUserData(user)
-            ]);
-        }
-    }, [syncUserData]);
+        if (!user) return;
+
+        // Pull-to-refresh now means both halves: the state this provider still
+        // owns, and every query — the profile, its posts, follows, blocks —
+        // which used to be fetched here by hand (ONE-15).
+        await Promise.all([
+            syncUserData(user),
+            queryClient.invalidateQueries(),
+        ]);
+    }, [syncUserData, queryClient]);
 
     useEffect(() => {
         const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -366,18 +262,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             } else if (event === 'SIGNED_OUT') {
                 setState(prevState => ({
                     ...prevState,
-                    likedPosts: new Set(),
-                    repostedPosts: new Set(),
-                    savedPosts: new Set(),
-                    postComments: new Map(),
-                    profilePosts: [],
-                    userProfile: {
-                        id: '',
-                        name: 'OneTag User',
-                        username: 'onetag_user',
-                        bio: 'Hello, I am using OneTag',
-                        profilePicture: null,
-                    },
+                    authUserId: '',
                     userStories: [],
                     storyComments: new Map(),
                     likedStoryIds: new Set(),
@@ -385,14 +270,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     viewedStoryTimestamps: new Set(),
                     isViewingStory: false,
                     likedVideoIds: new Set(),
-                    followedUsernames: new Set(),
                     votedPolls: new Map(),
-                    notifications: null,
                     unreadMessageCount: 0,
                     unreadChats: new Set(),
                     topNotification: null,
                     isAdmin: false,
                 }));
+
+                // Every query cached under the previous account is about
+                // somebody who is no longer here — their profile, their
+                // follows, their blocks. Clearing is the only honest move;
+                // the keys are per-user but the cache outlives the session.
+                queryClient.clear();
             }
         });
 
@@ -415,289 +304,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
     }, []);
 
-    const togglePostLike = useCallback(async (postId: string) => {
-        triggerHapticFeedback();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            addToast('You must be logged in to like posts.', 'error');
-            return;
-        }
+    // Like, Repost and Save moved to features/posts/mutations.ts in ONE-13.
+    // They are cache operations now, not context state: the boolean lives on
+    // the cached post and the rollback lives in lib/optimisticToggle.ts, so
+    // there is nothing left for AppContext to hold. Screens call
+    // useLikePost / useRepostPost / useSavePost.
 
-        const alreadyLiked = state.likedPosts.has(postId);
-        // Optimistic update
-        setState(prevState => {
-            const newLikedPosts = new Set(prevState.likedPosts);
-            if (alreadyLiked) {
-                newLikedPosts.delete(postId);
-            } else {
-                newLikedPosts.add(postId);
-            }
-            return { ...prevState, likedPosts: newLikedPosts };
-        });
 
-        try {
-            await apiToggleLike(postId, user.id);
-        } catch (error) {
-            console.error("Failed to toggle like:", error);
-            addToast('Failed to update like status.', 'error');
-            // Revert on failure
-            setState(prevState => {
-                const newLikedPosts = new Set(prevState.likedPosts);
-                if (alreadyLiked) {
-                    newLikedPosts.add(postId);
-                } else {
-                    newLikedPosts.delete(postId);
-                }
-                return { ...prevState, likedPosts: newLikedPosts };
-            });
-        }
-    }, [triggerHapticFeedback, state.likedPosts, addToast]);
+    // Comments moved to features/comments in ONE-14: the cache they were
+    // kept in here was a query cache, hand-rolled, with a loaded flag and a
+    // 209-line fetch guard in front of it. Screens use useCommentsQuery and
+    // useAddComment / useDeleteComment.
 
-    const isPostLiked = useCallback((postId: string) => state.likedPosts.has(postId), [state.likedPosts]);
+    // Publishing, editing and deleting a post moved to
+    // features/posts/mutations.ts in ONE-15: they existed here only to keep a
+    // a local array of the user's own posts in step, and that array is a
+    // query now. Screens
+    // call useCreatePost / useUpdatePost / useDeletePost.
 
-    const togglePostRepost = useCallback(async (postId: string) => {
-        triggerHapticFeedback();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            addToast('You must be logged in to repost.', 'error');
-            return;
-        }
-
-        const alreadyReposted = state.repostedPosts.has(postId);
-        // Optimistic update
-        setState(prevState => {
-            const newRepostedPosts = new Set(prevState.repostedPosts);
-            if (alreadyReposted) {
-                newRepostedPosts.delete(postId);
-                addToast('Repost removed', 'info');
-            } else {
-                newRepostedPosts.add(postId);
-                addToast('Post reposted!', 'success');
-            }
-            return { ...prevState, repostedPosts: newRepostedPosts };
-        });
-
-        try {
-            await apiToggleRepost(postId, user.id);
-        } catch (error) {
-            console.error("Failed to toggle repost:", error);
-            addToast('Failed to update repost status.', 'error');
-            // Revert on failure
-            setState(prevState => {
-                const newRepostedPosts = new Set(prevState.repostedPosts);
-                if (alreadyReposted) {
-                    newRepostedPosts.add(postId);
-                } else {
-                    newRepostedPosts.delete(postId);
-                }
-                return { ...prevState, repostedPosts: newRepostedPosts };
-            });
-        }
-    }, [triggerHapticFeedback, state.repostedPosts, addToast]);
-
-    const isPostReposted = useCallback((postId: string) => state.repostedPosts.has(postId), [state.repostedPosts]);
-
-    const toggleSavePost = useCallback(async (postId: string) => {
-        triggerHapticFeedback();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            addToast('You must be logged in to save posts.', 'error');
-            return;
-        }
-
-        const alreadySaved = state.savedPosts.has(postId);
-        // Optimistic update
-        setState(prevState => {
-            const newSavedPosts = new Set(prevState.savedPosts);
-            if (alreadySaved) {
-                newSavedPosts.delete(postId);
-                addToast('Removed from your collection.', 'info');
-            } else {
-                newSavedPosts.add(postId);
-                addToast('Saved to your collection!', 'success');
-            }
-            return { ...prevState, savedPosts: newSavedPosts };
-        });
-
-        try {
-            await apiToggleSavePost(postId, user.id);
-        } catch (error) {
-            console.error("Failed to toggle save:", error);
-            addToast('Failed to update saved status.', 'error');
-            // Revert on failure
-            setState(prevState => {
-                const newSavedPosts = new Set(prevState.savedPosts);
-                if (alreadySaved) {
-                    newSavedPosts.add(postId);
-                } else {
-                    newSavedPosts.delete(postId);
-                }
-                return { ...prevState, savedPosts: newSavedPosts };
-            });
-        }
-    }, [triggerHapticFeedback, state.savedPosts, addToast]);
-
-    const isPostSaved = useCallback((postId: string) => state.savedPosts.has(postId), [state.savedPosts]);
-
-    const postComment = useCallback(async (postId: string, content: string) => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            addToast('You must be logged in to comment.', 'error');
-            return;
-        }
-
-        const tempId = `temp-comment-${Date.now()}`;
-        const optimisticComment: Comment = {
-            id: tempId,
-            userId: user.id,
-            username: state.userProfile.username,
-            avatar: state.userProfile.profilePicture,
-            text: content,
-            timestamp: new Date(),
-            likes: 0,
-            isLiked: false,
-            replies: [],
-        };
-
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => {
-            const newPostComments = new Map(prevState.postComments);
-            const existingComments = newPostComments.get(postId);
-            const allComments = Array.isArray(existingComments) ? existingComments : [];
-            newPostComments.set(postId, [optimisticComment, ...allComments]);
-            return { ...prevState, postComments: newPostComments };
-        });
-
-        try {
-            const newCommentData = await apiAddComment(postId, user.id, content);
-
-            const realComment: Comment = {
-                id: newCommentData.id,
-                userId: newCommentData.user_id,
-                username: newCommentData.profiles.username,
-                avatar: newCommentData.profiles.avatar_url,
-                text: newCommentData.content,
-                timestamp: new Date(newCommentData.created_at),
-                likes: 0,
-                isLiked: false,
-                replies: [],
-            };
-
-            // FIX: Explicitly typed `prevState` as AppState.
-            setState((prevState: AppState) => {
-                const newPostComments = new Map(prevState.postComments);
-                const postComments = newPostComments.get(postId) || [];
-                const updatedComments = postComments.map(c => c.id === tempId ? realComment : c);
-                newPostComments.set(postId, updatedComments);
-                return { ...prevState, postComments: newPostComments };
-            });
-
-        } catch (error) {
-            addToast('Failed to post comment.', 'error');
-            console.error(error);
-            // FIX: Explicitly typed `prevState` as AppState.
-            setState((prevState: AppState) => {
-                const newPostComments = new Map(prevState.postComments);
-                const postComments = newPostComments.get(postId) || [];
-                newPostComments.set(postId, postComments.filter(c => c.id !== tempId));
-                return { ...prevState, postComments: newPostComments };
-            });
-        }
-    }, [addToast, state.userProfile.username, state.userProfile.profilePicture]);
-
-    const getComments = useCallback((postId: string) => state.postComments.get(postId) || [], [state.postComments]);
-
-    const setComments = useCallback((postId: string, comments: Comment[]) => {
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => {
-            const newPostComments = new Map(prevState.postComments);
-            newPostComments.set(postId, comments);
-            return { ...prevState, postComments: newPostComments };
-        });
-    }, []);
-
-    const areCommentsLoaded = useCallback((postId: string) => state.postComments.has(postId), [state.postComments]);
-
-    const addProfilePost = useCallback(async (post: Post) => {
-        // Upload local media to Supabase Storage before creating the post.
-        // This ensures other users can see the image (local file:// URIs are only visible on the sender's device).
-        const isLocalUri = (uri: string) =>
-            uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('blob:') || uri.startsWith('data:');
-
-        try {
-            let postToPublish = { ...post };
-
-            if (postToPublish.media && isLocalUri(postToPublish.media)) {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) {
-                    throw new Error('You must be logged in to upload media.');
-                }
-                try {
-                    const publicUrl = await uploadMedia(postToPublish.media, user.id);
-                    postToPublish.media = publicUrl;
-                } catch (uploadError) {
-                    console.warn('Storage upload failed, using local data URL as fallback:', uploadError);
-                    // Fallback: keep the original data URL if upload fails
-                    // For camera captures, the URL is already a data: URL
-                    // For blob: URLs from gallery, we keep it as is (will only work on same device)
-                }
-            }
-
-            const realPost = await publishPost(postToPublish);
-            if (!realPost) {
-                throw new Error("API returned null post.");
-            }
-        } catch (error) {
-            console.error("Failed to publish post.", error);
-            addToast('Failed to create post.', 'error');
-            throw error;
-        }
-    }, [addToast]);
-
-    const deleteProfilePost = useCallback((postId: string) => {
-        // Optimistic update
-        // FIX: Explicitly type prevState as AppState.
-        setState((prevState: AppState) => ({
-            ...prevState,
-            profilePosts: prevState.profilePosts.filter(p => p.id !== postId),
-        }));
-
-        // If admin is deleting, call admin delete function
-        if (state.isAdmin) {
-            adminDeletePost(postId).catch(err => {
-                 console.error("Failed to delete post as admin", err);
-                 addToast("Could not delete post.", "error");
-            });
-        } else {
-            deletePost(postId);
-        }
-    }, [state.isAdmin, addToast]);
-
-     const updateProfilePost = useCallback((updatedPost: Post) => {
-        // Optimistic update
-        // FIX: Explicitly type prevState as AppState.
-        setState((prevState: AppState) => ({
-            ...prevState,
-            profilePosts: prevState.profilePosts.map(p => p.id === updatedPost.id ? updatedPost : p),
-        }));
-        updatePost(updatedPost);
-    }, []);
-
-    const setProfilePosts = useCallback((posts: Post[]) => {
-        // FIX: Explicitly type prevState as AppState.
-        setState((prevState: AppState) => ({ ...prevState, profilePosts: posts }));
-    }, []);
-
-    const updateProfile = useCallback((newProfile: Partial<UserProfile>) => {
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => ({
-            ...prevState,
-            userProfile: {
-                ...prevState.userProfile,
-                ...newProfile,
-            }
-        }));
-    }, []);
+    // updateProfile moved to features/profiles/mutations.ts (useUpdateProfile).
 
     const setTheme = useCallback((theme: 'light' | 'dark') => {
         // FIX: Explicitly typed `prevState` as AppState.
@@ -714,7 +339,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, []);
 
     const deleteStory = useCallback(async (storyId: string) => {
-        const { id: userId } = state.userProfile;
+        const { id: userId } = userProfile;
         if (!userId) {
             addToast('You must be logged in to delete a story.', 'error');
             return;
@@ -747,7 +372,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             // FIX: Explicitly typed `prevState` as AppState.
             setState((prevState: AppState) => ({ ...prevState, userStories: originalStories }));
         }
-    }, [state.userStories, state.userProfile.id, addToast]);
+    }, [state.userStories, userProfile.id, addToast]);
 
     const replaceStory = useCallback((localId: string, realStory: Story) => {
         // FIX: Explicitly type prevState as AppState.
@@ -854,22 +479,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setState((prevState: AppState) => ({ ...prevState, isViewingStory: isViewing }));
     }, []);
 
-    const isUserBlocked = useCallback((username: string) => state.blockedUsers.has(username), [state.blockedUsers]);
+    const isUserBlocked = blocks.isUserBlocked;
 
+    /**
+     * Kept on the context because a dozen screens call it, but it is a thin
+     * pass-through to features/blocks now. It takes a username for the same
+     * reason: that is what a post, a story or a search result carries.
+     */
     const toggleBlockUser = useCallback((username: string) => {
-        setState((prevState: AppState) => {
-            const newBlockedUsers = new Set(prevState.blockedUsers);
-            if (newBlockedUsers.has(username)) {
-                newBlockedUsers.delete(username);
-            } else {
-                newBlockedUsers.add(username);
-            }
-            AsyncStorage.setItem(BLOCKED_USERS_KEY, JSON.stringify(Array.from(newBlockedUsers))).catch(error => {
-                console.error("Failed to save blocked users to AsyncStorage", error);
+        const alreadyBlocked = blocks.blockedUsers.find(user => user.username === username);
+
+        if (alreadyBlocked) {
+            blockToggle.toggle(alreadyBlocked);
+            return;
+        }
+
+        // Blocking by username needs the id the row is keyed on, which the
+        // caller does not have.
+        supabase
+            .from('profiles')
+            .select('id, username, full_name, avatar_url')
+            .eq('username', username)
+            .maybeSingle()
+            .then(({ data, error }) => {
+                if (error || !data) {
+                    console.error('Could not resolve user to block', error);
+                    addToast('Could not block that account.', 'error');
+                    return;
+                }
+
+                blockToggle.toggle({
+                    userId: data.id,
+                    username: data.username,
+                    name: data.full_name,
+                    avatarUrl: data.avatar_url,
+                });
             });
-            return { ...prevState, blockedUsers: newBlockedUsers };
-        });
-    }, []);
+    }, [blocks.blockedUsers, blockToggle, addToast]);
 
     const toggleVideoLike = useCallback((videoId: string) => {
         triggerHapticFeedback();
@@ -887,74 +533,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const isVideoLiked = useCallback((videoId: string) => state.likedVideoIds.has(videoId), [state.likedVideoIds]);
 
-    const toggleFollowUser = useCallback(async (username: string) => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            addToast('You must be logged in to follow users.', 'error');
-            return;
-        }
-
-        const normalizedUsername = username.trim().toLowerCase();
-        if (!normalizedUsername) return;
-
-        const { data: targetUserData, error: targetUserError } = await supabase
-            .from('profiles')
-            .select('id')
-            .ilike('username', normalizedUsername)
-            .single();
-
-        if (targetUserError || !targetUserData) {
-            addToast(`Could not find user @${username}.`, 'error');
-            return;
-        }
-        const targetUserId = targetUserData.id;
-        if (targetUserId === user.id) return;
-
-        const alreadyFollowing = state.followedUsernames.has(normalizedUsername);
-
-        // Optimistic update
-        setState((prevState: AppState) => {
-            const newFollowed = new Set(prevState.followedUsernames);
-            if (alreadyFollowing) {
-                newFollowed.delete(normalizedUsername);
-            } else {
-                newFollowed.add(normalizedUsername);
-            }
-            return { ...prevState, followedUsernames: newFollowed };
-        });
-
-        try {
-            if (alreadyFollowing) {
-                await unfollowUser(user.id, targetUserId);
-            } else {
-                await followUser(user.id, targetUserId);
-            }
-            // Re-sync with database after action to ensure consistency.
-            const usernames = await getFollowingList(user.id);
-            setState(prev => ({
-                ...prev,
-                followedUsernames: new Set(usernames.map((item) => item.toLowerCase())),
-            }));
-        } catch (error) {
-            console.error("Failed to toggle follow:", error);
-            addToast('Failed to update follow status.', 'error');
-            // Revert on failure
-            setState((prevState: AppState) => {
-                const newFollowed = new Set(prevState.followedUsernames);
-                if (alreadyFollowing) {
-                    newFollowed.add(normalizedUsername);
-                } else {
-                    newFollowed.delete(normalizedUsername);
-                }
-                return { ...prevState, followedUsernames: newFollowed };
-            });
-        }
-    }, [state.followedUsernames, addToast]);
-
-    const isUserFollowed = useCallback(
-        (username: string) => state.followedUsernames.has(username.trim().toLowerCase()),
-        [state.followedUsernames]
-    );
+    // Following moved to features/profiles/mutations.ts (useToggleFollow), on
+    // the shared optimistic helper. Follow state is read from the query by
+    // useFollowState.
 
     const voteInPoll = useCallback((postId: string, optionIndex: number) => {
         // FIX: Explicitly typed `prevState` as AppState.
@@ -967,42 +548,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const getPollVote = useCallback((postId: string) => state.votedPolls.get(postId), [state.votedPolls]);
 
-    const markAllNotificationsAsRead = useCallback(async (userId?: string) => {
-      if (!userId) return;
-      const { error } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("receiver_id", userId)
-        .eq("is_read", false);
-
-      if (error) {
-        console.error("Error marking notifications as read:", error.message || error);
-      } else {
-        const { data, error: fetchError } = await supabase
-          .from("notifications")
-          .select(`
-              id, type, is_read, created_at, content, comment_id,
-              sender:profiles!notifications_sender_id_fkey(id, username, avatar_url),
-              post:posts!notifications_post_id_fkey(id, content, media:image_url, media_type),
-              comment:comments!notifications_comment_id_fkey(id, text:content),
-              story:stories!notifications_story_id_fkey(id, media_url)
-          `)
-          .eq("receiver_id", userId)
-          .order("created_at", { ascending: false });
-
-        if (fetchError) {
-            console.error("Error refetching notifications after marking as read:", fetchError.message || fetchError);
-        } else {
-            setState((prev: AppState) => ({
-                ...prev,
-                notifications: normalizeNotifications(data || []),
-            }));
-        }
-      }
-    }, []);
-
     const markAllMessagesAsRead = useCallback(async () => {
-        const userId = state.userProfile.id;
+        const userId = userProfile.id;
         if (!userId || state.unreadMessageCount === 0) return;
 
         // Optimistic update
@@ -1019,10 +566,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             console.error("Error marking all messages as read:", error.message || error);
         } else {
         }
-    }, [state.userProfile.id, state.unreadMessageCount]);
+    }, [userProfile.id, state.unreadMessageCount]);
 
     const markChatAsRead = useCallback(async (senderId: string) => {
-        const userId = state.userProfile.id;
+        const userId = userProfile.id;
         if (!userId) return;
 
         // 1️⃣ Veritabanını güncelle
@@ -1045,7 +592,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             console.error("Failed to mark chat as read");
             addToast("Couldn't mark messages as read.", 'error');
         }
-    }, [state.userProfile.id, addToast]);
+    }, [userProfile.id, addToast]);
 
     const removeToast = useCallback((id: string) => {
         // FIX: Explicitly typed `prevState` as AppState.
@@ -1062,21 +609,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const contextValue = useMemo(() => ({
         ...state,
-        togglePostLike,
-        isPostLiked,
-        togglePostRepost,
-        isPostReposted,
-        toggleSavePost,
-        isPostSaved,
-        postComment,
-        getComments,
-        setComments,
-        areCommentsLoaded,
-        addProfilePost,
-        deleteProfilePost,
-        updateProfilePost,
-        setProfilePosts,
-        updateProfile,
         setTheme,
         addUserStory,
         deleteStory,
@@ -1093,8 +625,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isUserBlocked,
         toggleVideoLike,
         isVideoLiked,
-        toggleFollowUser,
-        isUserFollowed,
         voteInPoll,
         getPollVote,
         addToast,
@@ -1103,27 +633,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         triggerHapticFeedback,
         setTooltip,
         refreshAllData,
-        markAllNotificationsAsRead,
         markAllMessagesAsRead,
         markChatAsRead,
         replaceStory,
+        userProfile,
     }), [
         state,
-        togglePostLike,
-        isPostLiked,
-        togglePostRepost,
-        isPostReposted,
-        toggleSavePost,
-        isPostSaved,
-        postComment,
-        getComments,
-        setComments,
-        areCommentsLoaded,
-        addProfilePost,
-        deleteProfilePost,
-        updateProfilePost,
-        setProfilePosts,
-        updateProfile,
+        userProfile,
         setTheme,
         addUserStory,
         deleteStory,
@@ -1140,8 +656,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isUserBlocked,
         toggleVideoLike,
         isVideoLiked,
-        toggleFollowUser,
-        isUserFollowed,
         voteInPoll,
         getPollVote,
         addToast,
@@ -1150,7 +664,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         triggerHapticFeedback,
         setTooltip,
         refreshAllData,
-        markAllNotificationsAsRead,
         markAllMessagesAsRead,
         markChatAsRead,
         replaceStory,

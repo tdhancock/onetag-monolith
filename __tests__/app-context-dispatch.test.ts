@@ -82,9 +82,10 @@ function makeInitialState(): AppState {
 
 // ─── Dispatch reducers (mirror of AppContext.tsx setState calls) ─────
 
-// updateProfile — the "setUser" action. The context has no top-level
-// `setUser`; user-profile changes go through `updateProfile(partial)`
-// (AppContext.tsx line641). This is the canonical setUser dispatch.
+// The profile merge. This used to be AppContext's `updateProfile(partial)`;
+// since ONE-15 the same merge is the cache write inside `useUpdateProfile`
+// (features/profiles/mutations.ts), which spreads the saved fields over the
+// cached profile. The shape being asserted is unchanged — only its home is.
 function dispatchUpdateProfile(
  state: AppState,
  patch: Partial<UserProfile>,
@@ -180,7 +181,7 @@ function dispatchLogout(state: AppState): AppState {
 
 // ───1. setUser / updateProfile dispatch ─────────────────────────────
 
-describe('AppContext dispatch — setUser (updateProfile)', () => {
+describe('profile merge — the cache write in useUpdateProfile', () => {
  it('updateProfile sets a full user profile in one dispatch', () => {
  const initial = makeInitialState();
  const patched = dispatchUpdateProfile(initial, {
@@ -463,18 +464,20 @@ describe('AppContext dispatch — source wiring', () => {
  expect(src).toContain('useState<AppState>');
  });
 
- it('declares setTheme and updateProfile in the public context type', () => {
+ it('declares setTheme and userProfile in the public context type', () => {
  const src = fs.readFileSync(SRC, 'utf8');
  expect(src).toMatch(/setTheme:\s*\(theme:\s*'light'\s*\|\s*'dark'\)\s*=>\s*void/);
- expect(src).toMatch(/updateProfile:\s*\(newProfile:\s*Partial<UserProfile>\)\s*=>\s*void/);
+ // userProfile stayed on the context through ONE-15 — it is the app's
+ // identity object — while `updateProfile` moved to features/profiles.
+ expect(src).toMatch(/userProfile:\s*UserProfile;/);
+ expect(src).not.toContain('updateProfile:');
  });
 
- it('exposes setTheme and updateProfile in the memoised contextValue', () => {
+ it('exposes setTheme and userProfile in the memoised contextValue', () => {
  const src = fs.readFileSync(SRC, 'utf8');
- // Look for both names inside the value object and the dependency array.
  const valueBlock = src.match(/const contextValue = useMemo\(\(\) => \(\{([\s\S]*?)\}\), \[/);
  expect(valueBlock).not.toBeNull();
  expect(valueBlock![1]).toContain('setTheme,');
- expect(valueBlock![1]).toContain('updateProfile,');
+ expect(valueBlock![1]).toContain('userProfile,');
  });
 });

@@ -13,8 +13,7 @@
 // Design goals:
 //   - Framework-agnostic — pure TypeScript, no React, no Expo, no
 //     native deps. This makes it trivially unit-testable with Jest
-//     in a Node environment, mirroring the pattern used by
-//     `services/fetchGuard.ts`.
+//     in a Node environment.
 //   - Bounded memory — a configurable `maxQueueSize` prevents a long
 //     offline session from accumulating thousands of requests in RAM.
 //     Once the cap is hit, the oldest queued request is evicted and

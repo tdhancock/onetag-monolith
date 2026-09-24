@@ -5,6 +5,7 @@ import { Tabs, useRouter } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
+import { useUnreadNotificationCount } from '../../features/notifications';
 import {
   HomeIcon,
   SearchIcon,
@@ -37,8 +38,13 @@ const CENTER_ICON_SIZE = 20;
 export default function TabLayout() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { notifications, unreadMessageCount } = useApp();
-  const unreadNotificationCount = notifications?.filter(n => !n.is_read).length ?? 0;
+  const { userProfile, unreadMessageCount } = useApp();
+
+  // The badge subscribes to the count, not to the list (ONE-17): a
+  // notification whose unrelated fields change — a sender's avatar arriving —
+  // no longer re-renders the whole tab bar. The message half stays on the
+  // context until ONE-18.
+  const unreadNotificationCount = useUnreadNotificationCount(userProfile?.id || undefined);
   const totalBadge = unreadNotificationCount + unreadMessageCount;
 
   return (
@@ -135,12 +141,6 @@ export default function TabLayout() {
           tabBarIcon: ({ color: tint }) => <UserIcon color={tint} size={TAB_ICON_SIZE} />,
         }}
       />
-      {/* Utility modules are not screens — hide them from the tab bar.
-          Expo Router registers every file under (tabs)/ as a tab; .ts helpers
-          would otherwise appear as 3 extra meaningless icons. */}
-      <Tabs.Screen name="feed.utils" options={{ href: null }} />
-      <Tabs.Screen name="home.utils" options={{ href: null }} />
-      <Tabs.Screen name="profile.utils" options={{ href: null }} />
     </Tabs>
   );
 }

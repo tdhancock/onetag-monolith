@@ -6,11 +6,14 @@ import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '../store/AppContext.native';
+import { useUpdateProfile, useUploadAvatar } from '../features/profiles';
 import { cleanHtml, uploadAvatar, updateUserProfileData } from '../services/apiService';
 import UserAvatar from '../components/native/UserAvatar';
 export default function EditProfileScreen() {
   const router = useRouter();
-  const { userProfile, updateProfile, addToast } = useApp();
+  const { userProfile, addToast } = useApp();
+  const updateProfile = useUpdateProfile(userProfile?.id || undefined);
+  const uploadAvatarMutation = useUploadAvatar();
 
   const [name, setName] = useState(userProfile?.name ?? '');
   const [username, setUsername] = useState(userProfile?.username ?? '');
@@ -45,24 +48,12 @@ export default function EditProfileScreen() {
       // `avatar_url` takes the returned public URL, never the local file:// URI.
       let avatarUrl: string | null = null;
       if (avatarUri) {
-        avatarUrl = await uploadAvatar(avatarUri);
-        if (!avatarUrl) {
-          throw new Error('Avatar upload failed');
-        }
+        avatarUrl = await uploadAvatarMutation.mutateAsync(avatarUri);
       }
 
-      const saved = await updateUserProfileData({
-        name,
-        username,
-        bio: cleanedBio,
-        ...(avatarUrl ? { profilePicture: avatarUrl } : {}),
-      });
-
-      if (!saved) {
-        throw new Error('Profile update failed');
-      }
-
-      updateProfile({
+      // One call now: the mutation saves the row and updates every cached
+      // copy of this person — their own screen and anywhere else they appear.
+      await updateProfile.mutateAsync({
         name,
         username,
         bio: cleanedBio,

@@ -4,6 +4,13 @@
 // inside it. See features/README.md.
 
 export {
+  toggleLike,
+  toggleRepost,
+  toggleSavePost,
+  publishPost,
+  updatePost,
+  deletePost,
+  adminDeletePost,
   fetchFeedPage,
   fetchPostById,
   fetchTrendingPosts,
@@ -18,6 +25,16 @@ export type { FeedCursor, FetchFeedPageArgs } from './api';
 export { postKeys } from './keys';
 
 export { useFeedQuery, usePostQuery } from './queries';
+
+export {
+  useLikePost,
+  useRepostPost,
+  useSavePost,
+  useCreatePost,
+  useUpdatePost,
+  useDeletePost,
+} from './mutations';
+export type { PostToggle, OnToggle } from './mutations';
 
 export { feedPosts, prependPost, replacePost, removePost } from './cache';
 export type { FeedData } from './cache';

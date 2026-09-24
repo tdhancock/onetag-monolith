@@ -29,10 +29,22 @@ export const useFeedQuery = (userId: string | undefined) =>
     enabled: Boolean(userId),
   });
 
-/** A single post by id. */
-export const usePostQuery = (postId: string | undefined) =>
+/**
+ * A single post by id.
+ *
+ * `viewerId` decides whether the post comes back marked as liked, reposted
+ * or saved — that state is read per viewer and carried on the entity, so the
+ * toggle hooks have something to flip (ONE-13).
+ *
+ * It is deliberately *not* part of the key: the toggle helper addresses a
+ * post by `postKeys.detail(id)` alone, and a key that varied by viewer would
+ * leave it patching an entry nothing is reading. Signing out therefore has
+ * to clear the cache rather than out-key it — `QueryProvider` is where that
+ * belongs, and it is worth its own ticket.
+ */
+export const usePostQuery = (postId: string | undefined, viewerId?: string) =>
   useQuery<Post | undefined>({
     queryKey: postKeys.detail(postId ?? ''),
-    queryFn: () => fetchPostById(postId!),
+    queryFn: () => fetchPostById(postId!, viewerId),
     enabled: Boolean(postId),
   });

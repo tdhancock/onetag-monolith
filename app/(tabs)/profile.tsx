@@ -12,7 +12,10 @@ import {
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../store/AppContext.native';
+import { useFollowCountsQuery, profileKeys } from '../../features/profiles';
+import { useRealtimeSync } from '../../lib/realtimeBridge';
 import {
   getUserPosts,
   getUserReposts,
@@ -65,33 +68,34 @@ const GridTile: React.FC<{ post: Post; onPress: () => void }> = React.memo(({ po
 // ─── Profile Screen ──────────────────────────────
 
 export default function ProfileScreen() {
-  const { userProfile, refreshAllData, addToast, followedUsernames } = useApp();
+  const { userProfile, refreshAllData, addToast } = useApp();
+  const queryClient = useQueryClient();
+
+  // Follow counts come from the query the follow toggle moves optimistically
+  // (ONE-15), so following someone updates this screen without a refetch.
+  const { data: followCounts } = useFollowCountsQuery(userProfile?.id || undefined);
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<TabType>('posts');
   const [posts, setPosts] = useState<Post[]>([]);
   const [reposts, setReposts] = useState<Post[]>([]);
-  const [savedPosts, setSavedPosts] = useState<Post[]>([]);
-  const [followerCount, setFollowerCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
+  // The posts on the Saved tab, not the viewer's set of saved ids — that
+  // moved onto the cached post as `isSaved` in ONE-13.
+  const [savedTabPosts, setSavedTabPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchAll = useCallback(async () => {
     if (!userProfile?.id) return;
     try {
-      const [userPosts, userReposts, userSaved, followers, following] = await Promise.all([
+      const [userPosts, userReposts, userSaved] = await Promise.all([
         getUserPosts(userProfile.id),
         getUserReposts(userProfile.id),
         getSavedPosts(userProfile.id),
-        getFollowerCount(userProfile.id),
-        getFollowingCount(userProfile.id),
       ]);
       setPosts(userPosts);
       setReposts(userReposts);
-      setSavedPosts(userSaved);
-      setFollowerCount(followers);
-      setFollowingCount(following);
+      setSavedTabPosts(userSaved);
     } catch (error) {
       console.error('Profile fetch error:', error);
       addToast('Failed to load profile data', 'error');
@@ -104,49 +108,32 @@ export default function ProfileScreen() {
     fetchAll();
   }, [fetchAll]);
 
-  useEffect(() => {
-    setFollowingCount(followedUsernames.size);
-  }, [followedUsernames]);
+  // Realtime, through the shared bridge (ONE-16).
+  useRealtimeSync({
+    table: 'posts',
+    filter: `user_id=eq.${userProfile?.id ?? ''}`,
+    queryKey: profileKeys.posts(userProfile?.id ?? ''),
+    enabled: Boolean(userProfile?.id),
+    onInsert: () => { fetchAll(); return true; },
+    onUpdate: () => { fetchAll(); return true; },
+    onDelete: () => { fetchAll(); return true; },
+  });
 
-  // Realtime: own posts
-  useEffect(() => {
-    if (!userProfile?.id) return;
-    const channel = supabase
-      .channel(`profile-posts-${userProfile.id}-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'posts', filter: `user_id=eq.${userProfile.id}` },
-        () => { fetchAll(); }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [userProfile?.id, fetchAll]);
+  // Two streams rather than one client-side check over every follow in the
+  // system: a follow of this user, and a follow made by them.
+  useRealtimeSync({
+    table: 'follows',
+    filter: `followed_id=eq.${userProfile?.id ?? ''}`,
+    queryKey: profileKeys.counts(userProfile?.id ?? ''),
+    enabled: Boolean(userProfile?.id),
+  });
 
-  // Realtime: follow counts
-  useEffect(() => {
-    if (!userProfile?.id) return;
-    const channel = supabase
-      .channel(`profile-follows-${userProfile.id}-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'follows' },
-        async (payload) => {
-          const f = payload.new as any;
-          const o = payload.old as any;
-          if (f?.follower_id === userProfile.id || f?.followed_id === userProfile.id ||
-              o?.follower_id === userProfile.id || o?.followed_id === userProfile.id) {
-            const [followers, following] = await Promise.all([
-              getFollowerCount(userProfile.id),
-              getFollowingCount(userProfile.id),
-            ]);
-            setFollowerCount(followers);
-            setFollowingCount(following);
-          }
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [userProfile?.id]);
+  useRealtimeSync({
+    table: 'follows',
+    filter: `follower_id=eq.${userProfile?.id ?? ''}`,
+    queryKey: profileKeys.counts(userProfile?.id ?? ''),
+    enabled: Boolean(userProfile?.id),
+  });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -157,7 +144,7 @@ export default function ProfileScreen() {
     }
   }, [fetchAll, refreshAllData]);
 
-  const currentData = activeTab === 'posts' ? posts : activeTab === 'reposts' ? reposts : savedPosts;
+  const currentData = activeTab === 'posts' ? posts : activeTab === 'reposts' ? reposts : savedTabPosts;
 
   const handlePostPress = useCallback((post: Post) => {
     router.push(`/post/${post.id}`);
@@ -197,14 +184,14 @@ export default function ProfileScreen() {
               onPress={() => router.push({ pathname: '/user-list', params: { type: 'followers', userId: userProfile.id, title: 'Followers' } })}
               className="items-center"
             >
-              <Text className="text-white font-bold text-lg">{followerCount}</Text>
+              <Text className="text-white font-bold text-lg">{followCounts?.followers ?? 0}</Text>
               <Text className="text-gray-500 text-sm">Followers</Text>
             </Pressable>
             <Pressable
               onPress={() => router.push({ pathname: '/user-list', params: { type: 'following', userId: userProfile.id, title: 'Following' } })}
               className="items-center"
             >
-              <Text className="text-white font-bold text-lg">{followingCount}</Text>
+              <Text className="text-white font-bold text-lg">{followCounts?.following ?? 0}</Text>
               <Text className="text-gray-500 text-sm">Following</Text>
             </Pressable>
           </View>

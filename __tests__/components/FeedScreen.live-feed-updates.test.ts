@@ -8,7 +8,7 @@
 // Postgres Changes on the `posts` table. Every INSERT / UPDATE / DELETE
 // payload is delivered to `handlePostUpdates`, which delegates the
 // pure state-transition work to the reducer helpers in
-// `app/(tabs)/feed.utils.ts`:
+// `lib/screens/feed.ts`:
 //
 //   - `applyRealtimeInsert(current, incoming, isBlocked?)`
 //   - `applyRealtimeUpdate(current, incoming)`
@@ -71,7 +71,7 @@ import {
   applyRealtimeUpdate,
   applyRealtimeDelete,
   type FeedPost,
-} from '../../app/(tabs)/feed.utils';
+} from '../../lib/screens/feed';
 
 const channelMock = supabase.channel as unknown as jest.Mock;
 
@@ -128,10 +128,17 @@ const post = (id: string, likes = 0, username = 'alice'): LivePost => ({
  * INSERT prepends (with blocklist filter), UPDATE replaces by id,
  * DELETE drops by id.
  */
+// Each feed gets its own channel name. Two subscribers to the *same* name
+// share one channel and both now receive every event (ONE-16 made the
+// registry fan out to every listener rather than silently dropping all but
+// the first), so two logically separate feeds must be two streams.
+let liveFeedCounter = 0;
+
 function createLiveFeed(
   initial: LivePost[],
   blocked?: (u: string | undefined) => boolean,
 ) {
+  const channelName = `live-feed-posts-${(liveFeedCounter += 1)}`;
   let timeline: LivePost[] = initial.slice();
   const listener = (payload: ChangePayload) => {
     if (payload.eventType === 'INSERT' && payload.new) {
@@ -150,7 +157,8 @@ function createLiveFeed(
       timeline = applyRealtimeDelete(timeline, oldId);
     }
   };
-  const handle = subscribe('live-feed-posts', 'posts', '', listener);
+  const handle = subscribe(channelName, 'posts', '', listener);
+  const channel = channelsCreated[channelsCreated.length - 1];
   return {
     handle,
     // The dispatcher accepts a loosely-typed payload because the
@@ -159,9 +167,8 @@ function createLiveFeed(
     // mirrors how the realtime helper itself normalises incoming
     // payloads in production.
     dispatch: (payload: Record<string, unknown>) => {
-      const ch = channelsCreated[channelsCreated.length - 1];
-      expect(ch.changeHandler).toBeTruthy();
-      ch.changeHandler!(payload);
+      expect(channel.changeHandler).toBeTruthy();
+      channel.changeHandler!(payload);
     },
     getTimeline: () => timeline,
   };
@@ -296,7 +303,7 @@ describe('Live feed — subscription lifecycle', () => {
     const feed = createLiveFeed([post('a', 5)]);
     expect(activeSubscriptionCount()).toBe(1);
     expect(supabase.channel).toHaveBeenCalledTimes(1);
-    expect(channelsCreated[0].name).toBe('live-feed-posts');
+    expect(channelsCreated[0].name).toMatch(/^live-feed-posts-\d+$/);
 
     feed.handle.unsubscribe();
 

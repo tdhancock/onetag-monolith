@@ -17,6 +17,7 @@ import { Image } from 'expo-image';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
+import { useRealtimeSync } from '../lib/realtimeBridge';
 import {
   getChatListUsers,
   getUserProfile,
@@ -267,50 +268,73 @@ export default function MessagesScreen() {
     loadMessages();
   }, [chatWith?.id, userProfile?.id]);
 
-  // Realtime messages
-  useEffect(() => {
-    if (!chatWith?.id || !userProfile?.id) return;
+  // Realtime messages, through the shared bridge (ONE-16).
+  //
+  // Filtered to messages addressed to the signed-in user; the sender's own
+  // outgoing message is already in the list from the send itself. The id check
+  // in `setMessages` stays regardless — it is what stops a message appearing
+  // twice when the send response and the realtime echo race (ONE-18 moves this
+  // list into a query, where the bridge's own upsert takes over).
+  const handleIncomingMessage = useCallback((row: Record<string, unknown>) => {
+    const newMsg = row as unknown as Message;
+    if (!chatWith?.id || !userProfile?.id) return true;
 
-    const channel = supabase
-      .channel(`chat-with-${chatWith.id}-${Date.now()}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload) => {
-          const newMsg = payload.new as Message;
-          if (
-            (newMsg.sender_id === userProfile.id && newMsg.receiver_id === chatWith.id) ||
-            (newMsg.sender_id === chatWith.id && newMsg.receiver_id === userProfile.id)
-          ) {
-            const hydrateAndSet = async () => {
-              let sharedPost: Post | null = null;
-              let sharedUser: SimpleUser | null = null;
-              if (newMsg.shared_post_id) {
-                sharedPost = (await getPostById(newMsg.shared_post_id)) || null;
-              }
-              if (newMsg.shared_profile_id) {
-                const { data: profile } = await supabase.from('profiles').select('id, full_name, username, bio, avatar_url, is_verified').eq('id', newMsg.shared_profile_id).single();
-                if (profile) {
-                  sharedUser = { id: profile.id, name: profile.full_name, username: profile.username, avatar: profile.avatar_url, isVerified: profile.is_verified, bio: profile.bio };
-                }
-              }
-              const hydrated: Message = { ...newMsg, sharedPost, sharedUser, repliedStory: null };
+    const belongsToThisChat =
+      (newMsg.sender_id === userProfile.id && newMsg.receiver_id === chatWith.id) ||
+      (newMsg.sender_id === chatWith.id && newMsg.receiver_id === userProfile.id);
 
-              setMessages(prev => {
-                if (hydrated.reply_to) {
-                  const replied = prev.find(m => m.id === hydrated.reply_to);
-                  hydrated.repliedMessage = replied || null;
-                }
-                if (prev.some(m => m.id === hydrated.id)) return prev;
-                return [...prev, hydrated];
-              });
-            };
-            hydrateAndSet();
-          }
-        },
-      )
-      .subscribe();
+    if (!belongsToThisChat) return true;
 
-    return () => { supabase.removeChannel(channel); };
+    const hydrateAndSet = async () => {
+      let sharedPost: Post | null = null;
+      let sharedUser: SimpleUser | null = null;
+
+      if (newMsg.shared_post_id) {
+        sharedPost = (await getPostById(newMsg.shared_post_id)) || null;
+      }
+
+      if (newMsg.shared_profile_id) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('id, full_name, username, bio, avatar_url, is_verified')
+          .eq('id', newMsg.shared_profile_id)
+          .single();
+
+        if (profile) {
+          sharedUser = {
+            id: profile.id,
+            name: profile.full_name,
+            username: profile.username,
+            avatar: profile.avatar_url,
+            isVerified: profile.is_verified,
+            bio: profile.bio,
+          };
+        }
+      }
+
+      const hydrated: Message = { ...newMsg, sharedPost, sharedUser, repliedStory: null };
+
+      setMessages(prev => {
+        if (hydrated.reply_to) {
+          const replied = prev.find(m => m.id === hydrated.reply_to);
+          hydrated.repliedMessage = replied || null;
+        }
+        if (prev.some(m => m.id === hydrated.id)) return prev;
+        return [...prev, hydrated];
+      });
+    };
+
+    hydrateAndSet();
+    return true;
   }, [chatWith?.id, userProfile?.id]);
+
+  useRealtimeSync({
+    table: 'messages',
+    filter: `receiver_id=eq.${userProfile?.id ?? ''}`,
+    queryKey: ['messages'],
+    enabled: Boolean(chatWith?.id && userProfile?.id),
+    onInsert: handleIncomingMessage,
+  });
 
   const closeChat = () => {
     setChatWith(null);

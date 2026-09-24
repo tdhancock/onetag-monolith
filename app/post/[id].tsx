@@ -1,42 +1,30 @@
 
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
-import { getPostById } from '../../services/apiService';
+import { usePostQuery } from '../../features/posts';
 import PostCard from '../../components/native/PostCard';
-import type { Post } from '../../types';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { isUserBlocked } = useApp();
+  const { isUserBlocked, userProfile } = useApp();
 
-  const [post, setPost] = useState<Post | null>(null);
-  const [loading, setLoading] = useState(true);
+  // The post is read from the cache entry the like, repost and save toggles
+  // and the comment mutations patch (ONE-13, ONE-14). Holding it in local
+  // state instead left every one of them invisible on this screen. The viewer
+  // id is what marks the post as liked, reposted or saved for this user.
+  const postQuery = usePostQuery(id, userProfile.id || undefined);
+  const post = postQuery.data ?? null;
+  const loading = postQuery.isPending;
   const [refreshing, setRefreshing] = useState(false);
-
-  const fetchPost = async () => {
-    if (!id) return;
-    try {
-      const data = await getPostById(id);
-      setPost(data || null);
-    } catch (error) {
-      console.error('Failed to load post', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchPost();
-  }, [id]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchPost();
+    await postQuery.refetch();
     setRefreshing(false);
   };
 

@@ -5,6 +5,7 @@ import { View, Text, FlatList, Pressable, ActivityIndicator } from 'react-native
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
+import { useFollowState, useToggleFollow } from '../features/profiles';
 import { getFollowerUsers, getFollowingUsers, getPostLikers, getPostReposters, getStoryViewers } from '../services/apiService';
 import UserAvatar from '../components/native/UserAvatar';
 import { VerifiedIcon } from '../components/native/Icons';
@@ -20,7 +21,9 @@ export default function UserListScreen() {
     title: string;
   }>();
   const router = useRouter();
-  const { isUserBlocked, isUserFollowed, toggleFollowUser, userProfile } = useApp();
+  const { isUserBlocked, userProfile } = useApp();
+  const { isFollowing: isUserFollowing } = useFollowState(userProfile?.id || undefined);
+  const follow = useToggleFollow(userProfile?.id || undefined);
 
   const [users, setUsers] = useState<SimpleUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,16 +82,12 @@ export default function UserListScreen() {
     });
   }, []);
 
-  const handleToggleFollow = useCallback(async (username: string) => {
-    const key = username.trim().toLowerCase();
-    if (!key || pendingUsernames.has(key)) return;
-    withPendingUsername(username, true);
-    try {
-      await toggleFollowUser(username);
-    } finally {
-      withPendingUsername(username, false);
-    }
-  }, [pendingUsernames, toggleFollowUser, withPendingUsername]);
+  // The optimistic toggle flips the cache immediately, so the per-row pending
+  // flag is gone with the await it used to guard (ONE-15).
+  const handleToggleFollow = useCallback(
+    (user: SimpleUser) => follow.toggle({ userId: user.id, username: user.username }),
+    [follow],
+  );
 
   const filteredUsers = useMemo(() => {
     const seen = new Set<string>();
@@ -110,9 +109,9 @@ export default function UserListScreen() {
   const renderItem = useCallback(
     ({ item }: { item: SimpleUser }) => {
       const usernameKey = item.username.trim().toLowerCase();
-      const isFollowing = isUserFollowed(item.username);
+      const isFollowing = isUserFollowing(item.username);
       const isSelf = Boolean(userProfile?.id && item.id === userProfile.id);
-      const isPending = pendingUsernames.has(usernameKey);
+      const isPending = follow.isPending;
 
       return (
         <View className="flex-row items-center px-4 py-3 border-b border-gray-800">
@@ -145,7 +144,7 @@ export default function UserListScreen() {
             <Pressable
               onPress={(event) => {
                 event.stopPropagation();
-                handleToggleFollow(item.username);
+                handleToggleFollow(item);
               }}
               disabled={isPending}
               className={`px-4 py-1.5 rounded-full ${
@@ -160,7 +159,7 @@ export default function UserListScreen() {
         </View>
       );
     },
-    [handleToggleFollow, isUserFollowed, pendingUsernames, router, userProfile?.id],
+    [handleToggleFollow, isUserFollowing, follow.isPending, router, userProfile?.id],
   );
 
   const keyExtractor = useCallback((item: SimpleUser) => item.id || item.username, []);

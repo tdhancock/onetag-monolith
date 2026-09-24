@@ -7,7 +7,7 @@
 // transformations — appending unique posts to the timeline,
 // de-duplicating stories, mapping raw suggestion rows to
 // display-ready SimpleUser objects, and grouping stories by author —
-// to a sidecar utils module (`app/(tabs)/feed.utils.ts`). These tests
+// to a sidecar utils module (`lib/screens/feed.ts`). These tests
 // pin every value the user actually sees on the timeline so a
 // refactor cannot silently change the post-stream or story-reel
 // behaviour.
@@ -28,7 +28,7 @@ import {
     type FeedPost,
     type FeedStory,
     type RawSuggestionRow,
-} from '../../app/(tabs)/feed.utils';
+} from '../../lib/screens/feed';
 
 // ---------------------------------------------------------------------------
 // 1. appendUniquePosts

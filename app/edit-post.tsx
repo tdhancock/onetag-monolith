@@ -14,6 +14,7 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
+import { useUpdatePost } from '../features/posts';
 import { getPostById } from '../services/apiService';
 import type { Post } from '../types';
 
@@ -22,7 +23,8 @@ const MAX_CHARS = 280;
 export default function EditPostScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { updateProfilePost, userProfile, addToast } = useApp();
+  const { userProfile, addToast } = useApp();
+  const updatePost = useUpdatePost();
 
   const [post, setPost] = useState<Post | null>(null);
   const [content, setContent] = useState('');
@@ -57,7 +59,7 @@ export default function EditPostScreen() {
     setIsSaving(true);
     try {
       const updatedPost: Post = { ...post, content };
-      updateProfilePost(updatedPost);
+      updatePost.mutate(updatedPost);
       addToast('Post updated.', 'success');
       if (router.canGoBack()) {
         router.back();
@@ -68,7 +70,7 @@ export default function EditPostScreen() {
     } finally {
       setIsSaving(false);
     }
-  }, [post, content, canSave, updateProfilePost, addToast, router]);
+  }, [post, content, canSave, updatePost, addToast, router]);
 
   if (loading) {
     return (

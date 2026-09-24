@@ -90,7 +90,15 @@ export default function CameraScreen() {
             onPress: () =>
               router.push({
                 pathname: '/compose',
-                params: { mediaUri: photo.uri, mediaType: 'image' },
+                // Dimensions travel with the URI so the composer can measure
+                // the aspect ratio at the source rather than from a rendered
+                // view — see ONE-55.
+                params: {
+                  mediaUri: photo.uri,
+                  mediaType: 'image',
+                  mediaWidth: String(photo.width ?? ''),
+                  mediaHeight: String(photo.height ?? ''),
+                },
               }),
           },
           { text: 'Cancel', style: 'cancel' },
@@ -108,7 +116,7 @@ export default function CameraScreen() {
     const result = await pickImageFromLibrary();
 
     if (result.status === 'selected') {
-      const uri = result.media.uri;
+      const { uri, width, height } = result.media;
       Alert.alert('Share as', 'What would you like to do with this photo?', [
         {
           text: 'Story',
@@ -119,7 +127,12 @@ export default function CameraScreen() {
           onPress: () =>
             router.push({
               pathname: '/compose',
-              params: { mediaUri: uri, mediaType: 'image' },
+              params: {
+                mediaUri: uri,
+                mediaType: 'image',
+                mediaWidth: String(width ?? ''),
+                mediaHeight: String(height ?? ''),
+              },
             }),
         },
         { text: 'Cancel', style: 'cancel' },

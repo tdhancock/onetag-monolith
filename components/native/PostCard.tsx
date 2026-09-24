@@ -6,6 +6,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { differenceInMinutes, differenceInHours, differenceInDays, differenceInWeeks, differenceInMonths, differenceInYears } from 'date-fns';
 import { useApp } from '../../store/AppContext.native';
+import { useLikePost, useRepostPost, useSavePost, useDeletePost } from '../../features/posts';
 import UserAvatar from './UserAvatar';
 import RenderUserContent from './RenderUserContent';
 import {
@@ -229,33 +230,47 @@ const PostCard: React.FC<PostCardProps> = ({
   isPreview = false,
 }) => {
   const {
-    isPostLiked,
-    togglePostLike,
-    areCommentsLoaded,
     userProfile,
-    deleteProfilePost,
-    getComments,
     voteInPoll,
     getPollVote,
     addToast,
-    isPostReposted,
-    togglePostRepost,
-    isPostSaved,
-    toggleSavePost,
     isAdmin,
     triggerHapticFeedback,
   } = useApp();
   const router = useRouter();
 
-  const liked = isPostLiked(post.id);
-  const reposted = isPostReposted(post.id);
-  const saved = isPostSaved(post.id);
+  // Like, Repost and Save read straight off the post (ONE-13). The cached
+  // entity is the source of truth for both the boolean and the count, so an
+  // optimistic toggle — and its rollback — reaches every copy of this post at
+  // once, rather than this card keeping its own count that a failed write
+  // would leave behind.
+  // Haptics and the Save toast fired from the AppContext toggles these
+  // replace, so they hang off the same instant the cache flips.
+  const likeHaptic = useCallback(() => triggerHapticFeedback('light'), [triggerHapticFeedback]);
+  const repostHaptic = useCallback(() => triggerHapticFeedback(), [triggerHapticFeedback]);
+  const onSaveToggled = useCallback(
+    ({ isOn }: { isOn: boolean }) => {
+      triggerHapticFeedback();
+      addToast(
+        isOn ? 'Saved to your collection!' : 'Removed from your collection.',
+        isOn ? 'success' : 'info',
+      );
+    },
+    [triggerHapticFeedback, addToast],
+  );
+
+  const deletePost = useDeletePost();
+  const like = useLikePost(userProfile.id, likeHaptic);
+  const repost = useRepostPost(userProfile.id, repostHaptic);
+  const save = useSavePost(userProfile.id, onSaveToggled);
+
+  const liked = Boolean(post.isLiked);
+  const reposted = Boolean(post.isReposted);
+  const saved = Boolean(post.isSaved);
+  const likesCount = post.likes;
+  const repostsCount = post.reposts;
 
   const [showHeart, setShowHeart] = useState(false);
-  const [likesCount, setLikesCount] = useState(post.likes);
-  const [repostsCount, setRepostsCount] = useState(post.reposts);
-  const [isLiking, setIsLiking] = useState(false);
-  const [isReposting, setIsReposting] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
   const heartScale = useRef(new Animated.Value(0)).current;
@@ -264,9 +279,11 @@ const PostCard: React.FC<PostCardProps> = ({
   const isImage = post.media_type === 'image';
   const timeAgo = getTimeAgo(post.timestamp);
 
-  const comments = getComments(post.id);
-  const hasLoadedComments = areCommentsLoaded(post.id);
-  const commentCount = hasLoadedComments ? comments.length : post.replies;
+  // The reply count comes off the post itself. It used to prefer the length
+  // of a locally cached comment list when one had been loaded, which is the
+  // same number by a longer route — and the comment mutations now move
+  // `replies` on the cached post as they go (ONE-14).
+  const commentCount = post.replies;
   const isMyPost = post.username === userProfile?.username;
 
   const userPollVote = getPollVote(post.id);
@@ -277,33 +294,20 @@ const PostCard: React.FC<PostCardProps> = ({
   const needsTruncation = isTextOnly && post.content.length > MAX_CHARS;
 
   // Sync counts from parent
-  useEffect(() => { setLikesCount(post.likes); }, [post.likes]);
-  useEffect(() => { setRepostsCount(post.reposts); }, [post.reposts]);
-
   // ─── Handlers ──────────────────────────────────
 
-  const handleLike = useCallback(async () => {
-    if (isStoryVersion || isLiking) return;
-    setIsLiking(true);
-    setLikesCount(prev => liked ? Math.max(0, prev - 1) : prev + 1);
-    triggerHapticFeedback('light');
-    try {
-      await togglePostLike(post.id);
-    } finally {
-      setIsLiking(false);
-    }
-  }, [isStoryVersion, isLiking, liked, post.id]);
+  // The mutation's own pending flag replaces the `isLiking` / `isReposting`
+  // booleans these handlers used to keep, so a second tap while the first is
+  // in flight is still ignored.
+  const handleLike = useCallback(() => {
+    if (isStoryVersion || like.isPending) return;
+    like.toggle(post.id);
+  }, [isStoryVersion, like, post.id]);
 
-  const handleRepost = useCallback(async () => {
-    if (isStoryVersion || isReposting) return;
-    setIsReposting(true);
-    setRepostsCount(prev => reposted ? Math.max(0, prev - 1) : prev + 1);
-    try {
-      await togglePostRepost(post.id);
-    } finally {
-      setIsReposting(false);
-    }
-  }, [isStoryVersion, isReposting, reposted, post.id]);
+  const handleRepost = useCallback(() => {
+    if (isStoryVersion || repost.isPending) return;
+    repost.toggle(post.id);
+  }, [isStoryVersion, repost, post.id]);
 
   const handleDoubleTap = useCallback(() => {
     if (isStoryVersion) return;
@@ -326,11 +330,11 @@ const PostCard: React.FC<PostCardProps> = ({
         style: 'destructive',
         onPress: () => {
           if (onDelete) onDelete(post.id);
-          else deleteProfilePost(post.id);
+          else deletePost.mutate({ postId: post.id, asAdmin: isAdmin });
         },
       },
     ]);
-  }, [post.id, onDelete]);
+  }, [post.id, onDelete, deletePost, isAdmin]);
 
   const handleViewProfile = useCallback(() => {
     if (onViewProfile) {
@@ -358,6 +362,9 @@ const PostCard: React.FC<PostCardProps> = ({
 
   // ─── Render ────────────────────────────────────
 
+  // Posts published before ONE-55 carry no ratio and keep rendering at 4:5.
+  // Backfilling would mean fetching every stored image to measure it, which is
+  // a decision of its own rather than a side effect of this change.
   const aspectRatio = post.media_aspect_ratio || 1080 / 1350;
 
   return (
@@ -471,7 +478,7 @@ const PostCard: React.FC<PostCardProps> = ({
               <Pressable
                 onPress={handleLike}
                 onLongPress={() => onViewLikers?.(post.id)}
-                disabled={isLiking}
+                disabled={like.isPending}
                 className="flex-row items-center"
                 hitSlop={6}
               >
@@ -493,7 +500,7 @@ const PostCard: React.FC<PostCardProps> = ({
               <Pressable
                 onPress={handleRepost}
                 onLongPress={() => onViewReposters?.(post.id)}
-                disabled={isReposting}
+                disabled={repost.isPending}
                 className="flex-row items-center"
                 hitSlop={6}
               >
@@ -504,7 +511,7 @@ const PostCard: React.FC<PostCardProps> = ({
 
             <View className="flex-row items-center" style={{ gap: 8 }}>
               <Text className="text-xs text-gray-500">{timeAgo}</Text>
-              <Pressable onPress={() => toggleSavePost(post.id)} hitSlop={6}>
+              <Pressable onPress={() => save.toggle(post.id)} hitSlop={6}>
                 <BookmarkIcon saved={saved} color={saved ? '#3b82f6' : '#9ca3af'} size={20} />
               </Pressable>
               <Pressable onPress={() => onSharePost?.(post)} hitSlop={6}>

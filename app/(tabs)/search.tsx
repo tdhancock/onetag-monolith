@@ -15,6 +15,7 @@ import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
+import { useFollowState, useToggleFollow } from '../../features/profiles';
 import {
   getTrendingPosts,
   searchUsers,
@@ -39,8 +40,10 @@ const UserSearchResult: React.FC<{
   user: SimpleUser;
   onViewProfile: (username: string) => void;
 }> = React.memo(({ user, onViewProfile }) => {
-  const { isUserFollowed, toggleFollowUser, userProfile } = useApp();
-  const isFollowing = isUserFollowed(user.username);
+  const { userProfile } = useApp();
+  const { isFollowing: isUserFollowing } = useFollowState(userProfile?.id || undefined);
+  const follow = useToggleFollow(userProfile?.id || undefined);
+  const isFollowing = isUserFollowing(user.username);
   const isMyProfile = userProfile?.username === user.username;
 
   return (
@@ -58,7 +61,7 @@ const UserSearchResult: React.FC<{
       </View>
       {!isMyProfile && (
         <Pressable
-          onPress={() => toggleFollowUser(user.username)}
+          onPress={() => follow.toggle({ userId: user.id, username: user.username })}
           className={`px-4 py-1.5 rounded-full ${isFollowing ? 'border border-gray-700' : 'bg-blue-600'}`}
         >
           <Text className="text-white font-semibold text-sm">
