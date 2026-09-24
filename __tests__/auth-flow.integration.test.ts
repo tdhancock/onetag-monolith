@@ -3,15 +3,18 @@
 // target: __tests__/auth-flow.integration.test.ts
 //
 // End-to-end integration tests for the authenticated user journey:
-//   login → feed load → profile load → logout
+//   login → feed load → profile load
 //
-// These tests orchestrate the same surface the React components
-// and the AppContext provider actually consume:
-//   * `supabase.auth.signInWithPassword(...)`     (app/(auth)/login.tsx)
+// These tests drive the real data function each step calls, against a
+// mocked Supabase client:
 //   * `ensureCurrentUserProfile()`                 (login → app/(tabs))
-//   * `getTimeline()`                              (home/feed tab)
+//   * `fetchFeedPage()`                            (home/feed tab)
 //   * `getUserProfile(username)`                   (profile tab)
-//   * `supabase.auth.signOut()`                    (app/settings.tsx)
+//
+// What AppContext does with the session on sign-in and sign-out is tested
+// against the real provider in useAppContext.test.tsx. This file used to
+// carry a hand-written copy of that state, which had drifted from the
+// provider and could not catch a regression in it.
 //
 // The mock object below mirrors the real Supabase v2 chain — every
 // method on `from()` returns a thenable query builder with the
@@ -19,7 +22,7 @@
 // snapshots the call shape so future drift in the call sequence
 // will fail loudly here rather than silently in production.
 
-import type { Post, UserProfile, SimpleUser } from '../types';
+import type { Post, UserProfile } from '../types';
 import {
   ensureCurrentUserProfile,
   getUserProfile,
@@ -131,84 +134,7 @@ const testHooks = (require('../services/supabase.native') as any).__test__ as {
   mockFrom: jest.Mock;
 };
 
-// `async function syncUserData` lives in AppContext.tsx and is the
-// orchestrator behind `(tabs)` rendering. Re-implementing the
-// observable slice of it for the test keeps the file Node-runnable
-// (no jsdom, no React) while still exercising the same state the
-// real provider produces. The shape mirrors `dispatchSyncUserData`
-// in __tests__/app-context-dispatch.test.ts.
-
-interface SyncedSession {
-  userProfile: UserProfile;
-  likedPosts: Set<string>;
-  reposts: Set<string>;
-  savedPosts: Set<string>;
-  followedUsernames: Set<string>;
-  unreadChats: Set<string>;
-  isAdmin: boolean;
-  notifications: null;
-}
-
-// Faithful copy of how syncUserData assembles a UserProfile from
-// the Supabase auth payload + profile row.
-function buildSyncedSession(args: {
-  userId: string;
-  fullName: string;
-  username: string;
-  avatarUrl: string | null;
-  isVerified: boolean;
-  bio: string;
-  likedPostIds: string[];
-  repostedPostIds: string[];
-  savedPostIds: string[];
-  followedUsernames: string[];
-  unreadSenders: string[];
-}): SyncedSession {
-  const isAdmin = args.username === 'onetag';
-  return {
-    userProfile: {
-      id: args.userId,
-      name: args.fullName,
-      username: args.username,
-      bio: args.bio,
-      profilePicture: args.avatarUrl,
-      isVerified: args.isVerified,
-      isPrivate: false,
-    },
-    likedPosts: new Set(args.likedPostIds),
-    reposts: new Set(args.repostedPostIds),
-    savedPosts: new Set(args.savedPostIds),
-    followedUsernames: new Set(args.followedUsernames),
-    unreadChats: new Set(args.unreadSenders),
-    isAdmin,
-    notifications: null,
-  };
-}
-
-// `signOut` produces a "guest" state — user-bound slices cleared,
-// UI slices preserved. Mirrors `dispatchLogout` in
-// __tests__/app-context-dispatch.test.ts.
-function logout(session: SyncedSession): SyncedSession {
-  return {
-    ...session,
-    userProfile: {
-      id: '',
-      name: 'OneTag User',
-      username: 'onetag_user',
-      bio: 'Hello, I am using OneTag',
-      profilePicture: null,
-    },
-    likedPosts: new Set(),
-    reposts: new Set(),
-    savedPosts: new Set(),
-    followedUsernames: new Set(),
-    unreadChats: new Set(),
-    isAdmin: false,
-    notifications: null,
-  };
-}
-
-// ─── 3. Test helpers ────────────────────────────────────────────────────
+// ─── 2. Test helpers ────────────────────────────────────────────────────
 
 function makeFeedPost(overrides: Partial<Post> = {}): Post {
   return {
@@ -257,9 +183,9 @@ beforeEach(() => {
   });
 });
 
-// ─── 4. Full-flow integration tests ─────────────────────────────────────
+// ─── 3. Full-flow integration tests ─────────────────────────────────────
 
-describe('Integration — login → feed → profile → logout', () => {
+describe('Integration — login → feed → profile', () => {
   it('orchestrates the entire authenticated user journey', async () => {
     // ── 1. LOGIN ────────────────────────────────────────────────────────
     //
@@ -303,31 +229,7 @@ describe('Integration — login → feed → profile → logout', () => {
     expect(testHooks.mockGetUser).toHaveBeenCalled();
     expect(testHooks.mockFrom).toHaveBeenCalledWith('profiles');
 
-    // ── 2. SESSION STATE ────────────────────────────────────────────────
-    //
-    // AppContext's syncUserData seeds the store from the auth payload.
-    // We verify the resulting in-memory shape matches what the UI will see.
-    const session = buildSyncedSession({
-      userId: authUser.id,
-      fullName: 'Layla Hasan',
-      username: 'layla',
-      avatarUrl: 'https://cdn.example.com/layla.png',
-      isVerified: false,
-      bio: 'Cairo-based developer.',
-      likedPostIds: ['post-1', 'post-7'],
-      repostedPostIds: ['post-3'],
-      savedPostIds: ['post-1'],
-      followedUsernames: ['ahmed', 'noor'],
-      unreadSenders: ['ahmed'],
-    });
-    expect(session.userProfile.username).toBe('layla');
-    expect(session.likedPosts.has('post-1')).toBe(true);
-    expect(session.likedPosts.size).toBe(2);
-    expect(session.followedUsernames.has('ahmed')).toBe(true);
-    expect(session.unreadChats.has('ahmed')).toBe(true);
-    expect(session.isAdmin).toBe(false);
-
-    // ── 3. FEED LOAD ────────────────────────────────────────────────────
+    // ── 2. FEED LOAD ────────────────────────────────────────────────────
     //
     // Home tab mounts → the feed query calls fetchFeedPage() with the signed
     // in user's id. That fires `from('follows')` to compute the feed
@@ -389,7 +291,7 @@ describe('Integration — login → feed → profile → logout', () => {
     // real module — guards against accidental pagination drift.
     expect(FEED_PAGE_SIZE).toBe(20);
 
-    // ── 4. PROFILE LOAD ─────────────────────────────────────────────────
+    // ── 3. PROFILE LOAD ─────────────────────────────────────────────────
     //
     // Profile tab mounts → screen calls getUserProfile(username). That
     // hits `from('profiles').select('*').eq('username', ...).single()`.
@@ -422,51 +324,10 @@ describe('Integration — login → feed → profile → logout', () => {
     expect(loadedProfile!.isVerified).toBe(true);
     expect(loadedProfile!.bio).toBe('Cairo-based developer.');
     expect(profilesCalled).toBe(1);
-
-    // Mapping UserProfile → SimpleUser for downstream display components.
-    const asSimpleUser: SimpleUser = {
-      id: loadedProfile!.id,
-      name: loadedProfile!.name,
-      username: loadedProfile!.username,
-      avatar: loadedProfile!.profilePicture,
-      isVerified: loadedProfile!.isVerified,
-      bio: loadedProfile!.bio,
-    };
-    expect(asSimpleUser.username).toBe('layla');
-    expect(asSimpleUser.avatar).toBe('https://cdn.example.com/layla.png');
-
-    // ── 5. LOGOUT ───────────────────────────────────────────────────────
-    //
-    // Settings tab → handleLogout() calls supabase.auth.signOut().
-    // After it resolves, the auth-state-change handler clears the store.
-    testHooks.mockSignOut.mockResolvedValue({ error: null });
-
-    const signOutResult = await mockedSupabase.auth.signOut();
-    expect(signOutResult.error).toBeNull();
-    expect(testHooks.mockSignOut).toHaveBeenCalledTimes(1);
-
-    // Mirror the store-clear transition.
-    const afterLogout = logout(session);
-    expect(afterLogout.userProfile.id).toBe('');
-    expect(afterLogout.userProfile.username).toBe('onetag_user');
-    expect(afterLogout.likedPosts.size).toBe(0);
-    expect(afterLogout.reposts.size).toBe(0);
-    expect(afterLogout.savedPosts.size).toBe(0);
-    expect(afterLogout.followedUsernames.size).toBe(0);
-    expect(afterLogout.unreadChats.size).toBe(0);
-    expect(afterLogout.isAdmin).toBe(false);
-
-    // After logout there is no profile id, so the feed query is disabled and
-    // no request is made at all — a stronger guarantee than the old
-    // getTimeline(), which fired auth.getUser() before deciding to bail.
-    // Asserted against the hook in __tests__/features/posts/queries.test.ts.
-    // The torn-down session leaves a placeholder profile with no id, and an
-    // absent id is exactly what disables the feed query.
-    expect(afterLogout.userProfile?.id).toBeFalsy();
   });
 });
 
-// ─── 5. LOGIN-only — covers the first integration step in focus ────────
+// ─── 4. LOGIN-only — covers the first integration step in focus ────────
 
 describe('Integration — login (focused)', () => {
   it('rejects invalid credentials and propagates the error', async () => {
@@ -527,7 +388,7 @@ describe('Integration — login (focused)', () => {
   });
 });
 
-// ─── 6. FEED-only — covers the second integration step in focus ────────
+// ─── 5. FEED-only — covers the second integration step in focus ────────
 
 describe('Integration — feed load (focused)', () => {
   it('hits follows + posts tables when an authenticated user requests the feed', async () => {
@@ -548,7 +409,7 @@ describe('Integration — feed load (focused)', () => {
   });
 });
 
-// ─── 7. PROFILE-only — covers the third integration step in focus ──────
+// ─── 6. PROFILE-only — covers the third integration step in focus ──────
 
 describe('Integration — profile load (focused)', () => {
   it('returns the parsed UserProfile on a hit and null on a miss', async () => {
@@ -577,70 +438,5 @@ describe('Integration — profile load (focused)', () => {
     }));
     const miss = await getUserProfile('nobody');
     expect(miss).toBeNull();
-  });
-});
-
-// ─── 8. LOGOUT-only — covers the final integration step in focus ──────
-
-describe('Integration — logout (focused)', () => {
-  it('signOut produces a clean session and a subsequent sign-in rebuilds state', async () => {
-    // 1. Sign in
-    const authUser = { id: 'u-1', email: 'u@e.com', user_metadata: { full_name: 'U' } };
-    testHooks.mockSignInWithPassword.mockResolvedValue({
-      data: { user: authUser, session: { user: authUser } },
-      error: null,
-    });
-    testHooks.mockGetUser.mockResolvedValue({ data: { user: authUser }, error: null });
-    testHooks.setHandler('profiles', () => ({ data: { id: authUser.id }, error: null }));
-
-    const session = buildSyncedSession({
-      userId: 'u-1',
-      fullName: 'U',
-      username: 'u',
-      avatarUrl: null,
-      isVerified: false,
-      bio: 'Hi',
-      likedPostIds: [],
-      repostedPostIds: [],
-      savedPostIds: [],
-      followedUsernames: [],
-      unreadSenders: [],
-    });
-    expect(session.userProfile.username).toBe('u');
-
-    // 2. Sign out
-    testHooks.mockSignOut.mockResolvedValue({ error: null });
-    await mockedSupabase.auth.signOut();
-    const afterLogout = logout(session);
-    expect(afterLogout.userProfile.id).toBe('');
-    expect(afterLogout.isAdmin).toBe(false);
-
-    // 3. Re-authenticate as a different user — state must be the new
-    //    identity, not the previous one.
-    const secondUser = { id: 'u-2', email: 'b@e.com', user_metadata: { full_name: 'B' } };
-    testHooks.mockSignInWithPassword.mockResolvedValue({
-      data: { user: secondUser, session: { user: secondUser } },
-      error: null,
-    });
-    testHooks.mockGetUser.mockResolvedValue({ data: { user: secondUser }, error: null });
-    testHooks.setHandler('profiles', () => ({ data: { id: secondUser.id }, error: null }));
-
-    await mockedSupabase.auth.signInWithPassword({ email: 'b@e.com', password: 'p' });
-    const rebuilt = buildSyncedSession({
-      userId: 'u-2',
-      fullName: 'B',
-      username: 'b',
-      avatarUrl: null,
-      isVerified: false,
-      bio: 'New',
-      likedPostIds: [],
-      repostedPostIds: [],
-      savedPostIds: [],
-      followedUsernames: [],
-      unreadSenders: [],
-    });
-    expect(rebuilt.userProfile.id).toBe('u-2');
-    expect(rebuilt.userProfile.username).toBe('b');
-    expect(rebuilt.userProfile.id).not.toBe(afterLogout.userProfile.id);
   });
 });
