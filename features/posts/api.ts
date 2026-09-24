@@ -14,32 +14,17 @@ import {
   isLocalMediaUri,
   uploadMedia,
 } from '../../services/mediaUpload';
+import { POST_SELECT_QUERY, mapPostData } from '../../services/postRows';
 import type { Post } from './types';
+
+// The post select and row mapper live in services/postRows.ts so features
+// that render a post inside their own rows — messages, stories — can map it
+// without importing this feature (features/README.md, rule 1). Re-exported
+// here so the posts surface is unchanged.
+export { POST_SELECT_QUERY, mapPostData };
 
 /** Posts requested per feed page. */
 export const FEED_PAGE_SIZE = 20;
-
-export const POST_SELECT_QUERY = `
-    id,
-    user_id,
-    content,
-    image_url,
-    media_type,
-    media_aspect_ratio,
-    created_at,
-    profiles!user_id(
-        username,
-        avatar_url,
-        full_name,
-        is_verified
-    ),
-    likes:likes(count),
-    comments:comments(count),
-    reposts:reposts(count),
-    viewer_like:likes(user_id),
-    viewer_repost:reposts(user_id),
-    viewer_save:saved_posts(user_id)
-`;
 
 /**
  * Restrict the viewer-scoped embeds to one user's rows.
@@ -70,31 +55,6 @@ const scopeToViewer = <T>(query: T, viewerId: string | undefined): T => {
     .eq('viewer_save.user_id', viewer) as unknown as T;
 };
 
-const toNumber = (value: unknown): number => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return 0;
-};
-
-const extractCount = (embedded: unknown, fallback: unknown): number => {
-  if (Array.isArray(embedded)) {
-    const first = embedded[0] as { count?: unknown } | undefined;
-    if (first && typeof first === 'object' && 'count' in first) {
-      return toNumber(first.count);
-    }
-    return embedded.length;
-  }
-  return toNumber(fallback);
-};
-
-const normalizeMediaType = (mediaType: unknown, mediaUrl?: string): Post['media_type'] => {
-  if (mediaType === 'text') return 'text';
-  return mediaUrl ? 'image' : 'text';
-};
-
 /** The author ids whose posts make up a user's feed: everyone they follow, plus themselves. */
 export const getFeedUserIds = async (userId: string): Promise<string[]> => {
   const { data: followingData, error: followingError } = await supabase
@@ -107,68 +67,6 @@ export const getFeedUserIds = async (userId: string): Promise<string[]> => {
   const followingIds = (followingData || []).map((f: { followed_id: string }) => f.followed_id);
   return Array.from(new Set([...followingIds, userId]));
 };
-
-/**
- * Build the low-quality preview URL used for the blur-up effect.
- *
- * Only Supabase-hosted media can be transformed; anything else has no
- * preview. Returns undefined rather than throwing on a malformed URL.
- */
-const previewUrlFor = (mediaUrl: string | undefined): string | undefined => {
-  if (!mediaUrl || !mediaUrl.includes('supabase.co')) return undefined;
-
-  try {
-    const url = new URL(mediaUrl);
-    // /storage/v1/object/public/… → /storage/v1/render/image/public/…
-    const pathParts = url.pathname.split('/');
-    const objectIndex = pathParts.indexOf('object');
-    if (objectIndex === -1) return undefined;
-
-    pathParts.splice(objectIndex, 1, 'render', 'image');
-    url.pathname = pathParts.join('/');
-    url.searchParams.set('width', '50');
-    url.searchParams.set('quality', '40');
-    url.searchParams.set('resize', 'cover');
-    return url.toString();
-  } catch (e) {
-    console.error('Failed to create preview URL for post media', e);
-    return undefined;
-  }
-};
-
-/** Map a raw Supabase post row onto the `Post` shape the UI renders. */
-export const mapPostData = (p: any): Post => {
-  const mediaUrl =
-    typeof p.image_url === 'string' && p.image_url.trim().length > 0 ? p.image_url : undefined;
-
-  const profile = Array.isArray(p.profiles) ? p.profiles[0] || {} : p.profiles || {};
-
-  return {
-    id: p.id,
-    content: typeof p.content === 'string' ? p.content : '',
-    media: mediaUrl,
-    media_preview_url: previewUrlFor(mediaUrl),
-    media_type: normalizeMediaType(p.media_type, mediaUrl),
-    media_aspect_ratio: p.media_aspect_ratio,
-    timestamp: p.created_at,
-    username: profile.username || 'unknown_user',
-    avatar: profile.avatar_url || null,
-    name: profile.full_name || profile.username,
-    isVerified: Boolean(profile.is_verified),
-    likes: extractCount(p.likes, p.likes_count),
-    reposts: extractCount(p.reposts, p.reposts_count),
-    replies: extractCount(p.comments, p.comments_count),
-    // The viewer's own state, carried on the entity rather than in a Set
-    // beside it — the toggle helper reads and writes it here (ONE-13).
-    isLiked: hasViewerRow(p.viewer_like),
-    isReposted: hasViewerRow(p.viewer_repost),
-    isSaved: hasViewerRow(p.viewer_save),
-  };
-};
-
-/** A viewer-scoped embed is an array: one row if the viewer is in it. */
-const hasViewerRow = (embedded: unknown): boolean =>
-  Array.isArray(embedded) ? embedded.length > 0 : Boolean(embedded);
 
 /**
  * A cursor into the feed: the `created_at` of the last post on the previous

@@ -1,9 +1,10 @@
 
 //
 // Local ambient declarations for test-only modules without bundled types.
-// `@types/react-dom` is not installed; we declare the minimum surface we
-// need from `react-dom/client` and `react-dom/test-utils` for the
-// hook/provider tests in `__tests__/useAppContext.test.tsx`.
+// `@types/react-dom` is not installed; we declare the minimum surface the
+// jsdom suites need from `react-dom/client` (`createRoot`) — useAppContext,
+// LoadingStates, PostCard.aspect and realtimeBridge all mount through it.
+// `act` comes from `react` itself (React 19), not `react-dom/test-utils`.
 
 declare module 'react-dom/client' {
   import type { ReactNode, ReactElement } from 'react';
@@ -13,8 +14,4 @@ declare module 'react-dom/client' {
     unmount(): void;
   }
   export function createRoot(container: Element | DocumentFragment): Root;
-}
-
-declare module 'react-dom/test-utils' {
-  export function act(callback: () => void | Promise<void>): Promise<void>;
 }

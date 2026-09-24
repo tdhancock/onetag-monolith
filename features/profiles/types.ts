@@ -20,5 +20,5 @@ export type ProfileRow = {
 
 /** The inverse of `mapProfileRow`: client field names → `profiles` columns. */
 export type ProfileUpdates = Partial<
-    Pick<import('../../types').UserProfile, 'name' | 'username' | 'bio' | 'profilePicture'>
+    Pick<import('../../types').UserProfile, 'name' | 'username' | 'bio' | 'profilePicture' | 'isPrivate'>
 >;

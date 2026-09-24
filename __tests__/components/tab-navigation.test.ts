@@ -23,8 +23,10 @@ const mockPush = jest.fn();
 const mockInsets = { top: 0, bottom: 0, left: 0, right: 0 };
 const mockAppState: {
   userProfile: { id: string };
-  unreadMessageCount: number;
-} = { userProfile: { id: 'u1' }, unreadMessageCount: 0 };
+} = { userProfile: { id: 'u1' } };
+// How many conversations have something unread. The badge reads it through
+// useUnreadMessageCount (ONE-18), not through the context.
+const mockUnreadMessages = { count: 0 };
 // The cached notifications list. The badge reads its unread count through
 // useUnreadNotificationCount (ONE-17), not through the context.
 const mockNotifications: { current: { is_read: boolean }[] } = { current: [] };
@@ -74,6 +76,11 @@ jest.mock('../../store/AppContext.native', () => ({
 jest.mock('../../features/notifications', () => ({
   __esModule: true,
   useUnreadNotificationCount: () => mockNotifications.current.filter((n) => !n.is_read).length,
+}), { virtual: true });
+
+jest.mock('../../features/messages', () => ({
+  __esModule: true,
+  useUnreadMessageCount: () => mockUnreadMessages.count,
 }), { virtual: true });
 
 import TabLayout from '../../app/(tabs)/_layout';
@@ -164,7 +171,7 @@ beforeEach(() => {
   mockPush.mockClear();
   mockInsets.bottom = 0;
   mockNotifications.current = [];
-  mockAppState.unreadMessageCount = 0;
+  mockUnreadMessages.count = 0;
 });
 
 // ─── 3. The tab set has not moved ───────────────────────────────────────
@@ -356,7 +363,7 @@ describe('tab bar — unread badge', () => {
 
   it('counts unread notifications and unread messages together', () => {
     mockNotifications.current = [{ is_read: false }, { is_read: true }, { is_read: false }];
-    mockAppState.unreadMessageCount = 3;
+    mockUnreadMessages.count = 3;
     expect(badgeOf().text).toBe('5');
   });
 
@@ -366,15 +373,15 @@ describe('tab bar — unread badge', () => {
   });
 
   it('overflows to 99+ past ninety-nine', () => {
-    mockAppState.unreadMessageCount = 100;
+    mockUnreadMessages.count = 100;
     expect(badgeOf().text).toBe('99+');
 
-    mockAppState.unreadMessageCount = 99;
+    mockUnreadMessages.count = 99;
     expect(badgeOf().text).toBe('99');
   });
 
   it('is a heart-coloured pill with inverse text', () => {
-    mockAppState.unreadMessageCount = 1;
+    mockUnreadMessages.count = 1;
     const { container, textStyle } = badgeOf();
     expect(flatten(container!.style).backgroundColor).toBe(color.heart);
     expect(textStyle.color).toBe(color.inverse);

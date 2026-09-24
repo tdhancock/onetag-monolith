@@ -6,7 +6,8 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
 import { SendIcon } from '../components/native/Icons';
-import { getPostById, searchUsers, sendMessage } from '../services/apiService';
+import { getPostById, searchUsers } from '../services/apiService';
+import { useSendMessage } from '../features/messages';
 import { supabase } from '../services/supabase.native';
 import UserAvatar from '../components/native/UserAvatar';
 import { VerifiedIcon } from '../components/native/Icons';
@@ -25,6 +26,7 @@ export default function SharePostScreen() {
   const [results, setResults] = useState<any[]>([]);
   const [sending, setSending] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const sendMessage = useSendMessage(currentUserId ?? undefined);
 
   useEffect(() => {
     if (!id) return;
@@ -54,11 +56,7 @@ export default function SharePostScreen() {
     if (!post || !currentUserId || sending) return;
     setSending(true);
     try {
-      await sendMessage({
-        sender_id: currentUserId,
-        receiver_id: receiver.id,
-        post,
-      });
+      await sendMessage.mutateAsync({ receiverId: receiver.id, post });
       if (router.canGoBack()) {
         router.back();
       }

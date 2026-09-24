@@ -20,17 +20,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '../store/AppContext.native';
 import {
-  getStories,
-  getMyStories,
-  getStoryViewCount,
-  getStoryViewers,
-  recordStoryView,
-  replyToStory,
-} from '../services/apiService';
+  useStoriesQuery,
+  useMyStoriesQuery,
+  useStoryViewCountQuery,
+  useStoryViewersQuery,
+  useIsStoryLiked,
+  useToggleStoryLike,
+  useDeleteStory,
+  useRecordStoryView,
+  useReplyToStory,
+} from '../features/stories';
 import UserAvatar from '../components/native/UserAvatar';
 import { HeartIcon, XIcon, TrashIcon, EyeIcon, SendIcon } from '../components/native/Icons';
 import type { Story } from '../types';
-import type { StoryViewer } from '../services/apiService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const STORY_DURATION = 15000;
@@ -49,9 +51,6 @@ export default function StoryViewerScreen() {
   const { index: startIndexParam, storyId: startStoryIdParam } = useLocalSearchParams<{ index?: string; storyId?: string }>();
   const {
     userProfile,
-    isStoryLiked,
-    toggleStoryLike,
-    deleteStory,
     markStoryAsViewed,
     setIsViewingStory,
     isUserBlocked,
@@ -59,12 +58,24 @@ export default function StoryViewerScreen() {
     addToast,
   } = useApp();
 
+  const userId = userProfile?.id || undefined;
+
+  // The reel and "Your story" are queries (ONE-19). The viewer takes one
+  // snapshot of them when it opens, below, so a realtime insert cannot shift
+  // the story under the user's thumb mid-playback.
+  const reelQuery = useStoriesQuery(userId);
+  const myStoriesQuery = useMyStoriesQuery(userId);
+
+  const isStoryLiked = useIsStoryLiked(userId);
+  const storyLike = useToggleStoryLike(userId);
+  const deleteStory = useDeleteStory();
+  const recordView = useRecordStoryView(userId);
+  const replyToStory = useReplyToStory(userId);
+
   const [stories, setStories] = useState<Story[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [replyText, setReplyText] = useState('');
-  const [viewCount, setViewCount] = useState<number | null>(null);
-  const [viewers, setViewers] = useState<StoryViewer[]>([]);
   const [isPaused, setIsPaused] = useState(false);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -77,6 +88,10 @@ export default function StoryViewerScreen() {
   const isOwnStory = currentStory?.userId === userProfile?.id;
   const liked = currentStory ? isStoryLiked(currentStory.id) : false;
 
+  // Only the owner sees who viewed a story.
+  const { data: viewCount = null } = useStoryViewCountQuery(currentStory?.id, isOwnStory);
+  const { data: viewers = [] } = useStoryViewersQuery(currentStory?.id, isOwnStory);
+
   const dedupeStories = useCallback((input: Story[]) => {
     const seen = new Set<string>();
     const unique: Story[] = [];
@@ -88,35 +103,31 @@ export default function StoryViewerScreen() {
     return unique;
   }, []);
 
-  // Load stories
+  // Snapshot the stories once both queries have settled.
+  const snapshotTaken = useRef(false);
+  const queriesSettled =
+    !userId || (!reelQuery.isPending && !myStoriesQuery.isPending);
+
   useEffect(() => {
-    const load = async () => {
-      try {
-        const [allStories, myStories] = await Promise.all([
-          getStories(),
-          userProfile?.id ? getMyStories(userProfile.id) : Promise.resolve([]),
-        ]);
+    if (snapshotTaken.current || !queriesSettled) return;
+    snapshotTaken.current = true;
 
-        const merged = dedupeStories([...myStories, ...allStories]);
-        const combined = merged.filter(s => !isUserBlocked(s.username));
-        setStories(combined);
+    if (reelQuery.isError) console.error('Failed to load stories', reelQuery.error);
 
-        let startIdx = parseInt(startIndexParam || '0', 10);
-        if (startStoryIdParam) {
-          const byIdIndex = combined.findIndex(story => story.id === startStoryIdParam);
-          if (byIdIndex >= 0) {
-            startIdx = byIdIndex;
-          }
-        }
-        setCurrentIndex(Math.min(Math.max(startIdx, 0), Math.max(0, combined.length - 1)));
-      } catch (error) {
-        console.error('Failed to load stories', error);
-      } finally {
-        setLoading(false);
+    const merged = dedupeStories([...(myStoriesQuery.data ?? []), ...(reelQuery.data ?? [])]);
+    const combined = merged.filter(s => !isUserBlocked(s.username));
+    setStories(combined);
+
+    let startIdx = parseInt(startIndexParam || '0', 10);
+    if (startStoryIdParam) {
+      const byIdIndex = combined.findIndex(story => story.id === startStoryIdParam);
+      if (byIdIndex >= 0) {
+        startIdx = byIdIndex;
       }
-    };
-    load();
-  }, [userProfile?.id, isUserBlocked, startIndexParam, startStoryIdParam, dedupeStories]);
+    }
+    setCurrentIndex(Math.min(Math.max(startIdx, 0), Math.max(0, combined.length - 1)));
+    setLoading(false);
+  }, [queriesSettled, reelQuery.data, myStoriesQuery.data, reelQuery.isError, reelQuery.error, isUserBlocked, startIndexParam, startStoryIdParam, dedupeStories]);
 
   // Mark as viewing
   useEffect(() => {
@@ -124,20 +135,13 @@ export default function StoryViewerScreen() {
     return () => setIsViewingStory(false);
   }, [setIsViewingStory]);
 
-  // Record view & fetch view count
+  // Mark viewed on this device, and record the view for the owner. The
+  // record never blocks playback and never toasts: useRecordStoryView
+  // swallows its own failure.
   useEffect(() => {
     if (!currentStory) return;
     markStoryAsViewed(currentStory.timestamp);
-
-    if (isOwnStory) {
-      getStoryViewCount(currentStory.id).then(setViewCount).catch(() => setViewCount(null));
-      getStoryViewers(currentStory.id).then(setViewers).catch(() => setViewers([]));
-    } else {
-      setViewers([]);
-      if (userProfile?.id) {
-        recordStoryView(currentStory.id, userProfile.id).catch(() => {});
-      }
-    }
+    if (!isOwnStory) recordView(currentStory.id);
   }, [currentIndex, currentStory?.id]);
 
   // Navigation
@@ -259,31 +263,37 @@ export default function StoryViewerScreen() {
   const handleLike = useCallback(() => {
     if (!currentStory) return;
     triggerHapticFeedback('medium');
-    toggleStoryLike(currentStory);
-  }, [currentStory, triggerHapticFeedback, toggleStoryLike]);
+    storyLike.toggle(currentStory.id);
+  }, [currentStory, triggerHapticFeedback, storyLike]);
 
   const handleReply = useCallback(async () => {
     if (!replyText.trim() || !currentStory || !userProfile?.id) return;
     try {
-      await replyToStory(currentStory.id, currentStory.userId, replyText.trim());
+      await replyToStory.mutateAsync({ story: currentStory, text: replyText.trim() });
       addToast('Reply sent!', 'success');
       setReplyText('');
     } catch {
       addToast('Failed to send reply.', 'error');
     }
-  }, [replyText, currentStory, userProfile?.id, addToast]);
+  }, [replyText, currentStory, userProfile?.id, addToast, replyToStory]);
 
   const handleDelete = useCallback(() => {
     if (!currentStory) return;
     triggerHapticFeedback('heavy');
-    deleteStory(currentStory.id);
+    deleteStory.mutate(currentStory.id, {
+      onSuccess: () => addToast('Story deleted.', 'info'),
+      onError: (error) => {
+        console.error('Failed to delete story:', error);
+        addToast('Could not delete story.', 'error');
+      },
+    });
     setStories(prev => prev.filter(s => s.id !== currentStory.id));
     if (stories.length <= 1) {
       router.back();
     } else if (currentIndex >= stories.length - 1) {
       setCurrentIndex(prev => Math.max(0, prev - 1));
     }
-  }, [currentStory, triggerHapticFeedback, deleteStory, stories.length, currentIndex, router]);
+  }, [currentStory, triggerHapticFeedback, deleteStory, addToast, stories.length, currentIndex, router]);
 
   // Loading
   if (loading) {

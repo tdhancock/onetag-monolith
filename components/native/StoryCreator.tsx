@@ -3,6 +3,7 @@
 import React from 'react';
 import { View, Text, Pressable, Image } from 'react-native';
 import { useApp } from '../../store/AppContext.native';
+import { useMyStoriesQuery } from '../../features/stories';
 import type { Story } from '../../types';
 
 interface StoryCreatorProps {
@@ -14,12 +15,15 @@ interface StoryCreatorProps {
  * "Your story" button — OneTag logo inside a story ring, Instagram-style.
  */
 const StoryCreator: React.FC<StoryCreatorProps> = ({ onAddStory, onViewStories }) => {
-  const { userStories } = useApp();
-  const hasAnyStory = userStories.length > 0;
+  const { userProfile } = useApp();
+  // "Your story" is a query now (ONE-19); an upload in flight shows here as
+  // its optimistic local entry until the server copy replaces it.
+  const { data: myStories = [] } = useMyStoriesQuery(userProfile?.id || undefined);
+  const hasAnyStory = myStories.length > 0;
 
   const handlePress = () => {
     if (hasAnyStory) {
-      onViewStories(userStories, 0);
+      onViewStories(myStories, 0);
     } else {
       onAddStory();
     }

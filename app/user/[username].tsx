@@ -1,6 +1,6 @@
 
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,7 +31,9 @@ import {
 import { supabase } from '../../services/supabase.native';
 import UserAvatar from '../../components/native/UserAvatar';
 import RenderUserContent from '../../components/native/RenderUserContent';
-import { VerifiedIcon, BlockIcon } from '../../components/native/Icons';
+import { VerifiedIcon, BlockIcon, LockClosedIcon } from '../../components/native/Icons';
+import { isProfileLocked } from '../../lib/screens/profile';
+import { color as tokenColor } from '../../theme/tokens';
 import PostSkeleton from '../../components/native/PostSkeleton';
 import type { Post, UserProfile as UserProfileType } from '../../types';
 
@@ -112,6 +114,16 @@ export default function UserProfileScreen() {
   const isBlocked = isUserBlocked(username || '');
   const isMyProfile = myProfile?.username === username;
 
+  // A private profile the viewer does not follow comes back from the server
+  // with no posts — RLS hides them. Say why, rather than "No posts yet"
+  // (ONE-58).
+  const isLocked = isProfileLocked({
+    isPrivate: profile?.isPrivate,
+    isOwnProfile: isMyProfile,
+    isFollowing,
+    isAdmin,
+  });
+
   const fetchData = useCallback(async () => {
     if (!username) return;
     try {
@@ -135,6 +147,15 @@ export default function UserProfileScreen() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Following a private profile is what lets its posts through RLS, so the
+  // grid re-reads when follow state changes on one (ONE-58).
+  const wasFollowing = useRef(isFollowing);
+  useEffect(() => {
+    if (wasFollowing.current === isFollowing) return;
+    wasFollowing.current = isFollowing;
+    if (profile?.isPrivate && !isMyProfile) fetchData();
+  }, [isFollowing, profile?.isPrivate, isMyProfile, fetchData]);
 
   // Realtime follow counts, through the shared bridge (ONE-16). Two streams
   // rather than one subscription to every follow in the system: followers of
@@ -363,6 +384,14 @@ export default function UserProfileScreen() {
             They can't see your posts or find your profile.
           </Text>
         </View>
+      ) : isLocked ? (
+        <View className="py-10 items-center px-8 border-t border-gray-800">
+          <LockClosedIcon color={tokenColor.textMuted} size={48} />
+          <Text className="mt-4 text-lg font-bold text-gray-300">This account is private</Text>
+          <Text className="mt-1 text-sm text-gray-500 text-center">
+            Follow @{username} to see their posts.
+          </Text>
+        </View>
       ) : (
         /* Tabs */
         <View className="flex-row border-b border-gray-800">
@@ -400,7 +429,7 @@ export default function UserProfileScreen() {
         }}
       />
 
-      {isBlocked ? (
+      {isBlocked || isLocked ? (
         <FlatList
           data={[]}
           renderItem={() => null}

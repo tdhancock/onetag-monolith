@@ -39,7 +39,7 @@ jest.mock('../../services/supabase.native', () => ({
 
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { act } from 'react-dom/test-utils';
+import { act } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { supabase } from '../../services/supabase.native';
 import { activeSubscriptionCount, __resetForTests } from '../../services/realtime';

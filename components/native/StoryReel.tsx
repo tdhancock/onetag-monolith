@@ -54,9 +54,9 @@ const StoryCircle: React.FC<{
 const StoryReel: React.FC<StoryReelProps> = ({ storyGroups, allStories, onViewStories }) => {
   const { isStoryViewed } = useApp();
 
-  const handleViewUserStories = (userStories: Story[]) => {
-    if (!userStories || userStories.length === 0) return;
-    const firstStory = userStories[0];
+  const handleViewUserStories = (groupStories: Story[]) => {
+    if (!groupStories || groupStories.length === 0) return;
+    const firstStory = groupStories[0];
     const startIndex = allStories.findIndex(story => story.id === firstStory.id);
     if (startIndex !== -1) {
       onViewStories(allStories, startIndex);

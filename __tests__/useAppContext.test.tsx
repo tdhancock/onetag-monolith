@@ -20,10 +20,12 @@
  * which is what the rest of the codebase imports.
  *
  * Strategy:
- *   - We use `react-dom/client` + `react-dom/test-utils` (createRoot +
- *     act) instead of `react-test-renderer`, which is deprecated in
- *     React 19. jsdom supplies the DOM; we mount into a transient
- *     container element.
+ *   - We use `react-dom/client` (createRoot) and React's own `act`
+ *     instead of `react-test-renderer`, which is deprecated in React 19.
+ *     jsdom supplies the DOM; we mount into a transient container element.
+ *   - The auth transitions (sign-in, sign-out, token refresh) are driven
+ *     through the listener the provider registers, so they test the real
+ *     provider rather than a hand-written copy of its state.
  *   - The provider's network-bound effects (Supabase auth listener,
  *     notification/message subscriptions) are stubbed via `jest.mock`
  *     so the test stays synchronous and offline.
@@ -50,6 +52,13 @@ const mockAuthGetUser = jest.fn(async () => ({
   data: { user: null },
   error: null,
 }));
+
+// The row `syncUserData` reads the admin flag from. A test sets it before
+// firing SIGNED_IN.
+let mockProfileRow: { is_admin: boolean } | null = null;
+
+// The auth user id the provider hands to useCurrentUserQuery, last render.
+let mockCurrentUserArg: string | undefined;
 
 // The native provider persists the block-list to AsyncStorage and reads it
 // back in a post-mount effect. A mutable store lets a test seed it before
@@ -91,6 +100,7 @@ jest.mock('../services/supabase.native', () => ({
       select: jest.fn(() => ({
         eq: jest.fn(() => ({
           order: jest.fn(() => Promise.resolve({ data: [], error: null })),
+          maybeSingle: jest.fn(() => Promise.resolve({ data: mockProfileRow, error: null })),
         })),
       })),
     })),
@@ -131,10 +141,6 @@ jest.mock('../services/apiService', () => {
     unfollowUser: jest.fn(),
     followUser: jest.fn(),
     markNotificationsAsRead: jest.fn(),
-    getMyStories: jest.fn(async () => []),
-    deleteStoryFromDatabase: jest.fn(),
-    toggleStoryLikeInDatabase: jest.fn(),
-    markMessagesAsRead: jest.fn(),
     toggleSavePost: jest.fn(),
     adminDeletePost: jest.fn(),
     ensureCurrentUserProfile: jest.fn(),
@@ -147,7 +153,9 @@ jest.mock('../services/apiService', () => {
 const mockMigrateLocalBlocks = jest.fn(async () => null);
 
 jest.mock('../features/profiles', () => ({
-  useCurrentUserQuery: () => ({
+  useCurrentUserQuery: (authUserId: string | undefined) => {
+    mockCurrentUserArg = authUserId;
+    return {
     data: undefined,
     isPending: true,
     userProfile: {
@@ -157,11 +165,16 @@ jest.mock('../features/profiles', () => ({
       bio: 'Hello, I am using OneTag',
       profilePicture: null,
     },
-  }),
+  };
+  },
 }), { virtual: true });
 
 jest.mock('../features/notifications', () => ({
   useNotificationsRealtime: jest.fn(),
+}), { virtual: true });
+
+jest.mock('../features/messages', () => ({
+  useMessagesRealtime: jest.fn(),
 }), { virtual: true });
 
 jest.mock('../features/blocks', () => ({
@@ -179,10 +192,10 @@ jest.mock('../features/blocks', () => ({
 // ─── 2. Imports under test ──────────────────────────────────────────────
 import React, { useEffect } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react-dom/test-utils';
+import { act } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useApp } from '../store/AppContext.native';
-import { publishPost } from '../services/apiService';
+import { publishPost, ensureCurrentUserProfile } from '../services/apiService';
 type AppContextType = ReturnType<typeof useApp>;
 
 // ─── 3. Helpers ─────────────────────────────────────────────────────────
@@ -200,12 +213,11 @@ const Probe: React.FC<{ capture: Captured }> = ({ capture }) => {
     capture.current = ctx;
   });
   return React.createElement('div', { 'data-testid': 'probe' }, JSON.stringify({
-    hasToggleStoryLike: typeof ctx.toggleStoryLike === 'function',
+    hasSetIsViewingStory: typeof ctx.setIsViewingStory === 'function',
     hasAddToast: typeof ctx.addToast === 'function',
     theme: ctx.theme,
     userProfileName: ctx.userProfile.name,
     hasIsUserBlocked: typeof ctx.isUserBlocked === 'function',
-    unreadMessageCount: ctx.unreadMessageCount,
     isAdmin: ctx.isAdmin,
   }));
 };
@@ -214,6 +226,7 @@ interface MountedHandle {
   root: Root;
   container: HTMLDivElement;
   capture: Captured;
+  queryClient: QueryClient;
 }
 
 function mountWithProvider(): MountedHandle {
@@ -240,7 +253,7 @@ function mountWithProvider(): MountedHandle {
       ),
     );
   });
-  return { root, container, capture };
+  return { root, container, capture, queryClient };
 }
 
 /**
@@ -265,6 +278,16 @@ function unmount(handle: MountedHandle): void {
 
 // ─── 4. Tests ───────────────────────────────────────────────────────────
 
+/** Flush the viewed-set read, which takes a few microtask hops to land. */
+const flushHydration = async () => {
+  await act(async () => {
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  });
+};
+
+const recent = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
+
+
 describe('useApp (AppContext) — provider wrapper', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -278,7 +301,7 @@ describe('useApp (AppContext) — provider wrapper', () => {
       // The probe should be present in the rendered DOM.
       const probe = handle.container.querySelector('[data-testid="probe"]');
       expect(probe).not.toBeNull();
-      expect(probe!.textContent).toContain('"hasToggleStoryLike":true');
+      expect(probe!.textContent).toContain('"hasSetIsViewingStory":true');
     } finally {
       unmount(handle);
     }
@@ -305,7 +328,9 @@ describe('useApp (AppContext) — provider wrapper', () => {
       expect(ctx).not.toHaveProperty('repostedPosts');
       expect(ctx).not.toHaveProperty('savedPosts');
       expect(ctx).not.toHaveProperty('blockedUsers');
-      expect(ctx!.unreadMessageCount).toBe(0);
+      // Unread messages are a query too (ONE-18).
+      expect(ctx).not.toHaveProperty('unreadMessageCount');
+      expect(ctx).not.toHaveProperty('unreadChats');
       expect(ctx!.isAdmin).toBe(false);
       // The notification list is a query now (ONE-17); the transient
       // top-of-screen banner is UI state and stays.
@@ -327,7 +352,8 @@ describe('useApp (AppContext) — provider wrapper', () => {
       expect(typeof ctx.removeToast).toBe('function');
       expect(typeof ctx.setTheme).toBe('function');
       expect(typeof ctx.refreshAllData).toBe('function');
-      expect(typeof ctx.markAllMessagesAsRead).toBe('function');
+      expect(ctx).not.toHaveProperty('markAllMessagesAsRead');
+      expect(ctx).not.toHaveProperty('markChatAsRead');
     } finally {
       unmount(handle);
     }
@@ -350,6 +376,71 @@ describe('useApp (AppContext) — provider wrapper', () => {
     }
   });
 
+  // ─── Stories (ONE-19) ─────────────────────────────────────────────────
+
+  it('holds no story server data, only the viewing flag and the viewed set', () => {
+    const handle = mountWithProvider();
+    try {
+      const ctx = handle.capture.current!;
+      for (const removed of [
+        'userStories', 'storyComments', 'likedStoryIds', 'hasNewStory',
+        'addUserStory', 'deleteStory', 'replaceStory', 'markStoriesViewed',
+        'isStoryLiked', 'toggleStoryLike', 'getStoryComments', 'addStoryComment',
+        'setStoryComments',
+      ]) {
+        expect(ctx).not.toHaveProperty(removed);
+      }
+      expect(ctx.isViewingStory).toBe(false);
+      expect(typeof ctx.setIsViewingStory).toBe('function');
+      expect(ctx.viewedStoryTimestamps).toBeInstanceOf(Set);
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('rehydrates the viewed set from AsyncStorage, so a restart keeps it', async () => {
+    const seen = recent(30);
+    mockAsyncStore['onetag:viewedStoryTimestamps'] = JSON.stringify([seen]);
+
+    const handle = mountWithProvider();
+    await flushHydration();
+    try {
+      expect(handle.capture.current!.isStoryViewed(seen)).toBe(true);
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('persists a newly viewed story', async () => {
+    const handle = mountWithProvider();
+    await flushHydration();
+    try {
+      const seen = recent(5);
+      act(() => handle.capture.current!.markStoryAsViewed(seen));
+      await flushHydration();
+
+      expect(JSON.parse(mockAsyncStore['onetag:viewedStoryTimestamps'])).toEqual([seen]);
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it.each([
+    ['not JSON', '{not json'],
+    ['an object', JSON.stringify({ a: 1 })],
+    ['null', 'null'],
+  ])('tolerates a malformed viewed payload (%s)', async (_label, payload) => {
+    mockAsyncStore['onetag:viewedStoryTimestamps'] = payload;
+
+    const handle = mountWithProvider();
+    await flushHydration();
+    try {
+      expect(handle.capture.current!.viewedStoryTimestamps.size).toBe(0);
+    } finally {
+      unmount(handle);
+    }
+  });
+
   it('does not try to import a block-list with nobody signed in', () => {
     // There is no blocker to attribute the rows to, so the migration waits
     // rather than dropping the list on the floor.
@@ -359,6 +450,144 @@ describe('useApp (AppContext) — provider wrapper', () => {
     try {
       expect(mockMigrateLocalBlocks).not.toHaveBeenCalled();
       expect(mockAsyncStore['onetag-blocked-users']).toBe(JSON.stringify(['spammer1']));
+    } finally {
+      unmount(handle);
+    }
+  });
+});
+
+// ─── Auth session transitions ─────────────────────────────────────────
+//
+// These replace app-context-dispatch.test.ts, auth-expired-token.test.ts,
+// auth-concurrent-sessions.test.ts and the session half of
+// auth-flow.integration.test.ts, which asserted against a hand-written copy
+// of AppState that had drifted from the real one. Each transition is fired
+// through the listener the real provider registers.
+
+describe('useApp (AppContext) — auth session transitions', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAsyncStore = {};
+    mockProfileRow = null;
+    mockCurrentUserArg = undefined;
+  });
+
+  /** The provider's onAuthStateChange callback, from the latest mount. */
+  const authListener = (): ((event: string, session: unknown) => Promise<void>) => {
+    const calls = mockOnAuthStateChange.mock.calls as unknown as [(event: string, session: unknown) => Promise<void>][];
+    return calls[calls.length - 1][0];
+  };
+
+  const fire = async (event: string, session: unknown) => {
+    await act(async () => {
+      await authListener()(event, session);
+    });
+  };
+
+  const signedIn = { user: { id: 'user-1' } };
+
+  it('signs in: records the auth user, keys the profile query by it, and reads the admin flag', async () => {
+    mockProfileRow = { is_admin: true };
+    const handle = mountWithProvider();
+    try {
+      await fire('SIGNED_IN', signedIn);
+
+      const ctx = handle.capture.current!;
+      expect(ctx.authUserId).toBe('user-1');
+      expect(mockCurrentUserArg).toBe('user-1');
+      expect(ctx.isAdmin).toBe(true);
+      expect(ensureCurrentUserProfile).toHaveBeenCalledTimes(1);
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('is not an admin unless the profile row says so', async () => {
+    mockProfileRow = { is_admin: false };
+    const handle = mountWithProvider();
+    try {
+      await fire('INITIAL_SESSION', signedIn);
+      expect(handle.capture.current!.isAdmin).toBe(false);
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('signs out: forgets the user, clears every cached query, keeps device-local state', async () => {
+    mockProfileRow = { is_admin: true };
+    const handle = mountWithProvider();
+    await flushHydration();
+    try {
+      await fire('SIGNED_IN', signedIn);
+      act(() => {
+        handle.capture.current!.setTheme('light');
+        handle.capture.current!.markStoryAsViewed(recent(10));
+      });
+      handle.queryClient.setQueryData(['posts', 'feed', 'user-1'], { pages: [] });
+
+      await fire('SIGNED_OUT', null);
+
+      const ctx = handle.capture.current!;
+      expect(ctx.authUserId).toBe('');
+      expect(mockCurrentUserArg).toBeUndefined();
+      expect(ctx.isAdmin).toBe(false);
+      // Everything cached belonged to the previous account.
+      expect(handle.queryClient.getQueryData(['posts', 'feed', 'user-1'])).toBeUndefined();
+      // Theme is UI state and the viewed set is per device, not per account.
+      expect(ctx.theme).toBe('light');
+      expect(ctx.viewedStoryTimestamps.size).toBe(1);
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('a silent token refresh neither re-syncs nor clears anything', async () => {
+    mockProfileRow = { is_admin: true };
+    const handle = mountWithProvider();
+    try {
+      await fire('SIGNED_IN', signedIn);
+      handle.queryClient.setQueryData(['posts', 'feed', 'user-1'], { pages: [] });
+      (ensureCurrentUserProfile as jest.Mock).mockClear();
+
+      await fire('TOKEN_REFRESHED', signedIn);
+
+      const ctx = handle.capture.current!;
+      expect(ensureCurrentUserProfile).not.toHaveBeenCalled();
+      expect(ctx.authUserId).toBe('user-1');
+      expect(ctx.isAdmin).toBe(true);
+      expect(handle.queryClient.getQueryData(['posts', 'feed', 'user-1'])).toEqual({ pages: [] });
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('tells the user when the account sync fails, and stays signed out of the session', async () => {
+    (ensureCurrentUserProfile as jest.Mock).mockRejectedValueOnce(new Error('network'));
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const handle = mountWithProvider();
+    try {
+      await fire('SIGNED_IN', signedIn);
+
+      const ctx = handle.capture.current!;
+      expect(ctx.authUserId).toBe('');
+      expect(ctx.toasts.map((t) => t.type)).toContain('error');
+    } finally {
+      unmount(handle);
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('setTheme changes the theme and nothing else', () => {
+    const handle = mountWithProvider();
+    try {
+      const before = handle.capture.current!;
+      act(() => before.setTheme('light'));
+
+      const after = handle.capture.current!;
+      expect(after.theme).toBe('light');
+      expect(after.authUserId).toBe(before.authUserId);
+      expect(after.toasts).toBe(before.toasts);
+      expect(after.viewedStoryTimestamps).toBe(before.viewedStoryTimestamps);
     } finally {
       unmount(handle);
     }

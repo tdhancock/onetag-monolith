@@ -19,7 +19,8 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '../store/AppContext.native';
-import { uploadStory, cleanHtml } from '../services/apiService';
+import { cleanHtml } from '../services/apiService';
+import { useUploadStory } from '../features/stories';
 import {
   CameraIcon,
   FlipCameraIcon,
@@ -27,7 +28,6 @@ import {
   XIcon,
   ArrowLeftIcon,
 } from '../components/native/Icons';
-import type { Story } from '../types';
 
 type ViewState = 'options' | 'camera' | 'preview-image' | 'preview-text';
 
@@ -45,12 +45,16 @@ export default function StoryCreateScreen() {
   const router = useRouter();
   const {
     userProfile,
-    addUserStory,
-    replaceStory,
-    deleteStory,
     addToast,
     triggerHapticFeedback,
   } = useApp();
+  // The optimistic entry, its replacement by the server copy and its removal
+  // on failure all happen inside the mutation (ONE-19).
+  const uploadStory = useUploadStory(
+    userProfile?.id
+      ? { id: userProfile.id, username: userProfile.username, avatar: userProfile.profilePicture || null }
+      : undefined,
+  );
   const cameraRef = useRef<CameraView>(null);
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -72,53 +76,20 @@ export default function StoryCreateScreen() {
       if (!userProfile?.id) return;
       setIsUploading(true);
 
-      const localId = `local-${Date.now()}`;
-      const localStory: Story = {
-        id: localId,
-        userId: userProfile.id,
-        username: userProfile.username,
-        avatar: userProfile.profilePicture || null,
-        timestamp: new Date().toISOString(),
-        imageUrl: options.imageUri,
-        content: options.text,
-      };
-
-      addUserStory(localStory);
       addToast('Uploading story...', 'info');
 
       try {
         if (options.imageUri) {
-          const response = await fetch(options.imageUri);
-          const blob = await response.blob();
-          const uploadBlob = blob.type
-            ? blob
-            : new Blob([blob], { type: 'image/jpeg' });
-          const realStory = await uploadStory(
-            uploadBlob,
-            caption.trim() || null,
-            userProfile.id,
-          );
-          if (realStory) {
-            replaceStory(localId, realStory);
-          } else {
-            throw new Error('Upload returned null');
-          }
+          await uploadStory.mutateAsync({
+            imageUri: options.imageUri,
+            caption: caption.trim() || null,
+          });
         } else if (options.text) {
           // Text-only story — skip storage upload and save only caption.
-          const realStory = await uploadStory(
-            null,
-            options.text,
-            userProfile.id,
-          );
-          if (realStory) {
-            replaceStory(localId, realStory);
-          } else {
-            throw new Error('Upload returned null');
-          }
+          await uploadStory.mutateAsync({ caption: options.text });
         }
       } catch (error) {
         console.error('Story upload failed', error);
-        deleteStory(localId);
         addToast('Failed to upload story.', 'error');
       } finally {
         setIsUploading(false);
@@ -126,7 +97,7 @@ export default function StoryCreateScreen() {
         setTimeout(() => router.back(), 1200);
       }
     },
-    [userProfile, addUserStory, replaceStory, deleteStory, addToast, caption, router],
+    [userProfile?.id, uploadStory, addToast, caption, router],
   );
 
   const takePhoto = useCallback(async () => {

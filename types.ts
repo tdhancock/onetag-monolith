@@ -18,7 +18,7 @@ export interface UserProfile {
     bio: string;
     profilePicture: string | null;
     isVerified?: boolean;
-    // FIX: Add 'isPrivate' to allow AI to update account privacy settings.
+    /** `profiles.is_private`: only followers see this profile's posts (ONE-58). */
     isPrivate?: boolean;
 }
 

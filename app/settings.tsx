@@ -7,10 +7,30 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
 import { supabase } from '../services/supabase.native';
 import { LogoutIcon, ChevronRightIcon, TrashIcon } from '../components/native/Icons';
+import { useUpdateProfile } from '../features/profiles';
+import { PRIVATE_ACCOUNT_LABEL, PRIVATE_ACCOUNT_DESCRIPTION } from '../lib/screens/profile';
 
 export default function SettingsScreen() {
-  const { theme, setTheme, addToast } = useApp();
+  const { theme, setTheme, addToast, userProfile } = useApp();
   const router = useRouter();
+
+  // Private account writes `profiles.is_private` through the profile
+  // mutation (ONE-58). While the save is in flight the switch shows the value
+  // being saved, so it does not snap back until the server answers.
+  const updateProfile = useUpdateProfile(userProfile?.id || undefined);
+  const isPrivate = updateProfile.isPending
+    ? Boolean(updateProfile.variables?.isPrivate)
+    : Boolean(userProfile?.isPrivate);
+
+  const handlePrivateChange = (next: boolean) => {
+    updateProfile.mutate(
+      { isPrivate: next },
+      {
+        onSuccess: () => addToast(next ? 'Your account is now private.' : 'Your account is now public.', 'info'),
+        onError: () => addToast('Could not update your privacy setting.', 'error'),
+      },
+    );
+  };
 
   const handleLogout = async () => {
     try {
@@ -83,6 +103,18 @@ export default function SettingsScreen() {
           {/* Privacy */}
           <Text className="text-gray-500 font-bold mb-4 ml-1">PRIVACY</Text>
           <View className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden mb-8">
+            <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-800" style={{ gap: 12 }}>
+              <View className="flex-1">
+                <Text className="text-white text-base">{PRIVATE_ACCOUNT_LABEL}</Text>
+                <Text className="text-gray-500 text-sm mt-0.5">{PRIVATE_ACCOUNT_DESCRIPTION}</Text>
+              </View>
+              <Switch
+                value={isPrivate}
+                onValueChange={handlePrivateChange}
+                disabled={!userProfile?.id || updateProfile.isPending}
+                accessibilityLabel={PRIVATE_ACCOUNT_LABEL}
+              />
+            </View>
             <Link href="/blocked-users" asChild>
               <Pressable className="flex-row items-center justify-between px-4 py-4">
                 <Text className="text-white text-base">Blocked Accounts</Text>

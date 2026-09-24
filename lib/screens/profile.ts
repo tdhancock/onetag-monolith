@@ -208,3 +208,44 @@ export const getEditButtonProps = (
         isEnabled,
     };
 };
+
+// ---------------------------------------------------------------------------
+// Private accounts (ONE-58)
+// ---------------------------------------------------------------------------
+
+/**
+ * What the Private account switch in Settings says it does.
+ *
+ * Going private does not evict anyone: existing followers keep access, and
+ * the copy says so, so nobody has to guess.
+ */
+export const PRIVATE_ACCOUNT_LABEL = 'Private account';
+export const PRIVATE_ACCOUNT_DESCRIPTION =
+  'Only your followers can see your posts. People who already follow you keep access.';
+
+export interface ProfileVisibility {
+  /** `profiles.is_private` on the profile being viewed. */
+  isPrivate: boolean | undefined;
+  /** The viewer is looking at their own profile. */
+  isOwnProfile: boolean;
+  /** The viewer follows this profile. */
+  isFollowing: boolean;
+  /** The viewer is an admin, whom the posts RLS lets through. */
+  isAdmin?: boolean;
+}
+
+/**
+ * Whether the profile screen shows the locked state instead of the grid.
+ *
+ * Mirrors the posts SELECT policy in 20260921000000_admin_and_privacy.sql:
+ * the owner, an admin, and a follower see the posts of a private profile;
+ * anyone else gets nothing back from the server. Showing "This account is
+ * private" in that case explains the empty grid rather than implying the
+ * profile has never posted.
+ */
+export const isProfileLocked = ({
+  isPrivate,
+  isOwnProfile,
+  isFollowing,
+  isAdmin = false,
+}: ProfileVisibility): boolean => Boolean(isPrivate) && !isOwnProfile && !isFollowing && !isAdmin;
