@@ -15,7 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Image } from 'expo-image';
 import { useApp } from '../store/AppContext.native';
 import { useCreatePost } from '../features/posts';
-import { MediaUploadError } from '../services/apiService';
+import { MediaUploadError } from '../services/mediaUpload';
 import { cleanHtml } from '../services/apiService';
 import {
   pickImageFromLibrary,

@@ -391,12 +391,15 @@ describe('E2E — complete signup flow', () => {
 // 2. POST CREATE FLOW
 // =========================================================================
 //
-// Mirrors what app/compose.tsx → services/apiService.publishPost() does:
+// Mirrors what app/compose.tsx → features/posts publishPost() does (moved
+// out of services/apiService to break an import cycle; apiService still
+// re-exports it):
 //   1) auth.getUser()            → guard against unauthenticated callers
 //   2) ensureProfileRowForUser() → guard against missing profile row
 //   3) posts.insert(...).select('id').single() → create the row
 //   4) posts.select(...).eq('id', x).single() → fetch the populated row
-//   5) handleMentions(content)   → fire @-mention notifications
+//   5) notifyMentionedUsers()    → fire @-mention notifications
+//      (services/notificationWrites, consolidated in ONE-17)
 //
 // We assert the call shape, the returned Post, and the notification row
 // payloads captured by the mock builder.
@@ -465,7 +468,7 @@ describe('E2E — post create flow', () => {
     });
 
     // posts chain: insert returns the new id, then select returns the row
-    // so publishPost can read `data.id` for handleMentions().
+    // so publishPost can read `data.id` for notifyMentionedUsers().
     let postsCalls = 0;
     testHooks.setHandler('posts', () => {
       postsCalls += 1;

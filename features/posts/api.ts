@@ -6,7 +6,14 @@
 // second mount starts from the top without anyone having to reset anything.
 
 import { supabase } from '../../services/supabase.native';
-import { notifyPostAuthor } from '../../services/notificationWrites';
+import { notifyPostAuthor, notifyMentionedUsers } from '../../services/notificationWrites';
+import { ensureProfileRowForUser } from '../../services/profileBootstrap';
+import {
+  MediaUploadError,
+  assertRemoteMediaUrl,
+  isLocalMediaUri,
+  uploadMedia,
+} from '../../services/mediaUpload';
 import type { Post } from './types';
 
 /** Posts requested per feed page. */
@@ -341,3 +348,118 @@ export const toggleRepost = async (postId: string, userId: string): Promise<bool
 export const toggleSavePost = async (postId: string, userId: string): Promise<boolean> =>
   toggleJoinRow('saved_posts', postId, userId);
 
+// ---------------------------------------------------------------------------
+// Publishing, editing and deleting
+// ---------------------------------------------------------------------------
+//
+// Moved from services/apiService.ts. features/posts/mutations.ts reached
+// these through apiService, which itself re-exports this feature, and that
+// cycle crashed the app on boot. apiService re-exports them until the final
+// M2 cleanup.
+
+export const publishPost = async (post: Post): Promise<Post | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+        console.error("❌ Error publishing post: User not authenticated.");
+        throw new Error("User not authenticated");
+    }
+
+    const profileReady = await ensureProfileRowForUser(user);
+    if (!profileReady) {
+        throw new Error('Could not create or find a profile row for this account. Please re-login and try again.');
+    }
+
+    try {
+        const content = post.content || "";
+        let uploadUrl = post.media || null;
+        const mediaType = post.media_type || 'text';
+        const aspectRatio = post.media_aspect_ratio || null;
+
+        // --- NEW UPLOAD LOGIC ---
+        // If the media is a local URL (from camera or gallery), upload it to storage first.
+        if (uploadUrl && isLocalMediaUri(uploadUrl)) {
+            // Use the RN-compatible uploadMedia function which uses arrayBuffer.
+            // This is the only upload site for post media — callers hand us the
+            // local URI and we resolve it here, so nothing uploads twice.
+            try {
+                uploadUrl = await uploadMedia(uploadUrl, user.id);
+            } catch (uploadError) {
+                throw new MediaUploadError('Your photo could not be uploaded, so the post was not published.', uploadError);
+            }
+        }
+        // uploadMedia falls back to a data: URL when every bucket is unavailable;
+        // that is still unreadable to everyone else, so it must not be inserted.
+        assertRemoteMediaUrl(uploadUrl);
+        // --- END NEW UPLOAD LOGIC ---
+
+        const { data: insertData, error } = await supabase
+            .from("posts")
+            .insert([
+                {
+                    user_id: user.id,
+                    content: content,
+                    image_url: uploadUrl, // This is now the permanent URL if an image was uploaded
+                    media_type: mediaType,
+                    media_aspect_ratio: aspectRatio,
+                    created_at: post.timestamp || new Date().toISOString(),
+                },
+            ])
+            .select('id')
+            .single();
+
+        if (error) throw error;
+        if (!insertData) throw new Error("Post insertion did not return data.");
+
+        const { data, error: fetchError } = await supabase
+            .from('posts')
+            .select(POST_SELECT_QUERY)
+            .eq('id', insertData.id)
+            .single();
+
+        if (fetchError) throw fetchError;
+        if (!data) throw new Error("Could not retrieve post after creation.");
+
+        // Handle mentions after post is successfully created
+        if (content.trim().length > 0) {
+            await notifyMentionedUsers(content, user.id, data.id, null);
+        }
+        
+        return mapPostData(data);
+
+    } catch (err) {
+        console.error("❌ Error publishing post:", (err as Error).message || err);
+        throw err;
+    }
+};
+
+export const deletePost = async (postId: string): Promise<boolean> => {
+    const { error } = await supabase.from('posts').delete().eq('id', postId);
+    if (error) {
+        console.error('Error deleting post:', error.message || error);
+        return false;
+    }
+    return true;
+};
+
+export const adminDeletePost = async (postId: string): Promise<void> => {
+    const { error } = await supabase
+        .from("posts")
+        .delete()
+        .eq("id", postId);
+    if (error) throw error;
+};
+
+export const updatePost = async (post: Post): Promise<Post | null> => {
+    const { id, content } = post;
+    const { data, error } = await supabase
+        .from('posts')
+        .update({ content })
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) {
+        console.error('Error updating post:', error.message || error);
+        return null;
+    }
+    return { ...data, timestamp: data.created_at } as Post;
+};

@@ -8,14 +8,18 @@
 
 import { useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { toggleLike, toggleRepost, toggleSavePost } from './api';
+import {
+  toggleLike,
+  toggleRepost,
+  toggleSavePost,
+  publishPost,
+  updatePost,
+  deletePost,
+  adminDeletePost,
+} from './api';
 import { postKeys } from './keys';
 import type { Post } from './types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
-// Publishing still lives in services/apiService.ts; it is the next thing to
-// move (ONE-20), and importing it here keeps this the only place screens go
-// for a post write in the meantime.
-import { publishPost, updatePost, deletePost, adminDeletePost } from '../../services/apiService';
 
 /** What every post toggle has in common: where the entity lives, and how. */
 const postToggleBase = {

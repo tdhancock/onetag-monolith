@@ -32,7 +32,18 @@ import {
     ensureProfileRowForUser,
     ensureProfileForNotificationUser,
 } from './profileBootstrap';
-import { readLocalFile } from './localFile';
+import { isLikelyStoragePolicyError, isStorageBucketMissingError } from './mediaUpload';
+
+// Post media upload moved to services/mediaUpload.ts, and publishing, editing
+// and deleting posts to features/posts, to break the import cycle that
+// crashed the app on boot. Re-exported until the final M2 cleanup.
+export {
+    MediaUploadError,
+    isLocalMediaUri,
+    assertRemoteMediaUrl,
+    uploadMedia,
+} from './mediaUpload';
+export { publishPost, updatePost, deletePost, adminDeletePost } from '../features/posts';
 
 export { ensureCurrentUserProfile } from './profileBootstrap';
 
@@ -139,102 +150,6 @@ async function localUrlToBlob(url: string): Promise<Blob> {
     return response.blob();
 }
 
-/**
- * Raised when a post's media could not be turned into a remotely readable URL.
- * Distinct from a generic publish failure so the composer can tell the author
- * the *image* is the problem, not their text.
- */
-export class MediaUploadError extends Error {
-    constructor(message: string, readonly cause?: unknown) {
-        super(message);
-        this.name = 'MediaUploadError';
-    }
-}
-
-/** A URI that only resolves on the device that produced it. */
-export const isLocalMediaUri = (uri: string): boolean =>
-    uri.startsWith('file://') ||
-    uri.startsWith('content://') ||
-    uri.startsWith('blob:') ||
-    uri.startsWith('data:');
-
-/**
- * Last line of defence before an insert: a device-local URI stored as
- * `image_url` renders for exactly one person and is unfixable afterwards, so
- * fail loudly rather than writing the row.
- */
-export function assertRemoteMediaUrl(url: string | null | undefined): void {
-    if (url && isLocalMediaUri(url)) {
-        throw new MediaUploadError('Your photo could not be uploaded, so the post was not published.');
-    }
-}
-
-/**
- * Upload a local media file (from expo-image-picker or camera) to Supabase Storage.
- * Uses fetch().arrayBuffer() which works reliably on React Native.
- * Returns the public URL of the uploaded file.
- */
-export async function uploadMedia(localUri: string, userId: string): Promise<string> {
-    const { arrayBuffer, contentType, ext } = await readLocalFile(localUri);
-
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-
-    // Try uploading to the 'post-media' bucket first (same bucket the web app uses)
-    const candidatePaths = [
-        `${userId}/posts/${fileName}`,
-        `posts/${userId}/${fileName}`,
-        `public/${userId}/${fileName}`,
-    ];
-
-    const bucketCandidates = ['post-media', 'media', 'uploads'];
-
-    let lastError: unknown = null;
-
-    for (const bucket of bucketCandidates) {
-        for (const filePath of candidatePaths) {
-            const { error } = await supabase.storage
-                .from(bucket)
-                .upload(filePath, arrayBuffer, {
-                    cacheControl: '3600',
-                    upsert: false,
-                    contentType,
-                });
-
-            if (!error) {
-                const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
-                return data.publicUrl;
-            }
-
-            lastError = error;
-            // If it's not a policy/bucket error, throw immediately
-            if (!isLikelyStoragePolicyError(error) && !isStorageBucketMissingError(error)) {
-                throw error;
-            }
-            // If it's a bucket-missing error for this bucket, try next bucket
-            if (isStorageBucketMissingError(error)) {
-                break; // skip remaining paths for this bucket, try next bucket
-            }
-        }
-    }
-
-    // All buckets failed — fall back to data URL
-    console.warn('All storage buckets unavailable, falling back to data URL.');
-    return arrayBufferToDataUrl(arrayBuffer, contentType);
-}
-
-/**
- * Convert ArrayBuffer to base64 data URL — fallback when storage is unavailable.
- */
-function arrayBufferToDataUrl(buffer: ArrayBuffer, contentType: string): string {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    const base64 = btoa(binary);
-    return `data:${contentType};base64,${base64}`;
-}
-
 const toStorageExtension = (mimeType: string | undefined, fallback: string = 'bin'): string => {
     if (!mimeType) return fallback;
     const normalized = mimeType.toLowerCase();
@@ -249,20 +164,6 @@ const toStorageExtension = (mimeType: string | undefined, fallback: string = 'bi
     const raw = normalized.split('/')[1] || fallback;
     const cleaned = raw.replace(/[^a-z0-9]/g, '');
     return cleaned.length > 0 ? cleaned : fallback;
-};
-
-const isLikelyStoragePolicyError = (error: unknown): boolean => {
-    const message = String((error as { message?: unknown })?.message || error).toLowerCase();
-    return (
-        message.includes('row-level security policy') ||
-        message.includes('not authorized') ||
-        message.includes('permission denied')
-    );
-};
-
-const isStorageBucketMissingError = (error: unknown): boolean => {
-    const message = String((error as { message?: unknown })?.message || error).toLowerCase();
-    return message.includes('bucket') && message.includes('not found');
 };
 
 const uploadToPostMediaBucket = async (
@@ -373,90 +274,6 @@ const buildTextStoryDataUri = (text: string): string => {
     return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
-export const publishPost = async (post: Post): Promise<Post | null> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-        console.error("❌ Error publishing post: User not authenticated.");
-        throw new Error("User not authenticated");
-    }
-
-    const profileReady = await ensureProfileRowForUser(user);
-    if (!profileReady) {
-        throw new Error('Could not create or find a profile row for this account. Please re-login and try again.');
-    }
-
-    try {
-        const content = post.content || "";
-        let uploadUrl = post.media || null;
-        const mediaType = post.media_type || 'text';
-        const aspectRatio = post.media_aspect_ratio || null;
-
-        // --- NEW UPLOAD LOGIC ---
-        // If the media is a local URL (from camera or gallery), upload it to storage first.
-        if (uploadUrl && isLocalMediaUri(uploadUrl)) {
-            // Use the RN-compatible uploadMedia function which uses arrayBuffer.
-            // This is the only upload site for post media — callers hand us the
-            // local URI and we resolve it here, so nothing uploads twice.
-            try {
-                uploadUrl = await uploadMedia(uploadUrl, user.id);
-            } catch (uploadError) {
-                throw new MediaUploadError('Your photo could not be uploaded, so the post was not published.', uploadError);
-            }
-        }
-        // uploadMedia falls back to a data: URL when every bucket is unavailable;
-        // that is still unreadable to everyone else, so it must not be inserted.
-        assertRemoteMediaUrl(uploadUrl);
-        // --- END NEW UPLOAD LOGIC ---
-
-        const { data: insertData, error } = await supabase
-            .from("posts")
-            .insert([
-                {
-                    user_id: user.id,
-                    content: content,
-                    image_url: uploadUrl, // This is now the permanent URL if an image was uploaded
-                    media_type: mediaType,
-                    media_aspect_ratio: aspectRatio,
-                    created_at: post.timestamp || new Date().toISOString(),
-                },
-            ])
-            .select('id')
-            .single();
-
-        if (error) throw error;
-        if (!insertData) throw new Error("Post insertion did not return data.");
-
-        const { data, error: fetchError } = await supabase
-            .from('posts')
-            .select(POST_SELECT_QUERY)
-            .eq('id', insertData.id)
-            .single();
-
-        if (fetchError) throw fetchError;
-        if (!data) throw new Error("Could not retrieve post after creation.");
-
-        // Handle mentions after post is successfully created
-        if (content.trim().length > 0) {
-            await handleMentions(content, user.id, data.id, null);
-        }
-        
-        return mapPostData(data);
-
-    } catch (err) {
-        console.error("❌ Error publishing post:", (err as Error).message || err);
-        throw err;
-    }
-};
-
-export const deletePost = async (postId: string): Promise<boolean> => {
-    const { error } = await supabase.from('posts').delete().eq('id', postId);
-    if (error) {
-        console.error('Error deleting post:', error.message || error);
-        return false;
-    }
-    return true;
-};
-
 // --- ADMIN FUNCTIONS ---
 export const setUserVerified = async (userId: string, username: string, status: boolean): Promise<void> => {
     // We update by ID to be absolutely sure we target the correct row,
@@ -479,29 +296,7 @@ export const setUserVerified = async (userId: string, username: string, status: 
     // profile query is invalidated by the caller instead.
 };
 
-export const adminDeletePost = async (postId: string): Promise<void> => {
-    const { error } = await supabase
-        .from("posts")
-        .delete()
-        .eq("id", postId);
-    if (error) throw error;
-};
 // -----------------------
-
-export const updatePost = async (post: Post): Promise<Post | null> => {
-    const { id, content } = post;
-    const { data, error } = await supabase
-        .from('posts')
-        .update({ content })
-        .eq('id', id)
-        .select()
-        .single();
-    if (error) {
-        console.error('Error updating post:', error.message || error);
-        return null;
-    }
-    return { ...data, timestamp: data.created_at } as Post;
-};
 
 export const cleanHtml = (html: string): string => {
     if (!html) return "";
