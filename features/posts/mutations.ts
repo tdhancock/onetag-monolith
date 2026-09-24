@@ -18,6 +18,10 @@ import {
   adminDeletePost,
 } from './api';
 import { postKeys } from './keys';
+// Through the barrel. This used to be a raw ['profiles'] literal, because
+// features/profiles imported this feature and importing back closed a cycle;
+// the post mapper moving to services/postRows.ts (ONE-20) broke that loop.
+import { profileKeys } from '../profiles';
 import type { Post } from './types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
 
@@ -153,7 +157,7 @@ export const useCreatePost = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: postKeys.all });
-      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      queryClient.invalidateQueries({ queryKey: profileKeys.all });
     },
   });
 };
@@ -167,7 +171,7 @@ export const useUpdatePost = () => {
     onSuccess: (_updated, post) => {
       queryClient.invalidateQueries({ queryKey: postKeys.detail(post.id) });
       queryClient.invalidateQueries({ queryKey: postKeys.all });
-      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      queryClient.invalidateQueries({ queryKey: profileKeys.all });
     },
   });
 };
@@ -192,7 +196,7 @@ export const useDeletePost = () => {
     onSuccess: (_result, { postId }) => {
       queryClient.removeQueries({ queryKey: postKeys.detail(postId) });
       queryClient.invalidateQueries({ queryKey: postKeys.all });
-      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      queryClient.invalidateQueries({ queryKey: profileKeys.all });
     },
   });
 };

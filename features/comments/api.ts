@@ -1,6 +1,6 @@
 // Pure Supabase access for the comments domain.
 //
-// Moved out of `services/apiService.ts` in ONE-14. The notification and
+// Moved out of the old shared service module in ONE-14. The notification and
 // mention side effects come from `services/notificationWrites.ts`, which
 // ONE-17 consolidated out of the three copies that briefly existed here, in
 // posts and in profiles.

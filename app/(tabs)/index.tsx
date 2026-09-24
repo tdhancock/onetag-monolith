@@ -13,11 +13,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
-import { useFollowState, useToggleFollow, profileKeys } from '../../features/profiles';
+import { useFollowState, useToggleFollow, profileKeys, getSmartUserSuggestions } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
 import { useUnreadNotificationCount } from '../../features/notifications';
 import { useUnreadMessageCount } from '../../features/messages';
-import { getSmartUserSuggestions } from '../../services/apiService';
 import { useStoriesQuery, useStoriesRealtime, storyKeys } from '../../features/stories';
 import { useQueryClient } from '@tanstack/react-query';
 import {

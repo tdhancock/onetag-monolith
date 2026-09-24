@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Link } from 'expo-router';
 import { supabase } from '../../services/supabase.native';
-import { ensureCurrentUserProfile } from '../../services/apiService';
+import { ensureCurrentUserProfile } from '../../services/profileBootstrap';
 import { tokens } from '../../theme/tokens';
 
 export default function LoginScreen() {

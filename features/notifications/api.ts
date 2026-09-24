@@ -2,7 +2,7 @@
 //
 // The list fetch was inlined in an AppContext effect and its rows were
 // written into `setState`; `markNotificationsAsRead` lived in
-// `services/apiService.ts`. Both are here now (ONE-17).
+// the old shared service module. Both are here now (ONE-17).
 //
 // Sending a notification is deliberately *not* here: three other features do
 // that, and a feature's api.ts may not import another feature, so the write

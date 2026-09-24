@@ -1,5 +1,5 @@
 //
-// target: __tests__/services/apiService.upload.test.ts
+// target: __tests__/services/post-media-upload.test.ts
 //
 // The post media upload path. The defect: when the upload threw, the caller
 // swallowed it and published anyway with a `file://` URI, so the post rendered
@@ -31,7 +31,8 @@ jest.mock('../../services/supabase.native', () => ({
   },
 }), { virtual: true });
 
-import { publishPost, assertRemoteMediaUrl, MediaUploadError } from '../../services/apiService';
+import { publishPost } from '../../features/posts';
+import { assertRemoteMediaUrl, MediaUploadError } from '../../services/mediaUpload';
 import type { Post } from '../../types';
 
 const USER_ID = '22222222-2222-2222-2222-222222222222';

@@ -1,110 +1,152 @@
-
+// Global UI state — and only UI state.
+//
+// Everything a server owns lives in TanStack Query, in `features/`. What is
+// left here has no server behind it: the theme, toasts, the tooltip, the
+// top-of-screen banner, the flag that hides chrome while a OneSnap plays, and
+// which stories this device has already seen (AsyncStorage-backed, because it
+// is per device, not per account).
+//
+// ONE-20 finished the move: the auth session went to `features/auth`, the
+// admin flag to `features/admin`, and the refresh-everything call — a hand-rolled
+// refetch — to query invalidation at its one call site.
+//
+// Two pass-throughs remain on the context value, deliberately:
+//   * `userProfile` — the signed-in profile, derived from `features/profiles`.
+//     Held in no state; ONE-22 moves its readers onto `useCurrentProfile()`.
+//   * `isUserBlocked` / `toggleBlockUser` — thin calls into `features/blocks`,
+//     kept because a dozen screens call them by username. They hold no data.
 
 import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo, useEffect, useRef } from 'react';
-import type { User } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
+import { useAuthSessionSync, useAuthUserId } from '../features/auth';
 import { useBlockedUsers, useBlockToggle, migrateLocalBlocks, blockKeys } from '../features/blocks';
 import { useCurrentUserQuery } from '../features/profiles';
 import { useNotificationsRealtime } from '../features/notifications';
 import { useMessagesRealtime } from '../features/messages';
-import { ensureCurrentUserProfile } from '../services/apiService';
 import { getJSON, setJSON } from '../services/storage';
+import { supabase } from '../services/supabase.native';
 import {
     VIEWED_STORIES_KEY,
     parseViewedStoryTimestamps,
     serializeViewedStoryTimestamps,
 } from '../lib/viewedStories';
-import { supabase } from '../services/supabase.native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Haptics from 'expo-haptics';
 import type { UserProfile, Toast } from '../types';
 
 interface AppState {
-    /**
-     * The signed-in auth user's id — the session, not their profile row.
-     *
-     * The profile itself is a query (ONE-15); this is what keys it, and it is
-     * the one piece of identity AppContext still owns because it comes from
-     * the auth listener rather than from a table.
-     */
-    authUserId: string;
     theme: 'light' | 'dark';
-    /**
-     * Which stories this device has seen, by timestamp. Per device, not per
-     * account — AsyncStorage-backed, and kept across sign-out (ONE-19).
-     * Story data itself is in features/stories.
-     */
-    viewedStoryTimestamps: Set<string>;
-    isViewingStory: boolean;
-    votedPolls: Map<string, number>;
     toasts: Toast[];
     tooltip: { text: string } | null;
     topNotification: { title: string; message: string } | null;
-    isAdmin: boolean;
+    /** A OneSnap is playing; other chrome stays out of the way. */
+    isViewingStory: boolean;
+    /**
+     * Which stories this device has seen, by timestamp. Per device, not per
+     * account — AsyncStorage-backed, and kept across sign-out (ONE-19).
+     */
+    viewedStoryTimestamps: Set<string>;
 }
 
 interface AppContextType extends AppState {
     /**
-     * The signed-in user. Sourced from `features/profiles` rather than from
-     * AppState (ONE-15), but still handed out here because it is the app's
-     * identity object. While loading it is the placeholder with `id: ''`, so
-     * `userProfile?.id` guards read as "not ready" exactly as before.
+     * The signed-in profile, derived from `features/profiles` — a pass-through,
+     * not state. While loading or signed out it is the placeholder with
+     * `id: ''`, so `userProfile?.id` guards read as "not ready".
      */
     userProfile: UserProfile;
     setTheme: (theme: 'light' | 'dark') => void;
-    markStoryAsViewed: (timestamp: string) => void;
-    isStoryViewed: (timestamp: string) => boolean;
-    setIsViewingStory: (isViewing: boolean) => void;
-    toggleBlockUser: (username: string) => void;
-    isUserBlocked: (username: string) => boolean;
-    voteInPoll: (postId: string, optionIndex: number) => void;
-    getPollVote: (postId: string) => number | undefined;
     addToast: (message: string, type?: Toast['type']) => void;
     removeToast: (id: string) => void;
+    setTooltip: (tooltip: { text: string } | null) => void;
     showTopNotification: (title: string, message: string) => void;
     triggerHapticFeedback: (style?: 'light' | 'medium' | 'heavy') => void;
-    setTooltip: (tooltip: { text: string } | null) => void;
-    refreshAllData: () => Promise<void>;
+    setIsViewingStory: (isViewing: boolean) => void;
+    markStoryAsViewed: (timestamp: string) => void;
+    isStoryViewed: (timestamp: string) => boolean;
+    /** Pass-through to features/blocks, by username. */
+    isUserBlocked: (username: string) => boolean;
+    /** Pass-through to features/blocks, by username. */
+    toggleBlockUser: (username: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [state, setState] = useState<AppState>(() => {
-        return {
-            authUserId: '',
-            theme: 'dark',
-            viewedStoryTimestamps: new Set(),
-            isViewingStory: false,
-            votedPolls: new Map(),
-            toasts: [],
-            tooltip: null,
-            topNotification: null,
-            isAdmin: false,
-        };
-    });
+    const [state, setState] = useState<AppState>(() => ({
+        theme: 'dark',
+        toasts: [],
+        tooltip: null,
+        topNotification: null,
+        isViewingStory: false,
+        viewedStoryTimestamps: new Set(),
+    }));
 
     const queryClient = useQueryClient();
 
-    /**
-     * The signed-in user's profile.
-     *
-     * Still on the context because it is the app's identity object and a
-     * dozen screens read it, but it is a query now, not AppState (ONE-15).
-     * The loading shape keeps `id: ''`, so every existing `userProfile?.id`
-     * guard — push-notification registration in app/_layout.tsx above all —
-     * behaves exactly as it did.
-     */
-    const { userProfile } = useCurrentUserQuery(state.authUserId || undefined);
+    // ─── Toasts, tooltip, banner, haptics ─────────────────────────────────
 
-    // Blocking lives on the server now (ONE-54). The list is a query, and
-    // `isUserBlocked` reads from it rather than from AppState — a block that
-    // only this device knows about is not a block.
+    const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
+        const id = `toast-${Date.now()}`;
+        setState(prev => ({ ...prev, toasts: [...prev.toasts, { id, message, type }] }));
+    }, []);
+
+    const removeToast = useCallback((id: string) => {
+        setState(prev => ({ ...prev, toasts: prev.toasts.filter(toast => toast.id !== id) }));
+    }, []);
+
+    const setTooltip = useCallback((tooltip: { text: string } | null) => {
+        setState(prev => ({ ...prev, tooltip }));
+    }, []);
+
+    const showTopNotification = useCallback((title: string, message: string) => {
+        setState(prev => ({ ...prev, topNotification: { title, message } }));
+        setTimeout(() => {
+            setState(prev => ({ ...prev, topNotification: null }));
+        }, 3000);
+    }, []);
+
+    const triggerHapticFeedback = useCallback(async (style: 'light' | 'medium' | 'heavy' = 'light') => {
+        try {
+            const impact = style === 'heavy'
+                ? Haptics.ImpactFeedbackStyle.Heavy
+                : style === 'medium'
+                    ? Haptics.ImpactFeedbackStyle.Medium
+                    : Haptics.ImpactFeedbackStyle.Light;
+            await Haptics.impactAsync(impact);
+        } catch (error) {
+            console.error('Haptics not available:', error);
+        }
+    }, []);
+
+    const setTheme = useCallback((theme: 'light' | 'dark') => {
+        setState(prev => ({ ...prev, theme }));
+    }, []);
+
+    // ─── Session wiring ────────────────────────────────────────────────────
+    //
+    // Mounted here because this provider lives exactly as long as the app
+    // does. The session, the profile and the admin flag are all queries; this
+    // only wires them up.
+
+    useAuthSessionSync({
+        onSyncError: () => addToast('Could not sync your account data. Please try again later.', 'error'),
+    });
+
+    const authUserId = useAuthUserId();
+    const { userProfile } = useCurrentUserQuery(authUserId);
+
+    // Notifications (ONE-17) and direct messages (ONE-18) stay live for the
+    // whole session, whichever screen is open.
+    useNotificationsRealtime(userProfile.id || undefined);
+    useMessagesRealtime(userProfile.id || undefined);
+
+    // ─── Blocking (pass-through to features/blocks) ────────────────────────
+
     const blocks = useBlockedUsers(userProfile.id || undefined);
     const blockToggle = useBlockToggle(userProfile.id || undefined);
 
-    // One-time migration of the device-local list (ONE-54). The logic lives
-    // in features/blocks so the tests drive the same code this does.
+    // One-time import of the old device-local list (ONE-54).
     useEffect(() => {
         const blockerId = userProfile.id;
         if (!blockerId) return;
@@ -114,195 +156,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         });
     }, [userProfile.id, queryClient]);
 
-    // Notifications (ONE-17) and direct messages (ONE-18) are queries, each
-    // kept live by its own realtime hook. They are mounted here because this
-    // provider lives exactly as long as a signed-in session does — the
-    // unread badge has to move whichever screen is open.
-    useNotificationsRealtime(userProfile.id || undefined);
-    useMessagesRealtime(userProfile.id || undefined);
-
-    const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
-        const id = `toast-${Date.now()}`;
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => ({
-            ...prevState,
-            toasts: [...prevState.toasts, { id, message, type }],
-        }));
-    }, []);
-
-    const showTopNotification = useCallback((title: string, message: string) => {
-        setState(prevState => ({ ...prevState, topNotification: { title, message } }));
-        setTimeout(() => {
-            setState(prevState => ({ ...prevState, topNotification: null }));
-        }, 3000);
-    }, []);
-
-    const syncUserData = useCallback(async (user: User) => {
-        try {
-            await ensureCurrentUserProfile();
-
-            // The profile itself is a query now (ONE-15) — this no longer
-            // fetches it, it just records who is signed in and lets
-            // useCurrentUserQuery do the rest. Stories and their likes are
-            // queries too (ONE-19); what stays here is the admin flag.
-            const { data: profileData } = await supabase
-                .from('profiles')
-                .select('is_admin')
-                .eq('id', user.id)
-                .maybeSingle();
-
-            setState(prevState => ({
-                ...prevState,
-                authUserId: user.id,
-                isAdmin: profileData?.is_admin === true,
-            }));
-        } catch (error) {
-            console.error("Error syncing user data:", error);
-            addToast("Could not sync your account data. Please try again later.", "error");
-        }
-    }, [addToast]);
-
-    const refreshAllData = useCallback(async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        // Pull-to-refresh now means both halves: the state this provider still
-        // owns, and every query — the profile, its posts, follows, blocks —
-        // which used to be fetched here by hand (ONE-15).
-        await Promise.all([
-            syncUserData(user),
-            queryClient.invalidateQueries(),
-        ]);
-    }, [syncUserData, queryClient]);
-
-    useEffect(() => {
-        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-            if (session?.user && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED')) {
-                await syncUserData(session.user);
-            } else if (event === 'SIGNED_OUT') {
-                setState(prevState => ({
-                    ...prevState,
-                    authUserId: '',
-                    isViewingStory: false,
-                    votedPolls: new Map(),
-                    topNotification: null,
-                    isAdmin: false,
-                }));
-
-                // Every query cached under the previous account is about
-                // somebody who is no longer here — their profile, their
-                // follows, their blocks. Clearing is the only honest move;
-                // the keys are per-user but the cache outlives the session.
-                queryClient.clear();
-            }
-        });
-
-        return () => {
-            authListener.subscription.unsubscribe();
-        };
-    }, [syncUserData]);
-
-    const triggerHapticFeedback = useCallback(async (style: 'light' | 'medium' | 'heavy' = 'light') => {
-        try {
-            if (style === 'heavy') {
-                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-            } else if (style === 'medium') {
-                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            } else {
-                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }
-        } catch (error) {
-            console.error("Haptics not available:", error);
-        }
-    }, []);
-
-    // Like, Repost and Save moved to features/posts/mutations.ts in ONE-13.
-    // They are cache operations now, not context state: the boolean lives on
-    // the cached post and the rollback lives in lib/optimisticToggle.ts, so
-    // there is nothing left for AppContext to hold. Screens call
-    // useLikePost / useRepostPost / useSavePost.
-
-
-    // Comments moved to features/comments in ONE-14: the cache they were
-    // kept in here was a query cache, hand-rolled, with a loaded flag and a
-    // 209-line fetch guard in front of it. Screens use useCommentsQuery and
-    // useAddComment / useDeleteComment.
-
-    // Publishing, editing and deleting a post moved to
-    // features/posts/mutations.ts in ONE-15: they existed here only to keep a
-    // a local array of the user's own posts in step, and that array is a
-    // query now. Screens
-    // call useCreatePost / useUpdatePost / useDeletePost.
-
-    // updateProfile moved to features/profiles/mutations.ts (useUpdateProfile).
-
-    const setTheme = useCallback((theme: 'light' | 'dark') => {
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => ({ ...prevState, theme }));
-    }, []);
-
-    // Stories moved to features/stories in ONE-19: the reel, "Your story",
-    // likes, views and replies are queries and mutations there, and an
-    // optimistic upload is replaced by the server copy in the mutation's
-    // onSuccess, which was the whole job of the context method it replaces.
-    // What stays here is the per-device viewed set below and the transient
-    // `isViewingStory` flag.
-
-    // Rehydrate the viewed set once. A mark made before the read finishes is
-    // kept — the stored set is merged in, not swapped for it — and nothing is
-    // written back until the read has landed, so it cannot be overwritten.
-    const viewedHydrated = useRef(false);
-
-    useEffect(() => {
-        let cancelled = false;
-
-        getJSON<unknown>(VIEWED_STORIES_KEY)
-            .catch(() => null)
-            .then(payload => {
-                if (cancelled) return;
-                const stored = parseViewedStoryTimestamps(payload);
-                viewedHydrated.current = true;
-                setState(prev => {
-                    if (stored.size === 0) return prev;
-                    const merged = new Set([...stored, ...prev.viewedStoryTimestamps]);
-                    return { ...prev, viewedStoryTimestamps: merged };
-                });
-            });
-
-        return () => { cancelled = true; };
-    }, []);
-
-    useEffect(() => {
-        if (!viewedHydrated.current) return;
-        setJSON(VIEWED_STORIES_KEY, serializeViewedStoryTimestamps(state.viewedStoryTimestamps))
-            .catch(error => console.warn('Could not persist viewed stories', error));
-    }, [state.viewedStoryTimestamps]);
-
-    const isStoryViewed = useCallback((timestamp: string) => state.viewedStoryTimestamps.has(timestamp), [state.viewedStoryTimestamps]);
-
-    const markStoryAsViewed = useCallback((timestamp: string) => {
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => {
-            if (prevState.viewedStoryTimestamps.has(timestamp)) {
-                return prevState;
-            }
-            const newViewed = new Set(prevState.viewedStoryTimestamps);
-            newViewed.add(timestamp);
-            return { ...prevState, viewedStoryTimestamps: newViewed };
-        });
-    }, []);
-
-    const setIsViewingStory = useCallback((isViewing: boolean) => {
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => ({ ...prevState, isViewingStory: isViewing }));
-    }, []);
-
     const isUserBlocked = blocks.isUserBlocked;
 
     /**
-     * Kept on the context because a dozen screens call it, but it is a thin
-     * pass-through to features/blocks now. It takes a username for the same
-     * reason: that is what a post, a story or a search result carries.
+     * Block or unblock by username — what a post, a story or a search result
+     * carries. Blocking needs the id the row is keyed on, so an account not
+     * already in the list is resolved first.
      */
     const toggleBlockUser = useCallback((username: string) => {
         const alreadyBlocked = blocks.blockedUsers.find(user => user.username === username);
@@ -312,8 +171,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return;
         }
 
-        // Blocking by username needs the id the row is keyed on, which the
-        // caller does not have.
         supabase
             .from('profiles')
             .select('id, username, full_name, avatar_url')
@@ -335,68 +192,85 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             });
     }, [blocks.blockedUsers, blockToggle, addToast]);
 
-    // Following moved to features/profiles/mutations.ts (useToggleFollow), on
-    // the shared optimistic helper. Follow state is read from the query by
-    // useFollowState.
+    // ─── Stories: the viewing flag and the per-device viewed set ───────────
 
-    const voteInPoll = useCallback((postId: string, optionIndex: number) => {
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => {
-            const newVotedPolls = new Map(prevState.votedPolls);
-            newVotedPolls.set(postId, optionIndex);
-            return { ...prevState, votedPolls: newVotedPolls };
+    const setIsViewingStory = useCallback((isViewing: boolean) => {
+        setState(prev => ({ ...prev, isViewingStory: isViewing }));
+    }, []);
+
+    const isStoryViewed = useCallback(
+        (timestamp: string) => state.viewedStoryTimestamps.has(timestamp),
+        [state.viewedStoryTimestamps],
+    );
+
+    const markStoryAsViewed = useCallback((timestamp: string) => {
+        setState(prev => {
+            if (prev.viewedStoryTimestamps.has(timestamp)) return prev;
+            const viewed = new Set(prev.viewedStoryTimestamps);
+            viewed.add(timestamp);
+            return { ...prev, viewedStoryTimestamps: viewed };
         });
     }, []);
 
-    const getPollVote = useCallback((postId: string) => state.votedPolls.get(postId), [state.votedPolls]);
+    // Rehydrate the viewed set once. A mark made before the read finishes is
+    // kept — the stored set is merged in, not swapped for it — and nothing is
+    // written back until the read has landed, so it cannot be overwritten.
+    const viewedHydrated = useRef(false);
 
-    const removeToast = useCallback((id: string) => {
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => ({
-            ...prevState,
-            toasts: prevState.toasts.filter(toast => toast.id !== id),
-        }));
+    useEffect(() => {
+        let cancelled = false;
+
+        getJSON<unknown>(VIEWED_STORIES_KEY)
+            .catch(() => null)
+            .then(payload => {
+                if (cancelled) return;
+                const stored = parseViewedStoryTimestamps(payload);
+                viewedHydrated.current = true;
+                setState(prev => {
+                    if (stored.size === 0) return prev;
+                    return { ...prev, viewedStoryTimestamps: new Set([...stored, ...prev.viewedStoryTimestamps]) };
+                });
+            });
+
+        return () => { cancelled = true; };
     }, []);
 
-    const setTooltip = useCallback((tooltip: { text: string } | null) => {
-        // FIX: Explicitly type prevState as AppState.
-        setState((prevState: AppState) => ({ ...prevState, tooltip }));
-    }, []);
+    useEffect(() => {
+        if (!viewedHydrated.current) return;
+        setJSON(VIEWED_STORIES_KEY, serializeViewedStoryTimestamps(state.viewedStoryTimestamps))
+            .catch(error => console.warn('Could not persist viewed stories', error));
+    }, [state.viewedStoryTimestamps]);
 
-    const contextValue = useMemo(() => ({
+    // ─── Context value ─────────────────────────────────────────────────────
+
+    const contextValue = useMemo<AppContextType>(() => ({
         ...state,
+        userProfile,
         setTheme,
-        isStoryViewed,
-        markStoryAsViewed,
-        setIsViewingStory,
-        toggleBlockUser,
-        isUserBlocked,
-        voteInPoll,
-        getPollVote,
         addToast,
         removeToast,
+        setTooltip,
         showTopNotification,
         triggerHapticFeedback,
-        setTooltip,
-        refreshAllData,
-        userProfile,
+        setIsViewingStory,
+        markStoryAsViewed,
+        isStoryViewed,
+        isUserBlocked,
+        toggleBlockUser,
     }), [
         state,
         userProfile,
         setTheme,
-        isStoryViewed,
-        markStoryAsViewed,
-        setIsViewingStory,
-        toggleBlockUser,
-        isUserBlocked,
-        voteInPoll,
-        getPollVote,
         addToast,
         removeToast,
+        setTooltip,
         showTopNotification,
         triggerHapticFeedback,
-        setTooltip,
-        refreshAllData,
+        setIsViewingStory,
+        markStoryAsViewed,
+        isStoryViewed,
+        isUserBlocked,
+        toggleBlockUser,
     ]);
 
     return (

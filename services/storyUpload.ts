@@ -1,6 +1,6 @@
 // Story media upload.
 //
-// Moved out of services/apiService.ts with the stories migration (ONE-19),
+// Moved out of the old shared service module with the stories migration (ONE-19),
 // next to services/mediaUpload.ts, which handles post media. A story tries a
 // wider set of buckets and paths than a post, and falls back to an inline
 // data URL rather than failing, so it keeps its own helpers.

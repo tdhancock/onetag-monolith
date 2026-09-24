@@ -25,9 +25,10 @@ import {
   getUserReposts,
   getFollowerCount,
   getFollowingCount,
-  setUserVerified,
-  reportUser,
-} from '../../services/apiService';
+} from '../../features/profiles';
+import { setUserVerified, useIsAdmin } from '../../features/admin';
+import { useAuthUserId } from '../../features/auth';
+import { reportUser } from '../../features/moderation';
 import { supabase } from '../../services/supabase.native';
 import UserAvatar from '../../components/native/UserAvatar';
 import RenderUserContent from '../../components/native/RenderUserContent';
@@ -91,8 +92,9 @@ export default function UserProfileScreen() {
     isUserBlocked,
     toggleBlockUser,
     addToast,
-    isAdmin,
   } = useApp();
+  // Admin is a property of the account, read from `is_admin()` (ONE-20).
+  const isAdmin = useIsAdmin(useAuthUserId());
 
   // Follow state and the counts are queries (ONE-15): the button and the
   // follower number move together the moment it is tapped, and revert
@@ -228,7 +230,7 @@ export default function UserProfileScreen() {
     if (!profile) return;
     try {
       setProfile(prev => prev ? { ...prev, isVerified: !prev.isVerified } : null);
-      await setUserVerified(profile.id, profile.username, !profile.isVerified);
+      await setUserVerified(profile.id, !profile.isVerified);
       addToast(`User ${profile.isVerified ? 'unverified' : 'verified'} successfully.`, 'success');
     } catch (error) {
       setProfile(prev => prev ? { ...prev, isVerified: !prev.isVerified } : null);

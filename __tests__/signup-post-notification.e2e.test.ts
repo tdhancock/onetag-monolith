@@ -18,20 +18,17 @@
 //      to the correct expo-router destination (follow → user profile,
 //      post → post detail, message → messages, fallback → notifications).
 //
-// The mock object mirrors the real Supabase v2 chain used by
-// services/apiService.ts. Every `from(table)` call returns a fresh
+// The mock object mirrors the real Supabase v2 chain the app uses. Every `from(table)` call returns a fresh
 // thenable query builder that resolves to a per-table canned result
 // the test controls via `testHooks.setHandler(table, fn)`. The builder
 // records every `insert()` call so tests can assert the row payload
-// captured by sendNotification → handleMentions.
+// captured by sendNotification (services/notificationWrites.ts).
 
 import type { Post, UserProfile } from '../types';
-import {
-  checkUsernameExists,
-  ensureCurrentUserProfile,
-  publishPost,
-  sendNotification,
-} from '../services/apiService';
+import { checkUsernameExists } from '../features/profiles';
+import { ensureCurrentUserProfile } from '../services/profileBootstrap';
+import { publishPost } from '../features/posts';
+import { sendNotification } from '../services/notificationWrites';
 
 // ─── 1. Supabase mock ───────────────────────────────────────────────────
 
@@ -249,7 +246,7 @@ beforeEach(() => {
 // 1. COMPLETE SIGNUP FLOW
 // =========================================================================
 //
-// Drives the same surface app/(auth)/signup.tsx → services/apiService.ts:
+// Drives the same surface app/(auth)/signup.tsx calls:
 //   1) user submits form → handleSignUp()
 //   2) checkUsernameExists(username)  → profiles.username lookup
 //   3) supabase.auth.signUp(...)       → returns user (+ optional session)
@@ -391,9 +388,7 @@ describe('E2E — complete signup flow', () => {
 // 2. POST CREATE FLOW
 // =========================================================================
 //
-// Mirrors what app/compose.tsx → features/posts publishPost() does (moved
-// out of services/apiService to break an import cycle; apiService still
-// re-exports it):
+// Mirrors what app/compose.tsx → features/posts publishPost() does:
 //   1) auth.getUser()            → guard against unauthenticated callers
 //   2) ensureProfileRowForUser() → guard against missing profile row
 //   3) posts.insert(...).select('id').single() → create the row
@@ -503,14 +498,12 @@ describe('E2E — post create flow', () => {
   });
 
   it('skips notification inserts when sender and receiver are the same user', async () => {
-    // The profiles handler is consulted by ensureProfileForNotificationUser
-    // for both sender and receiver, but since they match, the function
-    // returns early before any insert.
-    testHooks.setHandler('profiles', () => ({ data: { id: 'same-user' }, error: null }));
-
+    // The live notification write (services/notificationWrites.ts, since
+    // ONE-17) returns before touching the table when sender and receiver
+    // match — nobody is notified about their own action.
     await sendNotification({
-      sender_id: 'same-user',
-      receiver_id: 'same-user',
+      senderId: 'same-user',
+      receiverId: 'same-user',
       type: 'follow',
     });
 

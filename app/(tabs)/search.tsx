@@ -16,10 +16,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
 import { useFollowState, useToggleFollow } from '../../features/profiles';
-import {
-  getTrendingPosts,
-  searchUsers,
-} from '../../services/apiService';
+import { fetchTrendingPosts as getTrendingPosts } from '../../features/posts';
+import { searchUsers } from '../../features/profiles';
 import { useHashtagsQuery } from '../../features/hashtags';
 import UserAvatar from '../../components/native/UserAvatar';
 import { SearchIcon, VerifiedIcon, HeartIcon, CommentIcon } from '../../components/native/Icons';

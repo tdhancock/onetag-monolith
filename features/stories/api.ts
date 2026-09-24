@@ -1,15 +1,12 @@
 // Pure Supabase access for stories (OneSnaps).
 //
-// Moved out of `services/apiService.ts` in ONE-19, along with the like-state
+// Moved out of the old shared service module in ONE-19, along with the like-state
 // read that `AppContext.syncUserData` ran inline. The media-upload helpers
 // went to services/storyUpload.ts.
 //
 // Replying to a story is a direct message, so it is sent from mutations.ts
 // through features/messages — a feature's api.ts may not import another
 // feature (features/README.md, rule 1).
-//
-// Never imports services/apiService: it re-exports features, so that import
-// is a cycle Metro crashes on at boot (__tests__/import-cycles.test.ts).
 
 import { supabase } from '../../services/supabase.native';
 import { ensureProfileRowForUser } from '../../services/profileBootstrap';

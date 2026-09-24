@@ -16,7 +16,7 @@ import { Image } from 'expo-image';
 import { useApp } from '../store/AppContext.native';
 import { useCreatePost } from '../features/posts';
 import { MediaUploadError } from '../services/mediaUpload';
-import { cleanHtml } from '../services/apiService';
+import { cleanHtml } from '../lib/cleanHtml';
 import {
   pickImageFromLibrary,
   captureImageWithCamera,

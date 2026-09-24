@@ -28,7 +28,7 @@ import {
   useDeleteConversation,
   isPendingMessage,
 } from '../features/messages';
-import { cleanHtml } from '../services/apiService';
+import { cleanHtml } from '../lib/cleanHtml';
 import UserAvatar from '../components/native/UserAvatar';
 import RenderUserContent from '../components/native/RenderUserContent';
 import { SearchIcon, VerifiedIcon, CheckIcon, DoubleCheckIcon, ArrowLeftIcon } from '../components/native/Icons';

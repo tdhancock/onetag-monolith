@@ -19,7 +19,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '../store/AppContext.native';
-import { cleanHtml } from '../services/apiService';
+import { cleanHtml } from '../lib/cleanHtml';
 import { useUploadStory } from '../features/stories';
 import {
   CameraIcon,

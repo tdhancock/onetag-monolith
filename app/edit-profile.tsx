@@ -7,7 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '../store/AppContext.native';
 import { useUpdateProfile, useUploadAvatar } from '../features/profiles';
-import { cleanHtml, uploadAvatar, updateUserProfileData } from '../services/apiService';
+import { cleanHtml } from '../lib/cleanHtml';
+import { uploadAvatar, updateUserProfileData } from '../features/profiles';
 import UserAvatar from '../components/native/UserAvatar';
 export default function EditProfileScreen() {
   const router = useRouter();

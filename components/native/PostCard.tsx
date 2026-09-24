@@ -22,7 +22,9 @@ import {
   ArrowLeftIcon,
   PencilAltIcon,
 } from './Icons';
-import { reportPost } from '../../services/apiService';
+import { reportPost } from '../../features/moderation';
+import { useIsAdmin } from '../../features/admin';
+import { useAuthUserId } from '../../features/auth';
 import type { Post } from '../../types';
 
 // ─── Helpers ───────────────────────────────────────
@@ -79,7 +81,8 @@ const PostHeader: React.FC<{
 }> = React.memo(({ post, isMyPost, isTextOnly, isImage, onViewProfile, onDelete, onEditPost, isPreview }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const [showReport, setShowReport] = useState(false);
-  const { addToast, isAdmin } = useApp();
+  const { addToast } = useApp();
+  const isAdmin = useIsAdmin(useAuthUserId());
 
   const reportReasons = [
     "It's spam",
@@ -231,12 +234,10 @@ const PostCard: React.FC<PostCardProps> = ({
 }) => {
   const {
     userProfile,
-    voteInPoll,
-    getPollVote,
     addToast,
-    isAdmin,
     triggerHapticFeedback,
   } = useApp();
+  const isAdmin = useIsAdmin(useAuthUserId());
   const router = useRouter();
 
   // Like, Repost and Save read straight off the post (ONE-13). The cached
@@ -285,11 +286,6 @@ const PostCard: React.FC<PostCardProps> = ({
   // `replies` on the cached post as they go (ONE-14).
   const commentCount = post.replies;
   const isMyPost = post.username === userProfile?.username;
-
-  const userPollVote = getPollVote(post.id);
-  const totalVotes = post.poll
-    ? post.poll.options.reduce((sum, opt) => sum + opt.votes, 0) + (userPollVote !== undefined ? 1 : 0)
-    : 0;
 
   const needsTruncation = isTextOnly && post.content.length > MAX_CHARS;
 
@@ -343,12 +339,6 @@ const PostCard: React.FC<PostCardProps> = ({
       router.push(`/user/${post.username}`);
     }
   }, [post.username, post.avatar]);
-
-  const handlePollVote = (optionIndex: number) => {
-    if (userPollVote !== undefined) return;
-    voteInPoll(post.id, optionIndex);
-    addToast('Your vote has been cast!', 'success');
-  };
 
   // Last tap tracking for double tap
   const lastTap = useRef(0);
@@ -420,50 +410,13 @@ const PostCard: React.FC<PostCardProps> = ({
                 />
               </View>
             )}
-            {(post.content || post.poll) && (
+            {post.content && (
               <View className="p-4 pt-2">
                 {post.content && (
                   <RenderUserContent
                     content={post.content}
                     className="text-white mb-3"
                   />
-                )}
-                {post.poll && (
-                  <View style={{ gap: 8 }} className="mt-2">
-                    {post.poll.options.map((option, index) => {
-                      const pct =
-                        totalVotes > 0
-                          ? ((option.votes + (userPollVote === index ? 1 : 0)) / totalVotes) * 100
-                          : 0;
-                      return (
-                        <Pressable
-                          key={index}
-                          onPress={() => handlePollVote(index)}
-                          disabled={userPollVote !== undefined}
-                          className="rounded-lg border border-gray-700 overflow-hidden p-3"
-                        >
-                          {userPollVote !== undefined && (
-                            <View
-                              className="absolute top-0 left-0 bottom-0 bg-blue-500/20"
-                              style={{ width: `${pct}%` }}
-                            />
-                          )}
-                          <View className="flex-row justify-between items-center">
-                            <Text
-                              className={`font-semibold ${userPollVote === index ? 'text-blue-500' : 'text-white'}`}
-                            >
-                              {option.text}
-                            </Text>
-                            {userPollVote !== undefined && (
-                              <Text className="text-sm text-gray-400 font-bold">
-                                {pct.toFixed(0)}%
-                              </Text>
-                            )}
-                          </View>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
                 )}
               </View>
             )}

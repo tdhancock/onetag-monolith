@@ -53,8 +53,8 @@ jest.mock('../services/supabase.native', () => ({
   },
 }), { virtual: true });
 
-// Load the mocked supabase handle so the apiService module resolves
-// against the same mock instance.
+// Load the mocked supabase handle so features/moderation resolves against
+// the same mock instance.
 const { supabase } = require('../services/supabase.native');
 
 // We require these AFTER the mock is installed so they bind to it.
@@ -65,7 +65,7 @@ const {
   REPORT_NOT_LOADED_TOAST,
   buildReportRow,
 } = require('../services/reportReasons');
-const { reportUser, reportPost } = require('../services/apiService');
+const { reportUser, reportPost } = require('../features/moderation');
 
 // ---------------------------------------------------------------------------
 // 1. Selecting a reason

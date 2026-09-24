@@ -19,10 +19,10 @@ import { useRealtimeSync } from '../../lib/realtimeBridge';
 import {
   getUserPosts,
   getUserReposts,
-  getSavedPosts,
   getFollowerCount,
   getFollowingCount,
-} from '../../services/apiService';
+} from '../../features/profiles';
+import { getSavedPosts } from '../../features/posts';
 import { supabase } from '../../services/supabase.native';
 import UserAvatar from '../../components/native/UserAvatar';
 import RenderUserContent from '../../components/native/RenderUserContent';
@@ -68,7 +68,7 @@ const GridTile: React.FC<{ post: Post; onPress: () => void }> = React.memo(({ po
 // ─── Profile Screen ──────────────────────────────
 
 export default function ProfileScreen() {
-  const { userProfile, refreshAllData, addToast } = useApp();
+  const { userProfile, addToast } = useApp();
   const queryClient = useQueryClient();
 
   // Follow counts come from the query the follow toggle moves optimistically
@@ -138,11 +138,18 @@ export default function ProfileScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([fetchAll(), refreshAllData()]);
+      // Pull-to-refresh re-reads this screen's lists and everything cached
+      // about profiles — the header, the counts, follow state. It used to go
+      // through a refresh-everything call on AppContext, which re-synced the session
+      // and invalidated every query in the app (ONE-20).
+      await Promise.all([
+        fetchAll(),
+        queryClient.invalidateQueries({ queryKey: profileKeys.all }),
+      ]);
     } finally {
       setRefreshing(false);
     }
-  }, [fetchAll, refreshAllData]);
+  }, [fetchAll, queryClient]);
 
   const currentData = activeTab === 'posts' ? posts : activeTab === 'reposts' ? reposts : savedTabPosts;
 

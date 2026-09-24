@@ -2,7 +2,7 @@
 //
 // Everything about a person: their own identity row, other people's profiles,
 // the posts and reposts on a profile screen, follower and following lists,
-// and follow/unfollow itself. Moved out of `services/apiService.ts` in
+// and follow/unfollow itself. Moved out of the old shared service module in
 // ONE-15; the implementations are unchanged except where noted below.
 //
 // No React, no hooks, nothing from another feature's internals.
@@ -15,8 +15,10 @@
 import { supabase } from '../../services/supabase.native';
 import { sendNotification } from '../../services/notificationWrites';
 import { readLocalFile } from '../../services/localFile';
-import { POST_SELECT_QUERY, mapPostData } from '../posts';
-import type { Post } from '../posts';
+// The post select and mapper sit on shared ground in services/postRows.ts, so
+// this api.ts imports no other feature (features/README.md, rule 1).
+import { POST_SELECT_QUERY, mapPostData } from '../../services/postRows';
+import type { Post } from '../../types';
 import type { SimpleUser, UserProfile, ProfileRow, ProfileUpdates } from './types';
 
 export const mapProfileRow = (row: ProfileRow): UserProfile => ({

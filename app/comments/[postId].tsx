@@ -23,7 +23,7 @@ import {
   useDeleteComment,
   useToggleCommentLike,
 } from '../../features/comments';
-import { cleanHtml } from '../../services/apiService';
+import { cleanHtml } from '../../lib/cleanHtml';
 import UserAvatar from '../../components/native/UserAvatar';
 import RenderUserContent from '../../components/native/RenderUserContent';
 import { HeartIcon, TrashIcon } from '../../components/native/Icons';

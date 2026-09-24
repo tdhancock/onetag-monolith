@@ -7,7 +7,7 @@
 // It lives in `services/` rather than in `features/profiles/` because
 // `features/posts/api.ts` needs it too, and a feature's api.ts may not import
 // another feature (features/README.md). A service is the shared ground.
-// Extracted from `services/apiService.ts` in ONE-15, unchanged.
+// Extracted from the old shared service module in ONE-15, unchanged.
 
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './supabase.native';
@@ -95,14 +95,6 @@ export const ensureProfileRowForUser = async (user: User): Promise<boolean> => {
     }
 
     return profileExists(user.id);
-};
-
-export const ensureProfileForNotificationUser = async (userId: string): Promise<boolean> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user && user.id === userId) {
-        return ensureProfileRowForUser(user);
-    }
-    return profileExists(userId);
 };
 
 export const ensureCurrentUserProfile = async (): Promise<boolean> => {

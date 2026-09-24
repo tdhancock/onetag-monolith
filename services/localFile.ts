@@ -5,7 +5,7 @@
 // with no accessible binary data. Every upload path shares this so none of
 // them can drift back onto `.blob()` and silently upload nothing.
 //
-// Extracted from `services/apiService.ts` in ONE-15, unchanged, so
+// Extracted from the old shared service module in ONE-15, unchanged, so
 // `features/profiles` can upload an avatar without importing that module.
 
 /**

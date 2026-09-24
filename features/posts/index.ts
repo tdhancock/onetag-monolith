@@ -17,6 +17,9 @@ export {
   nextFeedCursor,
   getFeedUserIds,
   mapPostData,
+  getSavedPosts,
+  getPostLikers,
+  getPostReposters,
   FEED_PAGE_SIZE,
   POST_SELECT_QUERY,
 } from './api';

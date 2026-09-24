@@ -16,6 +16,7 @@ import {
 } from '../../services/mediaUpload';
 import { POST_SELECT_QUERY, mapPostData } from '../../services/postRows';
 import type { Post } from './types';
+import type { SimpleUser } from '../../types';
 
 // The post select and row mapper live in services/postRows.ts so features
 // that render a post inside their own rows — messages, stories — can map it
@@ -250,10 +251,8 @@ export const toggleSavePost = async (postId: string, userId: string): Promise<bo
 // Publishing, editing and deleting
 // ---------------------------------------------------------------------------
 //
-// Moved from services/apiService.ts. features/posts/mutations.ts reached
-// these through apiService, which itself re-exports this feature, and that
-// cycle crashed the app on boot. apiService re-exports them until the final
-// M2 cleanup.
+// Moved here from the old shared service module, whose re-exports of this
+// feature formed an import cycle that crashed the app on boot.
 
 export const publishPost = async (post: Post): Promise<Post | null> => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -361,3 +360,74 @@ export const updatePost = async (post: Post): Promise<Post | null> => {
     }
     return { ...data, timestamp: data.created_at } as Post;
 };
+
+// ---------------------------------------------------------------------------
+// Lists derived from a post: who saved, liked or reposted
+// ---------------------------------------------------------------------------
+//
+// Moved out of the old shared service module in ONE-20, unchanged. `getSavedPosts`
+// moves on again to features/saves when Saves reach beyond posts (ONE-39).
+
+/** A user's saved posts, most recently saved first. Empty on error. */
+export const getSavedPosts = async (userId: string): Promise<Post[]> => {
+  try {
+    const { data: savedIdsData, error: savedError } = await supabase
+      .from('saved_posts')
+      .select('post_id, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (savedError) throw savedError;
+    if (!savedIdsData || savedIdsData.length === 0) return [];
+
+    const postIds = savedIdsData.map((r: { post_id: string }) => r.post_id);
+
+    const { data: postsData, error: postsError } = await supabase
+      .from('posts')
+      .select(POST_SELECT_QUERY)
+      .in('id', postIds);
+
+    if (postsError) throw postsError;
+    if (!postsData) return [];
+
+    // Order by when they were saved, not when they were posted.
+    const savedAt = new Map<string, number>(
+      savedIdsData.map((r: { post_id: string; created_at: string }) => [r.post_id, new Date(r.created_at).getTime()]),
+    );
+    return [...postsData]
+      .sort((a: { id: string }, b: { id: string }) => (savedAt.get(b.id) ?? 0) - (savedAt.get(a.id) ?? 0))
+      .map(mapPostData);
+  } catch (error) {
+    console.error('Error fetching saved posts:', (error as Error).message || error);
+    return [];
+  }
+};
+
+/** The distinct profiles behind a post's likes or reposts. */
+const profilesOnPost = async (table: 'likes' | 'reposts', postId: string): Promise<SimpleUser[]> => {
+  const { data, error } = await supabase
+    .from(table)
+    .select('profiles!user_id(id, username, full_name, avatar_url, is_verified)')
+    .eq('post_id', postId);
+  if (error || !data) return [];
+
+  const uniqueUsers = new Map<string, SimpleUser>();
+  data.forEach((item: any) => {
+    const profile = Array.isArray(item?.profiles) ? item.profiles[0] : item?.profiles;
+    if (!profile?.id || uniqueUsers.has(profile.id)) return;
+    uniqueUsers.set(profile.id, {
+      id: profile.id,
+      username: profile.username,
+      name: profile.full_name || profile.username,
+      avatar: profile.avatar_url,
+      isVerified: profile.is_verified || false,
+    });
+  });
+  return Array.from(uniqueUsers.values());
+};
+
+/** Everyone who liked a post. */
+export const getPostLikers = (postId: string): Promise<SimpleUser[]> => profilesOnPost('likes', postId);
+
+/** Everyone who reposted a post. */
+export const getPostReposters = (postId: string): Promise<SimpleUser[]> => profilesOnPost('reposts', postId);

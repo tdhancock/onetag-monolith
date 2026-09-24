@@ -1,5 +1,5 @@
 //
-// target: __tests__/services/apiService.profile.test.ts
+// target: __tests__/services/profile-save.test.ts
 //
 // The profile save path. Both defects this suite covers were invisible to the
 // existing suites because they only asserted that Supabase was *called* — so
@@ -32,7 +32,7 @@ jest.mock('../../services/supabase.native', () => ({
   },
 }), { virtual: true });
 
-import { updateUserProfileData, uploadAvatar, mapProfileUpdatesToRow } from '../../services/apiService';
+import { updateUserProfileData, uploadAvatar, mapProfileUpdatesToRow } from '../../features/profiles';
 
 const USER_ID = '11111111-1111-1111-1111-111111111111';
 const PUBLIC_URL = `https://example.supabase.co/storage/v1/object/public/avatars/${USER_ID}/1.jpg`;

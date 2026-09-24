@@ -20,12 +20,13 @@ app/                       expo-router routes — every screen, nothing else
   <route>.tsx              stack screens: compose, messages, settings, …
 components/native/         shared components
 components/native/ui/      shared visual primitives — token-only, no raw hex
-features/<domain>/         data domains: api, keys, queries, mutations, types, index
-lib/                       queryClient, QueryProvider, queryKeys
+features/<domain>/         the data layer — every server read and write lives here
+lib/                       queryClient, QueryProvider, queryKeys, realtimeBridge, pure utilities
 lib/screens/               pure screen logic, extracted so it can be tested
 theme/tokens.ts            design tokens — the single source of truth for colour and type
-store/AppContext.native    global UI state
-services/                  supabase client, apiService, realtime, notifications, storage
+store/AppContext.native    global UI state — no server data
+services/                  supabase client and the shared ground features reach: postRows,
+                           notificationWrites, profileBootstrap, media/story upload, realtime
 supabase/migrations/       schema
 __tests__/                 Jest
 types.ts                   shared domain types (repo root)
@@ -65,8 +66,12 @@ behind a required review.
 
 ## State boundary
 
-Server data belongs in **TanStack Query**. `AppContext` holds only UI state no server owns —
-`theme`, `toasts`, `tooltip`, `isViewingStory`. Putting server data back into `AppContext` is
+Server data belongs in **TanStack Query**, in `features/`. `AppContext` holds only UI state no
+server owns — `theme`, `toasts`, `tooltip`, `topNotification`, `isViewingStory`, and the
+per-device `viewedStoryTimestamps`. Even the auth session is a query (`features/auth`,
+`useAuthUserId()`), and so is the admin flag (`features/admin`, `useIsAdmin()`).
+`useApp()` still hands out `userProfile` and the block pass-throughs, derived from queries
+and holding no state of their own. Putting server data back into `AppContext` is
 the mistake this rule exists to prevent; if a ticket asks you to, the ticket is wrong — say so
 on the ticket rather than working around it.
 
@@ -105,9 +110,9 @@ Like, Save, Follow and Repost are one operation — an optimistic boolean toggle
 table with a count — so they share **one** generic helper. Four hand-written variants is the
 thing this pattern exists to prevent.
 
-Migration is a strangler: when a function moves out of `services/apiService.ts`, leave a
-re-export behind pointing at the new home so nothing else breaks — see `getAllHashtags`. The
-shims come out in the final M2 cleanup.
+M2 is finished: the old shared service module is gone and every domain lives in a feature
+folder. When a feature's `api.ts` needs something another feature has, move it to `services/`
+— see `services/postRows.ts` — rather than importing across features.
 
 ## Styling
 

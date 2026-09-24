@@ -15,7 +15,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
 import { useUpdatePost } from '../features/posts';
-import { getPostById } from '../services/apiService';
+import { fetchPostById as getPostById } from '../features/posts';
 import type { Post } from '../types';
 
 const MAX_CHARS = 280;
