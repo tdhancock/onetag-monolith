@@ -1,17 +1,23 @@
 
 
-import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { useBlockedUsers, useBlockToggle, migrateLocalBlocks, blockKeys } from '../features/blocks';
 import { useCurrentUserQuery } from '../features/profiles';
 import { useNotificationsRealtime } from '../features/notifications';
 import { useMessagesRealtime } from '../features/messages';
-import { getMyStories, deleteStoryFromDatabase, toggleStoryLikeInDatabase, ensureCurrentUserProfile } from '../services/apiService';
+import { ensureCurrentUserProfile } from '../services/apiService';
+import { getJSON, setJSON } from '../services/storage';
+import {
+    VIEWED_STORIES_KEY,
+    parseViewedStoryTimestamps,
+    serializeViewedStoryTimestamps,
+} from '../lib/viewedStories';
 import { supabase } from '../services/supabase.native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import type { Comment, Story, UserProfile, Toast } from '../types';
+import type { UserProfile, Toast } from '../types';
 
 interface AppState {
     /**
@@ -23,10 +29,11 @@ interface AppState {
      */
     authUserId: string;
     theme: 'light' | 'dark';
-    userStories: Story[];
-    storyComments: Map<string, Comment[]>;
-    likedStoryIds: Set<string>;
-    hasNewStory: boolean;
+    /**
+     * Which stories this device has seen, by timestamp. Per device, not per
+     * account — AsyncStorage-backed, and kept across sign-out (ONE-19).
+     * Story data itself is in features/stories.
+     */
     viewedStoryTimestamps: Set<string>;
     isViewingStory: boolean;
     votedPolls: Map<string, number>;
@@ -45,14 +52,6 @@ interface AppContextType extends AppState {
      */
     userProfile: UserProfile;
     setTheme: (theme: 'light' | 'dark') => void;
-    addUserStory: (story: Story) => void;
-    deleteStory: (storyId: string) => void;
-    markStoriesViewed: () => void;
-    isStoryLiked: (storyId: string) => boolean;
-    toggleStoryLike: (story: Story) => Promise<void>;
-    getStoryComments: (storyId: string) => Comment[];
-    addStoryComment: (storyId: string, comment: Comment) => void;
-    setStoryComments: (storyId: string, comments: Comment[]) => void;
     markStoryAsViewed: (timestamp: string) => void;
     isStoryViewed: (timestamp: string) => boolean;
     setIsViewingStory: (isViewing: boolean) => void;
@@ -66,7 +65,6 @@ interface AppContextType extends AppState {
     triggerHapticFeedback: (style?: 'light' | 'medium' | 'heavy') => void;
     setTooltip: (tooltip: { text: string } | null) => void;
     refreshAllData: () => Promise<void>;
-    replaceStory: (localId: string, realStory: Story) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -76,10 +74,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return {
             authUserId: '',
             theme: 'dark',
-            userStories: [],
-            storyComments: new Map(),
-            likedStoryIds: new Set(),
-            hasNewStory: false,
             viewedStoryTimestamps: new Set(),
             isViewingStory: false,
             votedPolls: new Map(),
@@ -149,36 +143,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
             // The profile itself is a query now (ONE-15) — this no longer
             // fetches it, it just records who is signed in and lets
-            // useCurrentUserQuery do the rest. What stays here is the state
-            // no server-side feature owns yet: stories and the admin flag.
-            const [profileResult, myStoriesResult, storyLikesResult] = await Promise.all([
-                supabase
-                    .from('profiles')
-                    .select('is_admin')
-                    .eq('id', user.id)
-                    .maybeSingle(),
-                getMyStories(user.id),
-                supabase.from('story_likes').select('story_id').eq('user_id', user.id),
-            ]);
+            // useCurrentUserQuery do the rest. Stories and their likes are
+            // queries too (ONE-19); what stays here is the admin flag.
+            const { data: profileData } = await supabase
+                .from('profiles')
+                .select('is_admin')
+                .eq('id', user.id)
+                .maybeSingle();
 
-            const { data: profileData } = profileResult as any;
-            const myStories = myStoriesResult as Story[];
-            const { data: storyLikesData } = storyLikesResult as any;
-
-            // Update state in a single, batched call to avoid multiple re-renders.
-            setState(prevState => {
-                const newLikedStoryIds = (storyLikesData && Array.isArray(storyLikesData))
-                    ? new Set(storyLikesData.map(l => l.story_id))
-                    : prevState.likedStoryIds;
-
-                return {
-                    ...prevState,
-                    authUserId: user.id,
-                    userStories: myStories,
-                    likedStoryIds: newLikedStoryIds,
-                    isAdmin: profileData?.is_admin === true,
-                };
-            });
+            setState(prevState => ({
+                ...prevState,
+                authUserId: user.id,
+                isAdmin: profileData?.is_admin === true,
+            }));
         } catch (error) {
             console.error("Error syncing user data:", error);
             addToast("Could not sync your account data. Please try again later.", "error");
@@ -206,11 +183,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 setState(prevState => ({
                     ...prevState,
                     authUserId: '',
-                    userStories: [],
-                    storyComments: new Map(),
-                    likedStoryIds: new Set(),
-                    hasNewStory: false,
-                    viewedStoryTimestamps: new Set(),
                     isViewingStory: false,
                     votedPolls: new Map(),
                     topNotification: null,
@@ -269,136 +241,42 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setState((prevState: AppState) => ({ ...prevState, theme }));
     }, []);
 
-    const addUserStory = useCallback((story: Story) => {
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => ({
-            ...prevState,
-            userStories: [story, ...prevState.userStories],
-            hasNewStory: true,
-        }));
-    }, []);
+    // Stories moved to features/stories in ONE-19: the reel, "Your story",
+    // likes, views and replies are queries and mutations there, and an
+    // optimistic upload is replaced by the server copy in the mutation's
+    // onSuccess, which was the whole job of the context method it replaces.
+    // What stays here is the per-device viewed set below and the transient
+    // `isViewingStory` flag.
 
-    const deleteStory = useCallback(async (storyId: string) => {
-        const { id: userId } = userProfile;
-        if (!userId) {
-            addToast('You must be logged in to delete a story.', 'error');
-            return;
-        }
+    // Rehydrate the viewed set once. A mark made before the read finishes is
+    // kept — the stored set is merged in, not swapped for it — and nothing is
+    // written back until the read has landed, so it cannot be overwritten.
+    const viewedHydrated = useRef(false);
 
-        const originalStories = [...state.userStories];
+    useEffect(() => {
+        let cancelled = false;
 
-        // Optimistic update
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => ({
-            ...prevState,
-            userStories: prevState.userStories.filter(s => s.id !== storyId),
-        }));
-
-        if (storyId.startsWith('local-')) {
-            addToast('Story upload failed.', 'error');
-            return;
-        }
-
-        try {
-            const success = await deleteStoryFromDatabase(storyId);
-            if (!success) {
-                throw new Error("Failed to delete story from server.");
-            }
-            addToast('Story deleted.', 'info');
-        } catch (error) {
-            console.error("Failed to delete story:", error);
-            addToast('Could not delete story.', 'error');
-            // Revert on failure
-            // FIX: Explicitly typed `prevState` as AppState.
-            setState((prevState: AppState) => ({ ...prevState, userStories: originalStories }));
-        }
-    }, [state.userStories, userProfile.id, addToast]);
-
-    const replaceStory = useCallback((localId: string, realStory: Story) => {
-        // FIX: Explicitly type prevState as AppState.
-        setState((prevState: AppState) => ({
-            ...prevState,
-            userStories: prevState.userStories.map(story => story.id === localId ? realStory : story),
-        }));
-    }, []);
-
-    const markStoriesViewed = useCallback(() => {
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => ({
-            ...prevState,
-            hasNewStory: false,
-        }));
-    }, []);
-
-    const isStoryLiked = useCallback((storyId: string) => state.likedStoryIds.has(storyId), [state.likedStoryIds]);
-
-    const toggleStoryLike = useCallback(async (story: Story) => {
-        triggerHapticFeedback();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            addToast('You must be logged in to like stories.', 'error');
-            return;
-        }
-
-        const storyId = story.id;
-        if (storyId.startsWith('local-')) {
-            addToast('Please wait for the story to finish uploading.', 'error');
-            return;
-        }
-
-        const alreadyLiked = state.likedStoryIds.has(storyId);
-
-        // Optimistic update
-        // FIX: Explicitly type prevState as AppState.
-        setState((prevState: AppState) => {
-            const newLikedStoryIds = new Set(prevState.likedStoryIds);
-            if (alreadyLiked) {
-                newLikedStoryIds.delete(storyId);
-            } else {
-                newLikedStoryIds.add(storyId);
-            }
-            return { ...prevState, likedStoryIds: newLikedStoryIds };
-        });
-
-        try {
-            await toggleStoryLikeInDatabase(storyId, user.id);
-        } catch (error) {
-            console.error("Failed to toggle story like:", error);
-            addToast('Failed to update story like status.', 'error');
-            // Revert on failure
-            // FIX: Explicitly type prevState as AppState.
-            setState((prevState: AppState) => {
-                const newLikedStoryIds = new Set(prevState.likedStoryIds);
-                if (alreadyLiked) {
-                    newLikedStoryIds.add(storyId);
-                } else {
-                    newLikedStoryIds.delete(storyId);
-                }
-                return { ...prevState, likedStoryIds: newLikedStoryIds };
+        getJSON<unknown>(VIEWED_STORIES_KEY)
+            .catch(() => null)
+            .then(payload => {
+                if (cancelled) return;
+                const stored = parseViewedStoryTimestamps(payload);
+                viewedHydrated.current = true;
+                setState(prev => {
+                    if (stored.size === 0) return prev;
+                    const merged = new Set([...stored, ...prev.viewedStoryTimestamps]);
+                    return { ...prev, viewedStoryTimestamps: merged };
+                });
             });
-        }
-    }, [state.likedStoryIds, addToast, triggerHapticFeedback]);
 
-    const getStoryComments = useCallback((storyId: string) => state.storyComments.get(storyId) || [], [state.storyComments]);
-
-    const addStoryComment = useCallback((storyId: string, comment: Comment) => {
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => {
-            const newStoryComments = new Map(prevState.storyComments);
-            const comments = newStoryComments.get(storyId) || [];
-            newStoryComments.set(storyId, [comment, ...comments]);
-            return { ...prevState, storyComments: newStoryComments };
-        });
+        return () => { cancelled = true; };
     }, []);
 
-    const setStoryComments = useCallback((storyId: string, comments: Comment[]) => {
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => {
-            const newStoryComments = new Map(prevState.storyComments);
-            newStoryComments.set(storyId, comments);
-            return { ...prevState, storyComments: newStoryComments };
-        });
-    }, []);
+    useEffect(() => {
+        if (!viewedHydrated.current) return;
+        setJSON(VIEWED_STORIES_KEY, serializeViewedStoryTimestamps(state.viewedStoryTimestamps))
+            .catch(error => console.warn('Could not persist viewed stories', error));
+    }, [state.viewedStoryTimestamps]);
 
     const isStoryViewed = useCallback((timestamp: string) => state.viewedStoryTimestamps.has(timestamp), [state.viewedStoryTimestamps]);
 
@@ -488,14 +366,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const contextValue = useMemo(() => ({
         ...state,
         setTheme,
-        addUserStory,
-        deleteStory,
-        markStoriesViewed,
-        isStoryLiked,
-        toggleStoryLike,
-        getStoryComments,
-        addStoryComment,
-        setStoryComments,
         isStoryViewed,
         markStoryAsViewed,
         setIsViewingStory,
@@ -509,20 +379,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         triggerHapticFeedback,
         setTooltip,
         refreshAllData,
-        replaceStory,
         userProfile,
     }), [
         state,
         userProfile,
         setTheme,
-        addUserStory,
-        deleteStory,
-        markStoriesViewed,
-        isStoryLiked,
-        toggleStoryLike,
-        getStoryComments,
-        addStoryComment,
-        setStoryComments,
         isStoryViewed,
         markStoryAsViewed,
         setIsViewingStory,
@@ -536,7 +397,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         triggerHapticFeedback,
         setTooltip,
         refreshAllData,
-        replaceStory,
     ]);
 
     return (

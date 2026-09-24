@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useApp } from '../../store/AppContext.native';
-import { uploadStory } from '../../services/apiService';
+import { useUploadStory } from '../../features/stories';
 import { pickImageFromLibrary } from '../../services/mediaPicker';
 import {
   CameraIcon,
@@ -14,11 +14,17 @@ import {
   ImageIcon,
   XIcon,
 } from '../../components/native/Icons';
-import type { Story } from '../../types';
 
 export default function CameraScreen() {
   const router = useRouter();
-  const { userProfile, addUserStory, replaceStory, deleteStory, addToast, triggerHapticFeedback } = useApp();
+  const { userProfile, addToast, triggerHapticFeedback } = useApp();
+  // The optimistic entry, its replacement by the server copy and its removal
+  // on failure all happen inside the mutation (ONE-19).
+  const uploadStory = useUploadStory(
+    userProfile?.id
+      ? { id: userProfile.id, username: userProfile.username, avatar: userProfile.profilePicture || null }
+      : undefined,
+  );
   const cameraRef = useRef<CameraView>(null);
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -34,43 +40,20 @@ export default function CameraScreen() {
   const handleUploadStory = useCallback(async (uri: string) => {
     if (!userProfile?.id || uploading) return;
 
-    const localId = `local-${Date.now()}`;
-    const localStory: Story = {
-      id: localId,
-      userId: userProfile.id,
-      username: userProfile.username,
-      avatar: userProfile.profilePicture || null,
-      timestamp: new Date().toISOString(),
-      imageUrl: uri,
-    };
-
-    addUserStory(localStory);
     setUploading(true);
     addToast('Uploading story...', 'info');
 
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const uploadBlob = blob.type
-        ? blob
-        : new Blob([blob], { type: 'image/jpeg' });
-      const realStory = await uploadStory(uploadBlob, null, userProfile.id);
-      if (realStory) {
-        replaceStory(localId, realStory);
-      } else {
-        deleteStory(localId);
-        addToast('Failed to upload story.', 'error');
-      }
+      await uploadStory.mutateAsync({ imageUri: uri, caption: null });
     } catch (error) {
       console.error('Story upload failed', error);
-      deleteStory(localId);
       addToast('Failed to upload story.', 'error');
     } finally {
       setUploading(false);
       // Small delay so toast is visible
       setTimeout(() => router.navigate('/(tabs)'), 1000);
     }
-  }, [userProfile, uploading, addUserStory, replaceStory, deleteStory, addToast, router]);
+  }, [userProfile?.id, uploading, uploadStory, addToast, router]);
 
   const takePhoto = useCallback(async () => {
     if (!cameraRef.current || capturing) return;

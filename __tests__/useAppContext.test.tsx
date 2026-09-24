@@ -131,9 +131,6 @@ jest.mock('../services/apiService', () => {
     unfollowUser: jest.fn(),
     followUser: jest.fn(),
     markNotificationsAsRead: jest.fn(),
-    getMyStories: jest.fn(async () => []),
-    deleteStoryFromDatabase: jest.fn(),
-    toggleStoryLikeInDatabase: jest.fn(),
     toggleSavePost: jest.fn(),
     adminDeletePost: jest.fn(),
     ensureCurrentUserProfile: jest.fn(),
@@ -203,7 +200,7 @@ const Probe: React.FC<{ capture: Captured }> = ({ capture }) => {
     capture.current = ctx;
   });
   return React.createElement('div', { 'data-testid': 'probe' }, JSON.stringify({
-    hasToggleStoryLike: typeof ctx.toggleStoryLike === 'function',
+    hasSetIsViewingStory: typeof ctx.setIsViewingStory === 'function',
     hasAddToast: typeof ctx.addToast === 'function',
     theme: ctx.theme,
     userProfileName: ctx.userProfile.name,
@@ -280,7 +277,7 @@ describe('useApp (AppContext) — provider wrapper', () => {
       // The probe should be present in the rendered DOM.
       const probe = handle.container.querySelector('[data-testid="probe"]');
       expect(probe).not.toBeNull();
-      expect(probe!.textContent).toContain('"hasToggleStoryLike":true');
+      expect(probe!.textContent).toContain('"hasSetIsViewingStory":true');
     } finally {
       unmount(handle);
     }
@@ -350,6 +347,80 @@ describe('useApp (AppContext) — provider wrapper', () => {
       const ctx = handle.capture.current!;
       expect(ctx).not.toHaveProperty('blockedUsers');
       expect(ctx.isUserBlocked('spammer1')).toBe(false);
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  // ─── Stories (ONE-19) ─────────────────────────────────────────────────
+
+  /** Flush the viewed-set read, which takes a few microtask hops to land. */
+  const flushHydration = async () => {
+    await act(async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+  };
+
+  const recent = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
+
+  it('holds no story server data, only the viewing flag and the viewed set', () => {
+    const handle = mountWithProvider();
+    try {
+      const ctx = handle.capture.current!;
+      for (const removed of [
+        'userStories', 'storyComments', 'likedStoryIds', 'hasNewStory',
+        'addUserStory', 'deleteStory', 'replaceStory', 'markStoriesViewed',
+        'isStoryLiked', 'toggleStoryLike', 'getStoryComments', 'addStoryComment',
+        'setStoryComments',
+      ]) {
+        expect(ctx).not.toHaveProperty(removed);
+      }
+      expect(ctx.isViewingStory).toBe(false);
+      expect(typeof ctx.setIsViewingStory).toBe('function');
+      expect(ctx.viewedStoryTimestamps).toBeInstanceOf(Set);
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('rehydrates the viewed set from AsyncStorage, so a restart keeps it', async () => {
+    const seen = recent(30);
+    mockAsyncStore['onetag:viewedStoryTimestamps'] = JSON.stringify([seen]);
+
+    const handle = mountWithProvider();
+    await flushHydration();
+    try {
+      expect(handle.capture.current!.isStoryViewed(seen)).toBe(true);
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('persists a newly viewed story', async () => {
+    const handle = mountWithProvider();
+    await flushHydration();
+    try {
+      const seen = recent(5);
+      act(() => handle.capture.current!.markStoryAsViewed(seen));
+      await flushHydration();
+
+      expect(JSON.parse(mockAsyncStore['onetag:viewedStoryTimestamps'])).toEqual([seen]);
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it.each([
+    ['not JSON', '{not json'],
+    ['an object', JSON.stringify({ a: 1 })],
+    ['null', 'null'],
+  ])('tolerates a malformed viewed payload (%s)', async (_label, payload) => {
+    mockAsyncStore['onetag:viewedStoryTimestamps'] = payload;
+
+    const handle = mountWithProvider();
+    await flushHydration();
+    try {
+      expect(handle.capture.current!.viewedStoryTimestamps.size).toBe(0);
     } finally {
       unmount(handle);
     }

@@ -6,11 +6,12 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
 import { useFollowState, useToggleFollow } from '../features/profiles';
-import { getFollowerUsers, getFollowingUsers, getPostLikers, getPostReposters, getStoryViewers } from '../services/apiService';
+import { getFollowerUsers, getFollowingUsers, getPostLikers, getPostReposters } from '../services/apiService';
+import { getStoryViewers } from '../features/stories';
 import UserAvatar from '../components/native/UserAvatar';
 import { VerifiedIcon } from '../components/native/Icons';
 import type { SimpleUser } from '../types';
-import type { StoryViewer } from '../services/apiService';
+import type { StoryViewer } from '../features/stories';
 
 export default function UserListScreen() {
   const { type, userId, postId, storyId, title } = useLocalSearchParams<{

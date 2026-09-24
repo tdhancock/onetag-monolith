@@ -1,6 +1,6 @@
 
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,10 +17,8 @@ import { useFollowState, useToggleFollow, profileKeys } from '../../features/pro
 import { useRealtimeSync } from '../../lib/realtimeBridge';
 import { useUnreadNotificationCount } from '../../features/notifications';
 import { useUnreadMessageCount } from '../../features/messages';
-import {
-  getStories,
-  getSmartUserSuggestions,
-} from '../../services/apiService';
+import { getSmartUserSuggestions } from '../../services/apiService';
+import { useStoriesQuery, useStoriesRealtime, storyKeys } from '../../features/stories';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useFeedQuery,
@@ -69,11 +67,7 @@ export default function HomeFeedScreen() {
   const unreadMessageCount = useUnreadMessageCount(userProfile?.id || undefined);
 
   const queryClient = useQueryClient();
-  const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
-  const [allStories, setAllStories] = useState<Story[]>([]);
-  const allStoriesRef = useRef<Story[]>([]);
   const [suggestedUsers, setSuggestedUsers] = useState<SimpleUser[]>([]);
-  const [isStoriesLoading, setIsStoriesLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   // ─── Feed ──────────────────────────────────────
@@ -92,6 +86,36 @@ export default function HomeFeedScreen() {
   );
 
   const isFeedLoading = Boolean(userProfile?.id) && feedQuery.isPending;
+
+  // ─── Stories ───────────────────────────────────
+  // The reel is a query (ONE-19). A failed refetch keeps the last good reel
+  // on screen, which is what the old "don't clear transiently" guard did by
+  // hand.
+  const reelQuery = useStoriesQuery(userProfile?.id || undefined);
+  const isStoriesLoading = Boolean(userProfile?.id) && reelQuery.isPending;
+
+  const { storyGroups, allStories } = useMemo(() => {
+    const filteredStories = (reelQuery.data ?? []).filter(story => !isUserBlocked(story.username));
+    const dedupedStories = dedupeStoriesById(filteredStories);
+    const currentUsername = userProfile?.username?.trim().toLowerCase();
+    const feedStories = currentUsername
+      ? dedupedStories.filter(story => story.username.trim().toLowerCase() !== currentUsername)
+      : dedupedStories;
+
+    const groups = new Map<string, StoryGroup>();
+    feedStories.forEach(story => {
+      if (!groups.has(story.username)) {
+        groups.set(story.username, {
+          username: story.username,
+          avatar: story.avatar,
+          stories: [],
+        });
+      }
+      groups.get(story.username)?.stories.push(story);
+    });
+
+    return { storyGroups: Array.from(groups.values()), allStories: feedStories };
+  }, [reelQuery.data, isUserBlocked, userProfile?.username]);
   const isLoading = isFeedLoading || isStoriesLoading;
 
   const loadSuggestions = useCallback(async (userId: string) => {
@@ -113,57 +137,6 @@ export default function HomeFeedScreen() {
     }
   }, [isUserBlocked]);
 
-  const applyStoriesState = useCallback((stories: Story[]) => {
-    const filteredStories = stories.filter(story => !isUserBlocked(story.username));
-    const dedupedStories = dedupeStoriesById(filteredStories);
-    const currentUsername = userProfile?.username?.trim().toLowerCase();
-    const feedStories = currentUsername
-      ? dedupedStories.filter(story => story.username.trim().toLowerCase() !== currentUsername)
-      : dedupedStories;
-
-    const groups = new Map<string, StoryGroup>();
-    feedStories.forEach(story => {
-      if (!groups.has(story.username)) {
-        groups.set(story.username, {
-          username: story.username,
-          avatar: story.avatar,
-          stories: [],
-        });
-      }
-      groups.get(story.username)?.stories.push(story);
-    });
-
-    setStoryGroups(Array.from(groups.values()));
-    setAllStories(feedStories);
-    allStoriesRef.current = feedStories;
-  }, [isUserBlocked, userProfile?.username]);
-
-  const refreshStories = useCallback(async () => {
-    try {
-      const stories = await getStories();
-      // Only update if we got stories OR if we had stories before (don't clear transiently)
-      if (stories.length > 0 || allStoriesRef.current.length === 0) {
-        applyStoriesState(stories);
-      }
-    } catch (error) {
-      console.error('Story refresh error:', error);
-    }
-  }, [applyStoriesState]);
-
-  const loadStories = useCallback(async () => {
-    try {
-      applyStoriesState(await getStories());
-    } catch (error) {
-      console.error('Story load error:', error);
-    } finally {
-      setIsStoriesLoading(false);
-    }
-  }, [applyStoriesState]);
-
-  useEffect(() => {
-    void loadStories();
-  }, [loadStories]);
-
   // The feed used to toast from loadFeed's catch. The query owns retries now,
   // so the toast fires once the retries are exhausted rather than on the
   // first failure.
@@ -176,15 +149,9 @@ export default function HomeFeedScreen() {
 
   // Stories, follows and posts all arrive through the shared bridge now
   // (ONE-16). Each stream is one stably named channel, so remounting this
-  // screen re-uses it rather than leaking a new one per mount.
-  useRealtimeSync({
-    table: 'stories',
-    filter: '',
-    queryKey: ['stories'],
-    onInsert: () => { void refreshStories(); return true; },
-    onUpdate: () => { void refreshStories(); return true; },
-    onDelete: () => { void refreshStories(); return true; },
-  });
+  // screen re-uses it rather than leaking a new one per mount. The stories
+  // stream lives in features/stories since ONE-19.
+  useStoriesRealtime();
 
   // Server-side filtering rather than the client-side check this replaced:
   // the old subscription received every follow in the system and discarded
@@ -194,8 +161,9 @@ export default function HomeFeedScreen() {
     filter: `follower_id=eq.${userProfile?.id ?? ''}`,
     queryKey: profileKeys.all,
     enabled: Boolean(userProfile?.id),
-    onInsert: () => { void refreshStories(); return true; },
-    onDelete: () => { void refreshStories(); return true; },
+    // A new follow changes whose stories are in the reel.
+    onInsert: () => { void queryClient.invalidateQueries({ queryKey: storyKeys.lists() }); return true; },
+    onDelete: () => { void queryClient.invalidateQueries({ queryKey: storyKeys.lists() }); return true; },
   });
 
   useEffect(() => {
@@ -255,11 +223,11 @@ export default function HomeFeedScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([feedQuery.refetch(), loadStories()]);
+      await Promise.all([feedQuery.refetch(), reelQuery.refetch()]);
     } finally {
       setRefreshing(false);
     }
-  }, [feedQuery, loadStories]);
+  }, [feedQuery, reelQuery]);
 
   const loadMore = useCallback(() => {
     // FlatList fires onEndReached more than once per arrival at the end; both
