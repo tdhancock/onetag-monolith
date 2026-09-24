@@ -123,6 +123,22 @@ export const patchLists = <TEntity>(
   };
 };
 
+/** The first copy of an entity found across cached lists' pages, if any. */
+const findInLists = <TEntity>(
+  lists: [QueryKey, unknown][],
+  id: string,
+  entityId: (entity: TEntity) => string,
+): TEntity | undefined => {
+  for (const [, data] of lists) {
+    if (!hasPages(data)) continue;
+    for (const page of data.pages as TEntity[][]) {
+      const found = page.find((entity) => entityId(entity) === id);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
+};
+
 // ---------------------------------------------------------------------------
 // The mutation cycle
 // ---------------------------------------------------------------------------
@@ -162,11 +178,12 @@ export const toggleMutationOptions = <TEntity>(
       );
     }
 
-    // Read the state back off the cache rather than recomputing it, so the
-    // caller is told what actually landed.
-    const applied = queryClient.getQueryData<TEntity>(entityKey);
-    if (applied !== undefined) config.onToggle?.({ isOn: config.isOn(applied, id) });
-    else config.onToggle?.({ isOn: !(previousEntity && config.isOn(previousEntity, id)) });
+    // Tell the caller which way it flipped, judged from the entity as it was
+    // before. A post liked from the feed usually has no detail entry, only a
+    // copy inside the list pages — reading the detail alone reported every
+    // such toggle as "on", so unsaving from the feed said "Saved".
+    const before = previousEntity ?? findInLists(previousLists, id, config.entityId);
+    config.onToggle?.({ isOn: before === undefined ? true : !config.isOn(before, id) });
 
     return {
       entity: [entityKey, previousEntity],

@@ -176,6 +176,18 @@ describe('optimistic toggle — the happy path', () => {
 
     expect(onToggle).toHaveBeenCalledWith({ isOn: true });
   });
+
+  it('reports "off" for an entity that lives only in a list page', async () => {
+    // The feed case: no detail entry, just the copy inside the pages. This
+    // used to be reported as "on" regardless, so unsaving said "Saved".
+    const client = newClient();
+    client.setQueryData(feedKey, pages([item({ isOn: true })]));
+    const onToggle = jest.fn();
+
+    await runToggle(client, config({ onToggle }));
+
+    expect(onToggle).toHaveBeenCalledWith({ isOn: false });
+  });
 });
 
 // ─── 3. Rollback — the reason this file exists ──────────────────────────
