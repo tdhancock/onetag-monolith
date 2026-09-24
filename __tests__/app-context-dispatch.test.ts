@@ -30,7 +30,6 @@ interface AppState {
  isInstallModalOpen: boolean;
  installPromptEvent: Event | null;
  blockedUsers: Set<string>;
- likedVideoIds: Set<string>;
  followedUsernames: Set<string>;
  votedPolls: Map<string, number>;
  toasts: Toast[];
@@ -67,7 +66,6 @@ function makeInitialState(): AppState {
  isInstallModalOpen: false,
  installPromptEvent: null,
  blockedUsers: new Set(),
- likedVideoIds: new Set(),
  followedUsernames: new Set(),
  votedPolls: new Map(),
  toasts: [],
@@ -168,7 +166,6 @@ function dispatchLogout(state: AppState): AppState {
  likedPosts: new Set(),
  repostedPosts: new Set(),
  savedPosts: new Set(),
- likedVideoIds: new Set(),
  followedUsernames: new Set(),
  likedStoryIds: new Set(),
  userStories: [],

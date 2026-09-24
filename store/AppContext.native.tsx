@@ -29,7 +29,6 @@ interface AppState {
     hasNewStory: boolean;
     viewedStoryTimestamps: Set<string>;
     isViewingStory: boolean;
-    likedVideoIds: Set<string>;
     votedPolls: Map<string, number>;
     toasts: Toast[];
     tooltip: { text: string } | null;
@@ -61,8 +60,6 @@ interface AppContextType extends AppState {
     setIsViewingStory: (isViewing: boolean) => void;
     toggleBlockUser: (username: string) => void;
     isUserBlocked: (username: string) => boolean;
-    toggleVideoLike: (videoId: string) => void;
-    isVideoLiked: (videoId: string) => boolean;
     voteInPoll: (postId: string, optionIndex: number) => void;
     getPollVote: (postId: string) => number | undefined;
     addToast: (message: string, type?: Toast['type']) => void;
@@ -89,7 +86,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             hasNewStory: false,
             viewedStoryTimestamps: new Set(),
             isViewingStory: false,
-            likedVideoIds: new Set(),
             votedPolls: new Map(),
             toasts: [],
             tooltip: null,
@@ -269,7 +265,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     hasNewStory: false,
                     viewedStoryTimestamps: new Set(),
                     isViewingStory: false,
-                    likedVideoIds: new Set(),
                     votedPolls: new Map(),
                     unreadMessageCount: 0,
                     unreadChats: new Set(),
@@ -517,22 +512,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             });
     }, [blocks.blockedUsers, blockToggle, addToast]);
 
-    const toggleVideoLike = useCallback((videoId: string) => {
-        triggerHapticFeedback();
-        // FIX: Explicitly typed `prevState` as AppState.
-        setState((prevState: AppState) => {
-            const newLikedVideos = new Set(prevState.likedVideoIds);
-            if (newLikedVideos.has(videoId)) {
-                newLikedVideos.delete(videoId);
-            } else {
-                newLikedVideos.add(videoId);
-            }
-            return { ...prevState, likedVideoIds: newLikedVideos };
-        });
-    }, [triggerHapticFeedback]);
-
-    const isVideoLiked = useCallback((videoId: string) => state.likedVideoIds.has(videoId), [state.likedVideoIds]);
-
     // Following moved to features/profiles/mutations.ts (useToggleFollow), on
     // the shared optimistic helper. Follow state is read from the query by
     // useFollowState.
@@ -623,8 +602,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setIsViewingStory,
         toggleBlockUser,
         isUserBlocked,
-        toggleVideoLike,
-        isVideoLiked,
         voteInPoll,
         getPollVote,
         addToast,
@@ -654,8 +631,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setIsViewingStory,
         toggleBlockUser,
         isUserBlocked,
-        toggleVideoLike,
-        isVideoLiked,
         voteInPoll,
         getPollVote,
         addToast,
