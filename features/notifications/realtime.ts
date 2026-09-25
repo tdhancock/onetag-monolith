@@ -13,6 +13,7 @@ import { fetchNotificationById } from './api';
 import { notificationKeys } from './keys';
 import type { Notification } from './types';
 import { useRealtimeSync, upsertById, type RealtimeRow } from '../../lib/realtimeBridge';
+import type { ProfileId } from '../../types';
 
 /**
  * Put a hydrated notification at the top of the cached list, once.
@@ -65,7 +66,7 @@ export const applyNotificationUpdate = (
  * username and avatar live behind a foreign key — so an inserted row is
  * re-read by id before it goes into the cache.
  */
-export const useNotificationsRealtime = (userId: string | undefined): void => {
+export const useNotificationsRealtime = (userId: ProfileId | undefined): void => {
   const queryClient = useQueryClient();
   const listKey = notificationKeys.forUser(userId ?? '');
 

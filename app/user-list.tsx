@@ -5,7 +5,7 @@ import { View, Text, FlatList, Pressable, ActivityIndicator } from 'react-native
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
-import { useFollowState, useToggleFollow } from '../features/profiles';
+import { useFollowState, useToggleFollow, useCurrentProfile } from '../features/profiles';
 import { getFollowerUsers, getFollowingUsers } from '../features/profiles';
 import { getPostLikers, getPostReposters } from '../features/posts';
 import { getStoryViewers } from '../features/stories';
@@ -23,9 +23,10 @@ export default function UserListScreen() {
     title: string;
   }>();
   const router = useRouter();
-  const { isUserBlocked, userProfile } = useApp();
-  const { isFollowing: isUserFollowing } = useFollowState(userProfile?.id || undefined);
-  const follow = useToggleFollow(userProfile?.id || undefined);
+  const { isUserBlocked } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
+  const { isFollowing: isUserFollowing } = useFollowState(profileId);
+  const follow = useToggleFollow(profileId);
 
   const [users, setUsers] = useState<SimpleUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,7 +113,7 @@ export default function UserListScreen() {
     ({ item }: { item: SimpleUser }) => {
       const usernameKey = item.username.trim().toLowerCase();
       const isFollowing = isUserFollowing(item.username);
-      const isSelf = Boolean(userProfile?.id && item.id === userProfile.id);
+      const isSelf = Boolean(profileId && item.id === profileId);
       const isPending = follow.isPending;
 
       return (
@@ -161,7 +162,7 @@ export default function UserListScreen() {
         </View>
       );
     },
-    [handleToggleFollow, isUserFollowing, follow.isPending, router, userProfile?.id],
+    [handleToggleFollow, isUserFollowing, follow.isPending, router, profileId],
   );
 
   const keyExtractor = useCallback((item: SimpleUser) => item.id || item.username, []);

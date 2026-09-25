@@ -4,19 +4,23 @@
 // from live in services/reportReasons.ts, beside this feature, because the
 // report sheets read them without needing any of this.
 //
-// Both writes are attributed to the signed-in account and return false rather
-// than throwing: the report sheets show their own confirmation either way.
+// Both writes are attributed to the reporting profile (`reports.reporter_id`
+// references profiles) and return false rather than throwing: the report
+// sheets show their own confirmation either way.
 
 import { supabase } from '../../services/supabase.native';
+import type { ProfileId } from '../../types';
 import type { ReportTargetType } from './types';
 
-const insertReport = async (targetType: ReportTargetType, targetId: string, reason: string): Promise<boolean> => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
-
+const insertReport = async (
+  reporterId: ProfileId,
+  targetType: ReportTargetType,
+  targetId: string,
+  reason: string,
+): Promise<boolean> => {
   const { error } = await supabase.from('reports').insert([
     {
-      reporter_id: user.id,
+      reporter_id: reporterId,
       target_type: targetType,
       target_id: targetId,
       reason,
@@ -31,9 +35,9 @@ const insertReport = async (targetType: ReportTargetType, targetId: string, reas
 };
 
 /** Report a post. */
-export const reportPost = (postId: string, reason: string): Promise<boolean> =>
-  insertReport('post', postId, reason);
+export const reportPost = (reporterId: ProfileId, postId: string, reason: string): Promise<boolean> =>
+  insertReport(reporterId, 'post', postId, reason);
 
 /** Report an account. */
-export const reportUser = (userId: string, reason: string): Promise<boolean> =>
-  insertReport('user', userId, reason);
+export const reportUser = (reporterId: ProfileId, userId: string, reason: string): Promise<boolean> =>
+  insertReport(reporterId, 'user', userId, reason);

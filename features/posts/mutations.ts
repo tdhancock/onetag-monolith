@@ -24,6 +24,7 @@ import { postKeys } from './keys';
 import { profileKeys } from '../profiles';
 import type { Post } from './types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
+import type { ProfileId } from '../../types';
 
 /** What every post toggle has in common: where the entity lives, and how. */
 const postToggleBase = {
@@ -54,7 +55,7 @@ export interface PostToggle {
 export type OnToggle = (next: { isOn: boolean }) => void;
 
 /** Like or unlike, optimistically. */
-export const useLikePost = (userId: string | undefined, onToggle?: OnToggle): PostToggle => {
+export const useLikePost = (userId: ProfileId | undefined, onToggle?: OnToggle): PostToggle => {
   const mutation = useOptimisticToggle<Post>({
     ...postToggleBase,
     mutationFn: (postId) => toggleLike(postId, requireUser(userId)),
@@ -68,7 +69,7 @@ export const useLikePost = (userId: string | undefined, onToggle?: OnToggle): Po
 };
 
 /** Repost or un-repost, optimistically. */
-export const useRepostPost = (userId: string | undefined, onToggle?: OnToggle): PostToggle => {
+export const useRepostPost = (userId: ProfileId | undefined, onToggle?: OnToggle): PostToggle => {
   const mutation = useOptimisticToggle<Post>({
     ...postToggleBase,
     mutationFn: (postId) => toggleRepost(postId, requireUser(userId)),
@@ -88,7 +89,7 @@ export const useRepostPost = (userId: string | undefined, onToggle?: OnToggle): 
  * zero — the helper still tracks one, which keeps the three configurations
  * identical in shape and costs nothing.
  */
-export const useSavePost = (userId: string | undefined, onToggle?: OnToggle): PostToggle => {
+export const useSavePost = (userId: ProfileId | undefined, onToggle?: OnToggle): PostToggle => {
   const mutation = useOptimisticToggle<Post>({
     ...postToggleBase,
     mutationFn: (postId) => toggleSavePost(postId, requireUser(userId)),
@@ -146,12 +147,13 @@ const useToggle = (
  * Rejects when the media could not be uploaded, which is what keeps the
  * composer open with the draft intact (ONE-56).
  */
-export const useCreatePost = () => {
+export const useCreatePost = (authorId: ProfileId | undefined) => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (post: Post): Promise<Post> => {
-      const published = await publishPost(post);
+      if (!authorId) throw new Error('You must be signed in to post.');
+      const published = await publishPost(post, authorId);
       if (!published) throw new Error('API returned null post.');
       return published;
     },

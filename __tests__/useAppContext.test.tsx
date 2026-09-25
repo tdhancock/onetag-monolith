@@ -53,7 +53,8 @@ const mockAuthGetUser = jest.fn(async () => ({
   error: null,
 }));
 
-// The auth user id the provider hands to useCurrentUserQuery, last render.
+// The account id the profile layer saw on the provider's last render — the
+// session features/auth recorded, which is what the current profile keys on.
 let mockCurrentUserArg: string | undefined;
 
 // The native provider persists the block-list to AsyncStorage and reads it
@@ -128,10 +129,20 @@ const mockPlaceholderProfile = {
   profilePicture: null,
 };
 
+// The current profile, stubbed but driven by the real session: it reads the
+// account id through features/auth exactly as the real hook does, so the
+// sign-in and sign-out tests below still exercise the real session wiring.
 jest.mock('../features/profiles', () => ({
-  useCurrentUserQuery: (authUserId: string | undefined) => {
+  useCurrentProfile: () => {
+    const { useAuthUserId } = require('../features/auth');
+    const authUserId: string | undefined = useAuthUserId();
     mockCurrentUserArg = authUserId;
-    return { data: undefined, isPending: true, userProfile: mockPlaceholderProfile };
+    return {
+      profile: mockPlaceholderProfile,
+      profileId: authUserId ? `profile-of-${authUserId}` : undefined,
+      authUserId,
+      status: authUserId ? 'ready' : 'signed-out',
+    };
   },
 }), { virtual: true });
 
@@ -183,7 +194,6 @@ const Probe: React.FC<{ capture: Captured }> = ({ capture }) => {
     hasSetIsViewingStory: typeof ctx.setIsViewingStory === 'function',
     hasAddToast: typeof ctx.addToast === 'function',
     theme: ctx.theme,
-    userProfileName: ctx.userProfile.name,
     hasIsUserBlocked: typeof ctx.isUserBlocked === 'function',
   }));
 };
@@ -282,9 +292,8 @@ describe('useApp (AppContext) — provider wrapper', () => {
       // not undefined. This guards the "must be used within a provider"
       // contract from the consumer side.
       expect(ctx).toBeDefined();
-      // Default user profile (per the AppContext initial state).
-      expect(ctx!.userProfile.name).toBe('OneTag User');
-      expect(ctx!.userProfile.username).toBe('onetag_user');
+      // Identity is useCurrentProfile() now, not the context (ONE-22).
+      expect(ctx).not.toHaveProperty('userProfile');
       // Default theme.
       expect(ctx!.theme).toBe('dark');
       // Server-owned state is no longer here: likes, reposts and saves live
@@ -551,7 +560,6 @@ describe('useApp (AppContext) — auth session transitions', () => {
 
       const after = handle.capture.current!;
       expect(after.theme).toBe('light');
-      expect(after.userProfile).toBe(before.userProfile);
       expect(after.toasts).toBe(before.toasts);
       expect(after.viewedStoryTimestamps).toBe(before.viewedStoryTimestamps);
     } finally {
@@ -656,15 +664,13 @@ describe('post writes are not on the context any more', () => {
     },
   );
 
-  it.each(['userProfile'])('still exposes %s, because it is the identity object', (name) => {
-    // ONE-15 moved it to a query but deliberately kept it on the context, and
-    // kept the placeholder's empty-string id, so `userProfile?.id` guards —
-    // push-notification registration above all — behave as they did.
+  it('no longer hands out userProfile — identity is useCurrentProfile() (ONE-22)', () => {
+    // ONE-15 kept the signed-in profile on the context as a pass-through.
+    // Since an account can act as more than one profile, the acting profile
+    // and the account are read from features/profiles directly.
     const handle = mountWithProvider();
     try {
-      expect(handle.capture.current!).toHaveProperty(name);
-      expect(handle.capture.current!.userProfile.id).toBe('');
-      expect(handle.capture.current!.userProfile.username).toBe('onetag_user');
+      expect(handle.capture.current!).not.toHaveProperty('userProfile');
     } finally {
       unmount(handle);
     }

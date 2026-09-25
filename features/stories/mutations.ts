@@ -22,6 +22,7 @@ import {
 } from './api';
 import { storyKeys } from './keys';
 import type { Story, StoryAuthor, UploadStoryInput } from './types';
+import type { ProfileId } from '../../types';
 
 /** True for a story that exists only on this device, still uploading. */
 export const isLocalStory = (story: Pick<Story, 'id'> | string): boolean =>
@@ -202,7 +203,7 @@ export const recordStoryViewOptions = (userId: string | undefined) => ({
 });
 
 /** `recordView(storyId)` — records that the signed-in user saw it. Never throws. */
-export const useRecordStoryView = (userId: string | undefined) => {
+export const useRecordStoryView = (userId: ProfileId | undefined) => {
   const { mutate } = useMutation(recordStoryViewOptions(userId));
   return useCallback((storyId: string) => {
     if (!isLocalStory(storyId)) mutate(storyId);
@@ -235,7 +236,7 @@ export const replyToStoryOptions = (queryClient: QueryClient, userId: string | u
 });
 
 /** Reply to a story by direct message. */
-export const useReplyToStory = (userId: string | undefined) => {
+export const useReplyToStory = (userId: ProfileId | undefined) => {
   const queryClient = useQueryClient();
   return useMutation(replyToStoryOptions(queryClient, userId));
 };

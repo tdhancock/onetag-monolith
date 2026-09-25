@@ -5,6 +5,7 @@ import { Tabs, useRouter } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
+import { useCurrentProfile } from '../../features/profiles';
 import { useUnreadNotificationCount } from '../../features/notifications';
 import { useUnreadMessageCount } from '../../features/messages';
 import {
@@ -39,14 +40,14 @@ const CENTER_ICON_SIZE = 20;
 export default function TabLayout() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { userProfile } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
 
   // The badge subscribes to the count, not to the list (ONE-17): a
   // notification whose unrelated fields change — a sender's avatar arriving —
   // no longer re-renders the whole tab bar. The message half is a query too
   // since ONE-18, narrowed the same way.
-  const unreadNotificationCount = useUnreadNotificationCount(userProfile?.id || undefined);
-  const unreadMessageCount = useUnreadMessageCount(userProfile?.id || undefined);
+  const unreadNotificationCount = useUnreadNotificationCount(profileId);
+  const unreadMessageCount = useUnreadMessageCount(profileId);
   const totalBadge = unreadNotificationCount + unreadMessageCount;
 
   return (

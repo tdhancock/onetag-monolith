@@ -19,6 +19,7 @@ import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '../store/AppContext.native';
+import { useCurrentProfile } from '../features/profiles';
 import {
   useStoriesQuery,
   useMyStoriesQuery,
@@ -50,15 +51,15 @@ export default function StoryViewerScreen() {
   const router = useRouter();
   const { index: startIndexParam, storyId: startStoryIdParam } = useLocalSearchParams<{ index?: string; storyId?: string }>();
   const {
-    userProfile,
     markStoryAsViewed,
     setIsViewingStory,
     isUserBlocked,
     triggerHapticFeedback,
     addToast,
   } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
 
-  const userId = userProfile?.id || undefined;
+  const userId = profileId;
 
   // The reel and "Your story" are queries (ONE-19). The viewer takes one
   // snapshot of them when it opens, below, so a realtime insert cannot shift
@@ -85,7 +86,7 @@ export default function StoryViewerScreen() {
   const timerRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const currentStory = stories[currentIndex];
-  const isOwnStory = currentStory?.userId === userProfile?.id;
+  const isOwnStory = currentStory?.userId === profileId;
   const liked = currentStory ? isStoryLiked(currentStory.id) : false;
 
   // Only the owner sees who viewed a story.
@@ -267,7 +268,7 @@ export default function StoryViewerScreen() {
   }, [currentStory, triggerHapticFeedback, storyLike]);
 
   const handleReply = useCallback(async () => {
-    if (!replyText.trim() || !currentStory || !userProfile?.id) return;
+    if (!replyText.trim() || !currentStory || !profileId) return;
     try {
       await replyToStory.mutateAsync({ story: currentStory, text: replyText.trim() });
       addToast('Reply sent!', 'success');
@@ -275,7 +276,7 @@ export default function StoryViewerScreen() {
     } catch {
       addToast('Failed to send reply.', 'error');
     }
-  }, [replyText, currentStory, userProfile?.id, addToast, replyToStory]);
+  }, [replyText, currentStory, profileId, addToast, replyToStory]);
 
   const handleDelete = useCallback(() => {
     if (!currentStory) return;

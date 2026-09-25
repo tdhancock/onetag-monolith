@@ -28,6 +28,7 @@ import type { Post, UserProfile } from '../types';
 import { checkUsernameExists } from '../features/profiles';
 import { ensureCurrentUserProfile } from '../services/profileBootstrap';
 import { publishPost } from '../features/posts';
+import { asProfileId } from '../types';
 import { sendNotification } from '../services/notificationWrites';
 
 // ─── 1. Supabase mock ───────────────────────────────────────────────────
@@ -399,13 +400,17 @@ describe('E2E — complete signup flow', () => {
 // We assert the call shape, the returned Post, and the notification row
 // payloads captured by the mock builder.
 
+// The profile noor posts as. Deliberately not her auth id: since ONE-21 every
+// new account's profile has its own id, and a post belongs to the profile.
+const NOOR_PROFILE = asProfileId('profile-noor');
+
 describe('E2E — post create flow', () => {
   it('publishes a text post end-to-end and returns the populated Post', async () => {
     const authUser = makeAuthUser();
     testHooks.mockGetUser.mockResolvedValue({ data: { user: authUser }, error: null });
 
-    // profileExists inside ensureProfileRowForUser → already exists.
-    testHooks.setHandler('profiles', () => ({ data: { id: authUser.id }, error: null }));
+    // profileExists inside ensureProfileRowForUser → the account owns one.
+    testHooks.setHandler('profiles', () => ({ data: [{ id: NOOR_PROFILE }], error: null }));
 
     // posts chain pattern:
     //   1st call: insert([...]).select('id').single() → returns { id: ... }
@@ -420,7 +425,7 @@ describe('E2E — post create flow', () => {
     });
 
     const draft: Post = makeFeedPost();
-    const published = await publishPost(draft);
+    const published = await publishPost(draft, NOOR_PROFILE);
 
     expect(published).not.toBeNull();
     expect(published!.id).toBe('new-post-1');
@@ -440,7 +445,7 @@ describe('E2E — post create flow', () => {
     expect(postInsert).toBeDefined();
     expect(postInsert!.rows[0]).toEqual(
       expect.objectContaining({
-        user_id: authUser.id,
+        user_id: NOOR_PROFILE,
         content: 'Just joined OneTag! #hello',
         media_type: 'text',
       }),
@@ -457,7 +462,7 @@ describe('E2E — post create flow', () => {
     testHooks.setHandler('profiles', () => {
       profilesLookups += 1;
       if (profilesLookups === 1) {
-        return { data: { id: authUser.id }, error: null };
+        return { data: [{ id: NOOR_PROFILE }], error: null };
       }
       return { data: { id: 'mentioned-user-1' }, error: null };
     });
@@ -474,14 +479,14 @@ describe('E2E — post create flow', () => {
     });
 
     const draft: Post = makeFeedPost({ content: 'Salam @ahmed, glad to be here!' });
-    await publishPost(draft);
+    await publishPost(draft, NOOR_PROFILE);
 
     // The mention handler should have inserted a notification row.
     const notifInsert = testHooks.insertCalls.find((c) => c.table === 'notifications');
     expect(notifInsert).toBeDefined();
     expect(notifInsert!.rows[0]).toEqual(
       expect.objectContaining({
-        sender_id: authUser.id,
+        sender_id: NOOR_PROFILE,
         receiver_id: 'mentioned-user-1',
         type: 'mention',
         post_id: 'new-post-1',
@@ -492,7 +497,7 @@ describe('E2E — post create flow', () => {
   it('rejects publishPost when there is no authenticated user', async () => {
     testHooks.mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
 
-    await expect(publishPost(makeFeedPost())).rejects.toThrow(/not authenticated/i);
+    await expect(publishPost(makeFeedPost(), NOOR_PROFILE)).rejects.toThrow(/not authenticated/i);
     // Never touches `posts`.
     expect(testHooks.mockFrom).not.toHaveBeenCalledWith('posts');
   });

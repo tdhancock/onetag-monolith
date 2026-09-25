@@ -10,14 +10,15 @@ import { View, Text, Pressable, FlatList, ActivityIndicator } from 'react-native
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
+import { useCurrentProfile } from '../features/profiles';
 import { useBlocksQuery, useBlockToggle, type BlockedUser } from '../features/blocks';
 import UserAvatar from '../components/native/UserAvatar';
 import { ArrowLeftIcon } from '../components/native/Icons';
 
 export default function BlockedUsersScreen() {
   const router = useRouter();
-  const { userProfile } = useApp();
-  const blockerId = userProfile.id || undefined;
+  // Blocks are account-level: a person blocks a person (ONE-21).
+  const { authUserId: blockerId } = useCurrentProfile();
 
   const { data: blockedUsers, isPending, isError, refetch } = useBlocksQuery(blockerId);
   const blockToggle = useBlockToggle(blockerId);

@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../store/AppContext.native';
-import { useFollowCountsQuery, profileKeys } from '../../features/profiles';
+import { useFollowCountsQuery, profileKeys, useCurrentProfile } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
 import {
   getUserPosts,
@@ -68,12 +68,13 @@ const GridTile: React.FC<{ post: Post; onPress: () => void }> = React.memo(({ po
 // ─── Profile Screen ──────────────────────────────
 
 export default function ProfileScreen() {
-  const { userProfile, addToast } = useApp();
+  const { addToast } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
   const queryClient = useQueryClient();
 
   // Follow counts come from the query the follow toggle moves optimistically
   // (ONE-15), so following someone updates this screen without a refetch.
-  const { data: followCounts } = useFollowCountsQuery(userProfile?.id || undefined);
+  const { data: followCounts } = useFollowCountsQuery(profileId);
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<TabType>('posts');
@@ -86,12 +87,12 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchAll = useCallback(async () => {
-    if (!userProfile?.id) return;
+    if (!profileId) return;
     try {
       const [userPosts, userReposts, userSaved] = await Promise.all([
-        getUserPosts(userProfile.id),
-        getUserReposts(userProfile.id),
-        getSavedPosts(userProfile.id),
+        getUserPosts(profileId),
+        getUserReposts(profileId),
+        getSavedPosts(profileId),
       ]);
       setPosts(userPosts);
       setReposts(userReposts);
@@ -102,7 +103,7 @@ export default function ProfileScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [userProfile?.id]);
+  }, [profileId]);
 
   useEffect(() => {
     fetchAll();
@@ -111,9 +112,9 @@ export default function ProfileScreen() {
   // Realtime, through the shared bridge (ONE-16).
   useRealtimeSync({
     table: 'posts',
-    filter: `user_id=eq.${userProfile?.id ?? ''}`,
-    queryKey: profileKeys.posts(userProfile?.id ?? ''),
-    enabled: Boolean(userProfile?.id),
+    filter: `user_id=eq.${profileId ?? ''}`,
+    queryKey: profileKeys.posts(profileId ?? ''),
+    enabled: Boolean(profileId),
     onInsert: () => { fetchAll(); return true; },
     onUpdate: () => { fetchAll(); return true; },
     onDelete: () => { fetchAll(); return true; },
@@ -123,16 +124,16 @@ export default function ProfileScreen() {
   // system: a follow of this user, and a follow made by them.
   useRealtimeSync({
     table: 'follows',
-    filter: `followed_id=eq.${userProfile?.id ?? ''}`,
-    queryKey: profileKeys.counts(userProfile?.id ?? ''),
-    enabled: Boolean(userProfile?.id),
+    filter: `followed_id=eq.${profileId ?? ''}`,
+    queryKey: profileKeys.counts(profileId ?? ''),
+    enabled: Boolean(profileId),
   });
 
   useRealtimeSync({
     table: 'follows',
-    filter: `follower_id=eq.${userProfile?.id ?? ''}`,
-    queryKey: profileKeys.counts(userProfile?.id ?? ''),
-    enabled: Boolean(userProfile?.id),
+    filter: `follower_id=eq.${profileId ?? ''}`,
+    queryKey: profileKeys.counts(profileId ?? ''),
+    enabled: Boolean(profileId),
   });
 
   const onRefresh = useCallback(async () => {
@@ -188,14 +189,14 @@ export default function ProfileScreen() {
               <Text className="text-gray-500 text-sm">Posts</Text>
             </View>
             <Pressable
-              onPress={() => router.push({ pathname: '/user-list', params: { type: 'followers', userId: userProfile.id, title: 'Followers' } })}
+              onPress={() => router.push({ pathname: '/user-list', params: { type: 'followers', userId: profileId, title: 'Followers' } })}
               className="items-center"
             >
               <Text className="text-white font-bold text-lg">{followCounts?.followers ?? 0}</Text>
               <Text className="text-gray-500 text-sm">Followers</Text>
             </Pressable>
             <Pressable
-              onPress={() => router.push({ pathname: '/user-list', params: { type: 'following', userId: userProfile.id, title: 'Following' } })}
+              onPress={() => router.push({ pathname: '/user-list', params: { type: 'following', userId: profileId, title: 'Following' } })}
               className="items-center"
             >
               <Text className="text-white font-bold text-lg">{followCounts?.following ?? 0}</Text>

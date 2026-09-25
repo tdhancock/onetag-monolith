@@ -35,19 +35,26 @@ const buildUsernameCandidate = (base: string, attempt: number, userId: string): 
     return `${trimmedBase}_${suffix}`.slice(0, 20);
 };
 
-export const profileExists = async (userId: string): Promise<boolean> => {
+/**
+ * Whether an account owns at least one profile.
+ *
+ * By `user_id`, the account: since ONE-21 a profile's own id is not the auth
+ * user id, so looking a profile up by `id = auth id` finds nothing for any
+ * account created after the migration.
+ */
+export const profileExists = async (authUserId: string): Promise<boolean> => {
     const { data, error } = await supabase
         .from('profiles')
         .select('id')
-        .eq('id', userId)
-        .maybeSingle();
+        .eq('user_id', authUserId)
+        .limit(1);
 
     if (error) {
         console.error('Profile check error:', error.message || error);
         return false;
     }
 
-    return Boolean(data);
+    return Boolean(data && data.length > 0);
 };
 
 export const ensureProfileRowForUser = async (user: User): Promise<boolean> => {
@@ -69,18 +76,20 @@ export const ensureProfileRowForUser = async (user: User): Promise<boolean> => {
     for (let attempt = 0; attempt < 6; attempt += 1) {
         const username = buildUsernameCandidate(baseUsername, attempt, user.id);
 
+        // The account's Individual Profile, with a fresh id. An insert, not
+        // an upsert: this only runs when the account has no profile, and the
+        // signup trigger may create one concurrently — a unique violation
+        // then falls through to the final existence check below.
         const { error } = await supabase
             .from('profiles')
-            .upsert(
-                {
-                    id: user.id,
-                    username,
-                    full_name: fullName,
-                    avatar_url: avatarUrl,
-                    bio,
-                },
-                { onConflict: 'id' },
-            );
+            .insert({
+                user_id: user.id,
+                profile_type: 'individual',
+                username,
+                full_name: fullName,
+                avatar_url: avatarUrl,
+                bio,
+            });
 
         if (!error) {
             return true;

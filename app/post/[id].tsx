@@ -5,19 +5,21 @@ import { View, Text, ScrollView, ActivityIndicator, RefreshControl } from 'react
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
+import { useCurrentProfile } from '../../features/profiles';
 import { usePostQuery } from '../../features/posts';
 import PostCard from '../../components/native/PostCard';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { isUserBlocked, userProfile } = useApp();
+  const { isUserBlocked } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
 
   // The post is read from the cache entry the like, repost and save toggles
   // and the comment mutations patch (ONE-13, ONE-14). Holding it in local
   // state instead left every one of them invisible on this screen. The viewer
   // id is what marks the post as liked, reposted or saved for this user.
-  const postQuery = usePostQuery(id, userProfile.id || undefined);
+  const postQuery = usePostQuery(id, profileId);
   const post = postQuery.data ?? null;
   const loading = postQuery.isPending;
   const [refreshing, setRefreshing] = useState(false);

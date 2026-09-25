@@ -24,6 +24,7 @@ import { toggleMutationOptions } from '../../../lib/optimisticToggle';
 import type { BlockedUser } from '../../../features/blocks/types';
 import { migrateLocalBlocks, LOCAL_BLOCKS_KEY } from '../../../features/blocks/localMigration';
 import { shouldBlockAfterFlip } from '../../../features/blocks/mutations';
+import { asAuthUserId } from '../../../types';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ const LIST_KEY = ['blocks', 'list', 'me'];
 const blocked = (userId: string, username: string): BlockedUser => ({
   userId,
   username,
+  usernames: [username],
   name: null,
   avatarUrl: null,
   blockedAt: '2026-09-23T00:00:00.000Z',
@@ -177,7 +179,7 @@ describe('migrating the device-local block list', () => {
     const store = fakeStore({ [LOCAL_BLOCKS_KEY]: JSON.stringify(['spammer', 'troll']) });
     const importBlocks = jest.fn(async () => 2);
 
-    await expect(migrateLocalBlocks(store, 'me', importBlocks)).resolves.toBe(2);
+    await expect(migrateLocalBlocks(store, asAuthUserId('me'), importBlocks)).resolves.toBe(2);
 
     expect(importBlocks).toHaveBeenCalledWith('me', ['spammer', 'troll']);
     expect(store.values[LOCAL_BLOCKS_KEY]).toBeUndefined();
@@ -189,7 +191,7 @@ describe('migrating the device-local block list', () => {
     const store = fakeStore({ [LOCAL_BLOCKS_KEY]: JSON.stringify(['spammer']) });
     const importBlocks = jest.fn(async () => { throw new Error('offline'); });
 
-    await migrateLocalBlocks(store, 'me', importBlocks);
+    await migrateLocalBlocks(store, asAuthUserId('me'), importBlocks);
 
     expect(store.values[LOCAL_BLOCKS_KEY]).toBe(JSON.stringify(['spammer']));
   });
@@ -198,8 +200,8 @@ describe('migrating the device-local block list', () => {
     const store = fakeStore({ [LOCAL_BLOCKS_KEY]: JSON.stringify(['spammer']) });
     const importBlocks = jest.fn(async () => 1);
 
-    await migrateLocalBlocks(store, 'me', importBlocks);
-    await expect(migrateLocalBlocks(store, 'me', importBlocks)).resolves.toBeNull();
+    await migrateLocalBlocks(store, asAuthUserId('me'), importBlocks);
+    await expect(migrateLocalBlocks(store, asAuthUserId('me'), importBlocks)).resolves.toBeNull();
 
     expect(importBlocks).toHaveBeenCalledTimes(1);
   });
@@ -208,7 +210,7 @@ describe('migrating the device-local block list', () => {
     const store = fakeStore({ [LOCAL_BLOCKS_KEY]: JSON.stringify([]) });
     const importBlocks = jest.fn(async () => 0);
 
-    await migrateLocalBlocks(store, 'me', importBlocks);
+    await migrateLocalBlocks(store, asAuthUserId('me'), importBlocks);
 
     expect(importBlocks).not.toHaveBeenCalled();
     expect(store.values[LOCAL_BLOCKS_KEY]).toBeUndefined();
@@ -218,7 +220,7 @@ describe('migrating the device-local block list', () => {
     const store = fakeStore({ [LOCAL_BLOCKS_KEY]: '{not json' });
     const importBlocks = jest.fn(async () => 0);
 
-    await expect(migrateLocalBlocks(store, 'me', importBlocks)).resolves.toBeNull();
+    await expect(migrateLocalBlocks(store, asAuthUserId('me'), importBlocks)).resolves.toBeNull();
     expect(importBlocks).not.toHaveBeenCalled();
   });
 
@@ -226,7 +228,7 @@ describe('migrating the device-local block list', () => {
     const store = fakeStore({ [LOCAL_BLOCKS_KEY]: JSON.stringify(['spammer', 42, null]) });
     const importBlocks = jest.fn(async () => 1);
 
-    await migrateLocalBlocks(store, 'me', importBlocks);
+    await migrateLocalBlocks(store, asAuthUserId('me'), importBlocks);
 
     expect(importBlocks).toHaveBeenCalledWith('me', ['spammer']);
   });

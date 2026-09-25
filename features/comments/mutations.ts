@@ -18,6 +18,7 @@ import type { Comment } from './types';
 import type { CommentLikes } from './queries';
 import { postKeys, type Post } from '../posts';
 import { patchLists, useOptimisticToggle } from '../../lib/optimisticToggle';
+import type { ProfileId } from '../../types';
 
 /**
  * Move a post's reply count everywhere it is cached.
@@ -40,7 +41,7 @@ const moveReplyCount = (queryClient: QueryClient, postId: string, delta: number)
 /** A comment the user has just written, before the server has seen it. */
 const optimisticComment = (
   text: string,
-  author: { id?: string; username: string; avatar?: string | null },
+  author: CommentAuthor,
 ): Comment => ({
   id: `temp-${Date.now()}`,
   userId: author.id ?? '',
@@ -53,10 +54,17 @@ const optimisticComment = (
   replies: [],
 } as unknown as Comment);
 
+/** Who is commenting: the profile being acted as, and what to show for it. */
+export interface CommentAuthor {
+  id?: ProfileId;
+  username: string;
+  avatar?: string | null;
+}
+
 export interface AddCommentVariables {
   postId: string;
   text: string;
-  author: { id?: string; username: string; avatar?: string | null };
+  author: CommentAuthor;
 }
 
 /**
@@ -162,9 +170,15 @@ export interface CommentLikeToggle {
  * screen used to keep: a second tap while the first is in flight is gated by
  * the mutation's own pending state.
  */
-export const useToggleCommentLike = (onHaptic?: () => void): CommentLikeToggle => {
+export const useToggleCommentLike = (
+  viewerId: ProfileId | undefined,
+  onHaptic?: () => void,
+): CommentLikeToggle => {
   const mutation = useOptimisticToggle<CommentLikes>({
-    mutationFn: (commentId) => toggleCommentLike(commentId),
+    mutationFn: (commentId) => {
+      if (!viewerId) return Promise.reject(new Error('You must be signed in to like a comment.'));
+      return toggleCommentLike(commentId, viewerId);
+    },
     entityKey: (commentId) => commentKeys.likes(commentId),
     listKey: commentKeys.all,
     entityId: () => '',

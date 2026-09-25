@@ -17,7 +17,7 @@ import { Image } from 'expo-image';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
-import { getUserProfile, searchUsers } from '../features/profiles';
+import { getUserProfile, searchUsers, useCurrentProfile } from '../features/profiles';
 import {
   useConversationsQuery,
   useThreadQuery,
@@ -107,8 +107,9 @@ const SharedUserPreview: React.FC<{ user: SimpleUser; onPress: () => void }> = (
 export default function MessagesScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ chatWith?: string }>();
-  const { userProfile, addToast, triggerHapticFeedback } = useApp();
-  const userId = userProfile?.id || undefined;
+  const { addToast, triggerHapticFeedback } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
+  const userId = profileId;
 
   const [chatWith, setChatWith] = useState<SimpleUser | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -252,8 +253,8 @@ export default function MessagesScreen() {
 
   if (chatWith) {
     const renderMessage = ({ item: msg }: { item: Message }) => {
-      const isMyMessage = msg.sender_id === userProfile?.id;
-      const repliedMsgSender = msg.repliedMessage?.sender_id === userProfile?.id
+      const isMyMessage = msg.sender_id === profileId;
+      const repliedMsgSender = msg.repliedMessage?.sender_id === profileId
         ? userProfile?.username
         : chatWith.username;
 
@@ -348,7 +349,7 @@ export default function MessagesScreen() {
             <View className="px-3 py-2 bg-gray-800 flex-row items-center">
               <View className="flex-1 border-l-2 border-blue-400 pl-2">
                 <Text className="text-sm font-bold text-blue-400">
-                  Replying to @{replyingTo.sender_id === userProfile?.id ? userProfile?.username : chatWith.username}
+                  Replying to @{replyingTo.sender_id === profileId ? userProfile?.username : chatWith.username}
                 </Text>
                 <Text className="text-xs text-gray-300" numberOfLines={1}>{replyingTo.text}</Text>
               </View>

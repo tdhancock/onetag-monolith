@@ -6,6 +6,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { differenceInMinutes, differenceInHours, differenceInDays, differenceInWeeks, differenceInMonths, differenceInYears } from 'date-fns';
 import { useApp } from '../../store/AppContext.native';
+import { useCurrentProfile } from '../../features/profiles';
 import { useLikePost, useRepostPost, useSavePost, useDeletePost } from '../../features/posts';
 import UserAvatar from './UserAvatar';
 import RenderUserContent from './RenderUserContent';
@@ -82,7 +83,8 @@ const PostHeader: React.FC<{
   const [menuVisible, setMenuVisible] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const { addToast } = useApp();
-  const isAdmin = useIsAdmin(useAuthUserId());
+  const { profileId, authUserId } = useCurrentProfile();
+  const isAdmin = useIsAdmin(authUserId);
 
   const reportReasons = [
     "It's spam",
@@ -98,7 +100,8 @@ const PostHeader: React.FC<{
   const handleReport = async (reason: string) => {
     setMenuVisible(false);
     setShowReport(false);
-    const success = await reportPost(post.id, reason);
+    if (!profileId) return;
+    const success = await reportPost(profileId, post.id, reason);
     if (success) {
       addToast('Report submitted. Thank you for your feedback.', 'success');
     } else {
@@ -233,10 +236,10 @@ const PostCard: React.FC<PostCardProps> = ({
   isPreview = false,
 }) => {
   const {
-    userProfile,
     addToast,
     triggerHapticFeedback,
   } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
   const isAdmin = useIsAdmin(useAuthUserId());
   const router = useRouter();
 
@@ -261,9 +264,9 @@ const PostCard: React.FC<PostCardProps> = ({
   );
 
   const deletePost = useDeletePost();
-  const like = useLikePost(userProfile.id, likeHaptic);
-  const repost = useRepostPost(userProfile.id, repostHaptic);
-  const save = useSavePost(userProfile.id, onSaveToggled);
+  const like = useLikePost(profileId, likeHaptic);
+  const repost = useRepostPost(profileId, repostHaptic);
+  const save = useSavePost(profileId, onSaveToggled);
 
   const liked = Boolean(post.isLiked);
   const reposted = Boolean(post.isReposted);

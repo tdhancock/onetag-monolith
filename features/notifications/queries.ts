@@ -4,9 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchNotifications } from './api';
 import { notificationKeys } from './keys';
 import type { Notification } from './types';
+import type { ProfileId } from '../../types';
 
 /** Everything addressed to the signed-in user, newest first. */
-export const useNotificationsQuery = (userId: string | undefined) =>
+export const useNotificationsQuery = (userId: ProfileId | undefined) =>
   useQuery<Notification[]>({
     queryKey: notificationKeys.forUser(userId ?? ''),
     queryFn: () => fetchNotifications(userId!),
@@ -25,7 +26,7 @@ export const unreadCount = (notifications: Notification[] | undefined): number =
  * re-render the badge. Before this, the badge read the whole array off
  * AppContext and filtered it on every render of the tab layout.
  */
-export const useUnreadNotificationCount = (userId: string | undefined): number => {
+export const useUnreadNotificationCount = (userId: ProfileId | undefined): number => {
   const { data } = useQuery<Notification[], Error, number>({
     queryKey: notificationKeys.forUser(userId ?? ''),
     queryFn: () => fetchNotifications(userId!),

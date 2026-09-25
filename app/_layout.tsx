@@ -16,6 +16,7 @@ import { DMMono_500Medium } from '@expo-google-fonts/dm-mono';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import { AppProvider, useApp } from '../store/AppContext.native';
+import { useCurrentProfile } from '../features/profiles';
 import { supabase } from '../services/supabase.native';
 import {
   registerForPushNotifications,
@@ -31,7 +32,8 @@ import QueryProvider from '../lib/QueryProvider';
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
-  const { userProfile, theme } = useApp();
+  const { theme } = useApp();
+  const { authUserId, status: profileStatus } = useCurrentProfile();
   const segments = useSegments();
   const router = useRouter();
   const notificationResponseListener = useRef<Notifications.EventSubscription | null>(null);
@@ -78,18 +80,29 @@ function RootLayoutNav() {
   }, [fontsLoaded]); // segments removed — listener is stable across navigations
 
   // Push notifications registration
+  // Account-scoped: a device registers for the account, never for one of its
+  // profiles (ONE-21), so this keys on the auth user id.
   useEffect(() => {
-    if (!userProfile?.id) return;
+    if (!authUserId) return;
 
     registerForPushNotifications().then(async (token) => {
       if (token) {
-        await savePushToken(userProfile.id, token);
+        await savePushToken(authUserId, token);
       }
     });
 
     // Clear badge on app open
     setBadgeCount(0);
-  }, [userProfile?.id]);
+  }, [authUserId]);
+
+  // A signed-in account with no profile — a failed signup trigger, or a
+  // deleted row — has nothing to act as. Route it to onboarding rather than
+  // letting every query run with an undefined id (ONE-22).
+  useEffect(() => {
+    if (profileStatus === 'missing' && segments[0] !== 'onboarding') {
+      router.replace('/onboarding');
+    }
+  }, [profileStatus, segments, router]);
 
   // Notification tap handler — route to relevant screen
   useEffect(() => {

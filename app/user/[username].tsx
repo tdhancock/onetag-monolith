@@ -17,7 +17,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../store/AppContext.native';
-import { useFollowState, useToggleFollow, useFollowCountsQuery, profileKeys } from '../../features/profiles';
+import { useFollowState, useToggleFollow, useFollowCountsQuery, profileKeys, useCurrentProfile } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
 import {
   getUserProfile,
@@ -88,19 +88,19 @@ export default function UserProfileScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const {
-    userProfile: myProfile,
     isUserBlocked,
     toggleBlockUser,
     addToast,
   } = useApp();
+  const { profile: myProfile, profileId } = useCurrentProfile();
   // Admin is a property of the account, read from `is_admin()` (ONE-20).
   const isAdmin = useIsAdmin(useAuthUserId());
 
   // Follow state and the counts are queries (ONE-15): the button and the
   // follower number move together the moment it is tapped, and revert
   // together if the server refuses.
-  const { isFollowing: isUserFollowing } = useFollowState(myProfile?.id || undefined);
-  const follow = useToggleFollow(myProfile?.id || undefined);
+  const { isFollowing: isUserFollowing } = useFollowState(profileId);
+  const follow = useToggleFollow(profileId);
 
   const [profile, setProfile] = useState<UserProfileType | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -218,7 +218,8 @@ export default function UserProfileScreen() {
       addToast('Unable to report — user not loaded.', 'error');
       return;
     }
-    const success = await reportUser(profile.id, reason);
+    if (!profileId) return;
+    const success = await reportUser(profileId, profile.id, reason);
     if (success) {
       addToast('Report submitted. Thank you for your feedback.', 'success');
     } else {

@@ -16,7 +16,7 @@ import {
 } from '../../services/mediaUpload';
 import { POST_SELECT_QUERY, mapPostData } from '../../services/postRows';
 import type { Post } from './types';
-import type { SimpleUser } from '../../types';
+import type { ProfileId, SimpleUser } from '../../types';
 
 // The post select and row mapper live in services/postRows.ts so features
 // that render a post inside their own rows — messages, stories — can map it
@@ -254,7 +254,14 @@ export const toggleSavePost = async (postId: string, userId: string): Promise<bo
 // Moved here from the old shared service module, whose re-exports of this
 // feature formed an import cycle that crashed the app on boot.
 
-export const publishPost = async (post: Post): Promise<Post | null> => {
+/**
+ * Publish a post as `authorId` — the profile being acted as.
+ *
+ * The auth user is still read, for the one thing that is account-scoped: the
+ * storage path the media is uploaded under (storage RLS keys on auth.uid()).
+ * Everything attributed goes to the profile.
+ */
+export const publishPost = async (post: Post, authorId: ProfileId): Promise<Post | null> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
         console.error("❌ Error publishing post: User not authenticated.");
@@ -279,6 +286,7 @@ export const publishPost = async (post: Post): Promise<Post | null> => {
             // This is the only upload site for post media — callers hand us the
             // local URI and we resolve it here, so nothing uploads twice.
             try {
+                // Account-scoped: storage RLS keys the path on auth.uid(), not a profile.
                 uploadUrl = await uploadMedia(uploadUrl, user.id);
             } catch (uploadError) {
                 throw new MediaUploadError('Your photo could not be uploaded, so the post was not published.', uploadError);
@@ -293,7 +301,7 @@ export const publishPost = async (post: Post): Promise<Post | null> => {
             .from("posts")
             .insert([
                 {
-                    user_id: user.id,
+                    user_id: authorId,
                     content: content,
                     image_url: uploadUrl, // This is now the permanent URL if an image was uploaded
                     media_type: mediaType,
@@ -318,7 +326,7 @@ export const publishPost = async (post: Post): Promise<Post | null> => {
 
         // Handle mentions after post is successfully created
         if (content.trim().length > 0) {
-            await notifyMentionedUsers(content, user.id, data.id, null);
+            await notifyMentionedUsers(content, authorId, data.id, null);
         }
         
         return mapPostData(data);

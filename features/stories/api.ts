@@ -13,6 +13,7 @@ import { ensureProfileRowForUser } from '../../services/profileBootstrap';
 import { isLikelyStoragePolicyError, isStorageBucketMissingError } from '../../services/mediaUpload';
 import { blobToDataUrl, buildTextStoryDataUri, uploadStoryMedia } from '../../services/storyUpload';
 import type { Story, StoryViewer } from './types';
+import type { ProfileId } from '../../types';
 
 /** A story is live for 24 hours after it is posted. */
 export const STORY_LIFETIME_MS = 24 * 60 * 60 * 1000;
@@ -46,23 +47,18 @@ export const mapStoryRow = (s: any): Story => ({
  * of blanking it — which is what the old "don't clear transiently" guard in
  * the home screen was for.
  */
-export const getStories = async (): Promise<Story[]> => {
-  // Don't return early without a user — RLS decides what is visible.
-  const { data: { user } } = await supabase.auth.getUser();
+export const getStories = async (viewerId: ProfileId): Promise<Story[]> => {
+  // Follows belong to the profile being acted as, not the account (ONE-22).
+  const { data: followingData, error: followingError } = await supabase
+    .from('follows')
+    .select('followed_id')
+    .eq('follower_id', viewerId);
 
-  const followingIds: string[] = [];
-  if (user) {
-    const { data: followingData, error: followingError } = await supabase
-      .from('follows')
-      .select('followed_id')
-      .eq('follower_id', user.id);
-    if (!followingError && followingData) {
-      followingIds.push(...followingData.map((f: { followed_id: string }) => f.followed_id));
-    }
-  }
+  const followingIds = !followingError && followingData
+    ? followingData.map((f: { followed_id: string }) => f.followed_id)
+    : [];
 
-  const userIdsToFetch = user ? [...followingIds, user.id] : followingIds;
-  if (userIdsToFetch.length === 0) return [];
+  const userIdsToFetch = [...followingIds, viewerId];
 
   const { data, error } = await supabase
     .from('stories')
@@ -89,7 +85,7 @@ export const getMyStories = async (userId: string): Promise<Story[]> => {
 };
 
 /** One story, if the signed-in user may see it: their own, or someone they follow. */
-export const getStoryById = async (storyId: string): Promise<Story | null> => {
+export const getStoryById = async (storyId: string, viewerId: ProfileId): Promise<Story | null> => {
   const { data: storyData, error } = await supabase
     .from('stories')
     .select(STORY_SELECT)
@@ -101,15 +97,12 @@ export const getStoryById = async (storyId: string): Promise<Story | null> => {
     return null;
   }
 
-  const { data: { user: currentUser } } = await supabase.auth.getUser();
-  if (!currentUser) return null;
-
-  if (currentUser.id === storyData.user_id) return mapStoryRow(storyData);
+  if (viewerId === storyData.user_id) return mapStoryRow(storyData);
 
   const { count, error: followError } = await supabase
     .from('follows')
     .select('*', { count: 'exact', head: true })
-    .eq('follower_id', currentUser.id)
+    .eq('follower_id', viewerId)
     .eq('followed_id', storyData.user_id);
 
   if (followError) {
@@ -120,22 +113,23 @@ export const getStoryById = async (storyId: string): Promise<Story | null> => {
   return count && count > 0 ? mapStoryRow(storyData) : null;
 };
 
-/** Upload a story: an image with an optional caption, or text on its own. */
+/**
+ * Upload a story as `authorId`: an image with an optional caption, or text on
+ * its own.
+ *
+ * The media path is built from the auth user — storage RLS keys on
+ * auth.uid() — and the row is attributed to the author profile. It used to
+ * warn and fall back to the auth user whenever the two differed, which after
+ * ONE-21 is every account's normal state.
+ */
 export const uploadStory = async (
   file: File | Blob | null,
   caption: string | null,
-  userId: string,
+  authorId: ProfileId,
 ): Promise<Story> => {
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
     throw new Error('User not authenticated');
-  }
-
-  if (userId && userId !== user.id) {
-    console.warn('uploadStory user mismatch. Falling back to authenticated user.', {
-      requestedUserId: userId,
-      authenticatedUserId: user.id,
-    });
   }
 
   const profileReady = await ensureProfileRowForUser(user);
@@ -146,6 +140,7 @@ export const uploadStory = async (
   let mediaUrl: string | null = null;
   if (file) {
     try {
+      // Account-scoped: storage RLS keys the path on auth.uid(), not a profile.
       const { bucket, filePath } = await uploadStoryMedia(file, user.id);
       const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(filePath);
       if (!urlData) throw new Error('Could not get public URL for story.');
@@ -168,7 +163,7 @@ export const uploadStory = async (
   const insertStory = async (url: string | null) =>
     supabase
       .from('stories')
-      .insert({ user_id: user.id, media_url: url, caption })
+      .insert({ user_id: authorId, media_url: url, caption })
       .select(STORY_SELECT)
       .single();
 

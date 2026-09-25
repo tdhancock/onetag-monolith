@@ -10,19 +10,20 @@
 // admin flag to `features/admin`, and the refresh-everything call — a hand-rolled
 // refetch — to query invalidation at its one call site.
 //
-// Two pass-throughs remain on the context value, deliberately:
-//   * `userProfile` — the signed-in profile, derived from `features/profiles`.
-//     Held in no state; ONE-22 moves its readers onto `useCurrentProfile()`.
-//   * `isUserBlocked` / `toggleBlockUser` — thin calls into `features/blocks`,
-//     kept because a dozen screens call them by username. They hold no data.
+// One pass-through remains on the context value, deliberately:
+// `isUserBlocked` / `toggleBlockUser` — thin calls into `features/blocks`,
+// kept because a dozen screens call them by username. They hold no data.
+//
+// Who is signed in, and which profile they act as, is `useCurrentProfile()`
+// from features/profiles — no longer handed out here (ONE-22).
 
 import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { useAuthSessionSync, useAuthUserId } from '../features/auth';
+import { useAuthSessionSync } from '../features/auth';
 import { useBlockedUsers, useBlockToggle, migrateLocalBlocks, blockKeys } from '../features/blocks';
-import { useCurrentUserQuery } from '../features/profiles';
+import { useCurrentProfile } from '../features/profiles';
 import { useNotificationsRealtime } from '../features/notifications';
 import { useMessagesRealtime } from '../features/messages';
 import { getJSON, setJSON } from '../services/storage';
@@ -32,7 +33,7 @@ import {
     parseViewedStoryTimestamps,
     serializeViewedStoryTimestamps,
 } from '../lib/viewedStories';
-import type { UserProfile, Toast } from '../types';
+import type { Toast } from '../types';
 
 interface AppState {
     theme: 'light' | 'dark';
@@ -49,12 +50,6 @@ interface AppState {
 }
 
 interface AppContextType extends AppState {
-    /**
-     * The signed-in profile, derived from `features/profiles` — a pass-through,
-     * not state. While loading or signed out it is the placeholder with
-     * `id: ''`, so `userProfile?.id` guards read as "not ready".
-     */
-    userProfile: UserProfile;
     setTheme: (theme: 'light' | 'dark') => void;
     addToast: (message: string, type?: Toast['type']) => void;
     removeToast: (id: string) => void;
@@ -133,38 +128,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         onSyncError: () => addToast('Could not sync your account data. Please try again later.', 'error'),
     });
 
-    const authUserId = useAuthUserId();
-    const { userProfile } = useCurrentUserQuery(authUserId);
+    const { profileId, authUserId } = useCurrentProfile();
 
     // Notifications (ONE-17) and direct messages (ONE-18) stay live for the
-    // whole session, whichever screen is open.
-    useNotificationsRealtime(userProfile.id || undefined);
-    useMessagesRealtime(userProfile.id || undefined);
+    // whole session, whichever screen is open. Both are addressed to the
+    // profile being acted as.
+    useNotificationsRealtime(profileId);
+    useMessagesRealtime(profileId);
 
     // ─── Blocking (pass-through to features/blocks) ────────────────────────
+    //
+    // Account-level: a person blocks a person, so blocks key on the auth user
+    // id, and blocking one of someone's profiles blocks all of them (ONE-21).
 
-    const blocks = useBlockedUsers(userProfile.id || undefined);
-    const blockToggle = useBlockToggle(userProfile.id || undefined);
+    const blocks = useBlockedUsers(authUserId);
+    const blockToggle = useBlockToggle(authUserId);
 
     // One-time import of the old device-local list (ONE-54).
     useEffect(() => {
-        const blockerId = userProfile.id;
-        if (!blockerId) return;
+        if (!authUserId) return;
 
-        migrateLocalBlocks(AsyncStorage, blockerId).then(imported => {
+        migrateLocalBlocks(AsyncStorage, authUserId).then(imported => {
             if (imported) queryClient.invalidateQueries({ queryKey: blockKeys.all });
         });
-    }, [userProfile.id, queryClient]);
+    }, [authUserId, queryClient]);
 
     const isUserBlocked = blocks.isUserBlocked;
 
     /**
      * Block or unblock by username — what a post, a story or a search result
-     * carries. Blocking needs the id the row is keyed on, so an account not
-     * already in the list is resolved first.
+     * carries. A block names the account behind the handle, so an account
+     * not already in the list is resolved to its `user_id` first.
      */
     const toggleBlockUser = useCallback((username: string) => {
-        const alreadyBlocked = blocks.blockedUsers.find(user => user.username === username);
+        const alreadyBlocked = blocks.blockedUsers.find(user =>
+            user.username === username || user.usernames.includes(username));
 
         if (alreadyBlocked) {
             blockToggle.toggle(alreadyBlocked);
@@ -173,7 +171,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         supabase
             .from('profiles')
-            .select('id, username, full_name, avatar_url')
+            .select('user_id, username, full_name, avatar_url')
             .eq('username', username)
             .maybeSingle()
             .then(({ data, error }) => {
@@ -184,7 +182,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 }
 
                 blockToggle.toggle({
-                    userId: data.id,
+                    userId: data.user_id,
                     username: data.username,
                     name: data.full_name,
                     avatarUrl: data.avatar_url,
@@ -245,7 +243,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const contextValue = useMemo<AppContextType>(() => ({
         ...state,
-        userProfile,
         setTheme,
         addToast,
         removeToast,
@@ -259,7 +256,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         toggleBlockUser,
     }), [
         state,
-        userProfile,
         setTheme,
         addToast,
         removeToast,

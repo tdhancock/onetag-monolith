@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
 import { formatDistanceToNow } from 'date-fns';
 import { useApp } from '../../store/AppContext.native';
+import { useCurrentProfile } from '../../features/profiles';
 import {
   useCommentsQuery,
   useCommentLikesQuery,
@@ -67,13 +68,14 @@ const CommentItem: React.FC<{
   onViewProfile: (username: string) => void;
 }> = React.memo(({ comment, onDelete, currentUserId, currentUsername, onViewProfile }) => {
   const { triggerHapticFeedback } = useApp();
+  const { profileId } = useCurrentProfile();
 
   // Likes are a query and an optimistic toggle (ONE-14). The double-tap
   // protection this screen used to hand-roll is the mutation's own pending
   // state now, so those 110 lines are gone.
-  const { data: likes } = useCommentLikesQuery(comment.id);
+  const { data: likes } = useCommentLikesQuery(comment.id, profileId);
   const likeHaptic = useCallback(() => triggerHapticFeedback(), [triggerHapticFeedback]);
-  const like = useToggleCommentLike(likeHaptic);
+  const like = useToggleCommentLike(profileId, likeHaptic);
 
   const isLiked = Boolean(likes?.isLiked);
   const likesCount = likes?.count ?? 0;
@@ -152,7 +154,8 @@ const CommentItem: React.FC<{
 export default function CommentsScreen() {
   const { postId } = useLocalSearchParams<{ postId: string }>();
   const router = useRouter();
-  const { userProfile, isUserBlocked, addToast } = useApp();
+  const { isUserBlocked, addToast } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
   const inputRef = useRef<TextInput>(null);
 
   const [newCommentText, setNewCommentText] = useState('');
@@ -184,7 +187,7 @@ export default function CommentsScreen() {
       postId,
       text: cleanHtml(text),
       author: {
-        id: userProfile?.id,
+        id: profileId,
         username: userProfile?.username || '',
         avatar: userProfile?.profilePicture,
       },
@@ -214,13 +217,13 @@ export default function CommentsScreen() {
       <CommentItem
         comment={item}
         onDelete={handleDeleteComment}
-        currentUserId={userProfile?.id}
+        currentUserId={profileId}
         currentUsername={userProfile?.username || ''}
         currentAvatar={userProfile?.profilePicture || undefined}
         onViewProfile={handleViewProfile}
       />
     ),
-    [handleDeleteComment, handleViewProfile, userProfile?.id, userProfile?.username],
+    [handleDeleteComment, handleViewProfile, profileId, userProfile?.username],
   );
 
   return (

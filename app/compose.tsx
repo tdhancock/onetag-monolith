@@ -14,6 +14,7 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useApp } from '../store/AppContext.native';
+import { useCurrentProfile } from '../features/profiles';
 import { useCreatePost } from '../features/posts';
 import { MediaUploadError } from '../services/mediaUpload';
 import { cleanHtml } from '../lib/cleanHtml';
@@ -43,12 +44,13 @@ export default function ComposeScreen() {
     mediaHeight?: string;
   }>();
   const router = useRouter();
-  const { userProfile, addToast } = useApp();
+  const { addToast } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
 
   // Publishing is a mutation now (ONE-15). It still rejects when the media
   // could not be uploaded, which is what keeps this screen open with the
   // draft intact (ONE-56).
-  const createPost = useCreatePost();
+  const createPost = useCreatePost(profileId);
   const inputRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
 

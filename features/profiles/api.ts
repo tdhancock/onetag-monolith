@@ -19,7 +19,7 @@ import { readLocalFile } from '../../services/localFile';
 // this api.ts imports no other feature (features/README.md, rule 1).
 import { POST_SELECT_QUERY, mapPostData } from '../../services/postRows';
 import type { Post } from '../../types';
-import type { SimpleUser, UserProfile, ProfileRow, ProfileUpdates } from './types';
+import type { SimpleUser, UserProfile, ProfileRow, ProfileUpdates, AuthUserId, ProfileId } from './types';
 
 export const mapProfileRow = (row: ProfileRow): UserProfile => ({
     id: row.id,
@@ -29,6 +29,8 @@ export const mapProfileRow = (row: ProfileRow): UserProfile => ({
     profilePicture: row.avatar_url,
     isVerified: row.is_verified,
     isPrivate: row.is_private,
+    userId: row.user_id,
+    profileType: row.profile_type,
 } as UserProfile);
 
 /** The inverse of `mapProfileRow`: client field names → `profiles` columns. */
@@ -40,6 +42,28 @@ export const mapProfileUpdatesToRow = (updates: ProfileUpdates): Partial<Profile
     if (updates.profilePicture !== undefined) row.avatar_url = updates.profilePicture;
     if (updates.isPrivate !== undefined) row.is_private = updates.isPrivate;
     return row;
+};
+
+/**
+ * Every profile an account owns, the Individual Profile first.
+ *
+ * Looked up by `user_id` — the account — not by `id`: since ONE-21 a profile
+ * id is its own value, and an account can hold up to one profile of each
+ * type. Empty when the account has none, which the app treats as a reason to
+ * route to onboarding rather than an error.
+ */
+export const fetchMyProfiles = async (authUserId: AuthUserId): Promise<UserProfile[]> => {
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', authUserId);
+
+    if (error) throw error;
+
+    const rank = (type: string | undefined) => (type === 'individual' ? 0 : 1);
+    return (data || [])
+        .map(mapProfileRow)
+        .sort((a: UserProfile, b: UserProfile) => rank(a.profileType) - rank(b.profileType));
 };
 
 export const getUserProfile = async (username: string): Promise<UserProfile | null> => {
@@ -98,14 +122,17 @@ export const getUserReposts = async (userId: string): Promise<Post[]> => {
     }
 };
 
-export const updateUserProfileData = async (updates: ProfileUpdates): Promise<boolean> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
-
+/**
+ * Save edits to one profile — the one being acted as, by its profile id.
+ *
+ * It used to update the row whose id was the auth user id, which only held
+ * while an account had exactly one profile with that id (ONE-22).
+ */
+export const updateUserProfileData = async (profileId: ProfileId, updates: ProfileUpdates): Promise<boolean> => {
     const row = mapProfileUpdatesToRow(updates);
     if (Object.keys(row).length === 0) return true;
 
-    const { error } = await supabase.from('profiles').update(row).eq('id', user.id);
+    const { error } = await supabase.from('profiles').update(row).eq('id', profileId);
     if (error) {
         console.error('Profile update error:', error);
         return false;
@@ -124,6 +151,8 @@ export const updateUserProfileData = async (updates: ProfileUpdates): Promise<bo
  * `auth.uid()`, so the uid must stay the second segment.
  */
 export const uploadAvatar = async (localUri: string): Promise<string | null> => {
+    // Account-scoped on purpose: storage RLS keys on auth.uid(), so the path
+    // is built from the auth user, never from a profile id (ONE-21).
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
@@ -162,7 +191,7 @@ export const getFollowingCount = async (userId: string): Promise<number> => {
     return error ? 0 : count || 0;
 };
 
-export const getFollowingList = async (userId: string): Promise<string[]> => {
+export const getFollowingList = async (userId: ProfileId): Promise<string[]> => {
     const { data, error } = await supabase.from('follows').select('profiles!followed_id(username)').eq('follower_id', userId);
     if (error) return [];
     const unique = new Set<string>();
@@ -224,7 +253,7 @@ export const getFollowingUsers = async (userId: string): Promise<SimpleUser[]> =
     return Array.from(uniqueUsers.values());
 };
 
-export const followUser = async (follower_id: string, followed_id: string): Promise<void> => {
+export const followUser = async (follower_id: ProfileId, followed_id: string): Promise<void> => {
     const { data: existingFollow, error: existingError } = await supabase
         .from('follows')
         .select('follower_id')
@@ -249,7 +278,7 @@ export const followUser = async (follower_id: string, followed_id: string): Prom
     await sendNotification({ senderId: follower_id, receiverId: followed_id, type: 'follow' });
 };
 
-export const unfollowUser = async (follower_id: string, followed_id: string): Promise<void> => {
+export const unfollowUser = async (follower_id: ProfileId, followed_id: string): Promise<void> => {
     const { error } = await supabase.from('follows').delete().match({ follower_id, followed_id });
     if (error) throw error;
 };
@@ -285,7 +314,7 @@ export const searchUsers = async (query: string): Promise<any[]> => {
     return data || [];
 };
 
-export const getSmartUserSuggestions = async(userId: string): Promise<any[]> => {
+export const getSmartUserSuggestions = async(userId: ProfileId): Promise<any[]> => {
     // The original RPC function 'get_user_suggestions' causes a "column reference is ambiguous" SQL error.
     // As we cannot modify the backend function, this implementation replaces it with a client-side query
     // that suggests recent users the current user is not already following.

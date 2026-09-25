@@ -208,7 +208,7 @@ describe('query keys', () => {
 
   it('nests every profile key under the domain, so one invalidation reaches all', () => {
     for (const key of [
-      profileKeys.me(VIEWER),
+      profileKeys.mine(VIEWER),
       profileKeys.byUsername('layla'),
       profileKeys.posts(VIEWER),
       profileKeys.counts(VIEWER),

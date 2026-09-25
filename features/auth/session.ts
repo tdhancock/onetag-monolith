@@ -17,6 +17,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../services/supabase.native';
 import { ensureCurrentUserProfile } from '../../services/profileBootstrap';
 import { authKeys } from './keys';
+import type { AuthUserId } from '../../types';
 
 const SIGNED_IN_EVENTS = new Set(['SIGNED_IN', 'INITIAL_SESSION', 'USER_UPDATED']);
 
@@ -38,7 +39,8 @@ export const useAuthSessionSync = ({ onSyncError }: AuthSessionSyncOptions = {})
       if (session?.user && SIGNED_IN_EVENTS.has(event)) {
         try {
           await ensureCurrentUserProfile();
-          queryClient.setQueryData(authKeys.session(), session.user.id);
+          // The session's user is the account, never a profile.
+          queryClient.setQueryData<AuthUserId | null>(authKeys.session(), session.user.id as AuthUserId);
         } catch (error) {
           console.error('Error syncing user data:', error);
           onError.current?.(error);

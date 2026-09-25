@@ -5,6 +5,7 @@ import { View, Text, TextInput, FlatList, ActivityIndicator, Pressable } from 'r
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
+import { useCurrentProfile } from '../features/profiles';
 import { SendIcon } from '../components/native/Icons';
 import { fetchPostById as getPostById } from '../features/posts';
 import { searchUsers } from '../features/profiles';
@@ -26,17 +27,15 @@ export default function SharePostScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [sending, setSending] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const sendMessage = useSendMessage(currentUserId ?? undefined);
+  // The sender is the profile being acted as. This used to read the auth
+  // user off the session, which stops being a profile id after ONE-21.
+  const { profileId: currentUserId } = useCurrentProfile();
+  const sendMessage = useSendMessage(currentUserId);
 
   useEffect(() => {
     if (!id) return;
     getPostById(id).then((p) => setPost(p ?? null)).catch(() => setPost(null));
   }, [id]);
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));
-  }, []);
 
   const handleSearch = async (text: string) => {
     setSearchQuery(text);

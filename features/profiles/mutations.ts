@@ -16,7 +16,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { followUser, unfollowUser, updateUserProfileData, uploadAvatar } from './api';
 import { profileKeys } from './keys';
 import type { FollowCounts } from './queries';
-import type { ProfileUpdates, UserProfile } from './types';
+import type { ProfileId, ProfileUpdates, UserProfile } from './types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
 
 /** What a screen needs to follow someone. */
@@ -39,7 +39,7 @@ const normalize = (username: string) => username.trim().toLowerCase();
  * moment it is tapped; the target's follower count moves with it and, on
  * failure, both are put back.
  */
-export const useToggleFollow = (viewerId: string | undefined): FollowToggle => {
+export const useToggleFollow = (viewerId: ProfileId | undefined): FollowToggle => {
   const queryClient = useQueryClient();
   const listKey = profileKeys.followingUsernames(viewerId ?? '');
 
@@ -127,27 +127,27 @@ export const useToggleFollow = (viewerId: string | undefined): FollowToggle => {
 /**
  * Save profile edits.
  *
- * Invalidates every cached copy of this person — their own screen reads
- * `profileKeys.me`, everyone else's reads `profileKeys.byUsername` — so a
- * rename or a new bio shows up wherever they appear.
+ * Edits the profile being acted as, by its profile id. Invalidates every
+ * cached copy of this person — the account's own list reads
+ * `profileKeys.mine`, everyone else's screens read `profileKeys.byUsername` —
+ * so a rename or a new bio shows up wherever they appear.
  */
-export const useUpdateProfile = (viewerId: string | undefined) => {
+export const useUpdateProfile = (profileId: ProfileId | undefined) => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (updates: ProfileUpdates): Promise<boolean> => {
-      const saved = await updateUserProfileData(updates);
+      if (!profileId) throw new Error('You must be signed in.');
+      const saved = await updateUserProfileData(profileId, updates);
       if (!saved) throw new Error('Could not save your profile.');
       return saved;
     },
     onSuccess: (_saved, updates) => {
       // Write through so the screen that submitted does not flash the old
       // values while the refetch is in flight.
-      if (viewerId) {
-        queryClient.setQueryData<UserProfile>(profileKeys.me(viewerId), (profile) =>
-          profile ? { ...profile, ...updates } : profile,
-        );
-      }
+      queryClient.setQueriesData<UserProfile[]>({ queryKey: profileKeys.allMine() }, (profiles) =>
+        profiles?.map((profile) => (profile.id === profileId ? { ...profile, ...updates } : profile)),
+      );
 
       queryClient.invalidateQueries({ queryKey: profileKeys.all });
     },

@@ -15,6 +15,7 @@ import { fetchMessageById, hydrateMessageRow } from './api';
 import { addMessageToThread, addUnreadSender } from './cache';
 import { messageKeys } from './keys';
 import type { Message } from './types';
+import type { ProfileId } from '../../types';
 
 /**
  * Fold an INSERT addressed to this user into the cache.
@@ -61,7 +62,7 @@ export const applyIncomingMessage = (
  * reach the thread through the send mutation; if one arrives here as well it
  * lands on the same id and is merged, not duplicated.
  */
-export const useMessagesRealtime = (userId: string | undefined): void => {
+export const useMessagesRealtime = (userId: ProfileId | undefined): void => {
   const queryClient = useQueryClient();
 
   useRealtimeSync({

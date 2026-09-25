@@ -21,14 +21,18 @@ export {
   checkUsernameExists,
   searchUsers,
   getSmartUserSuggestions,
+  fetchMyProfiles,
 } from './api';
 
 export { profileKeys } from './keys';
 
-export type { UserProfile, SimpleUser, ProfileRow, ProfileUpdates } from './types';
+export type { UserProfile, SimpleUser, ProfileRow, ProfileUpdates, ProfileType, AuthUserId, ProfileId } from './types';
+export { asAuthUserId, asProfileId } from './types';
 
 export {
-  useCurrentUserQuery,
+  useMyProfilesQuery,
+  useCurrentProfile,
+  resolveCurrentProfile,
   useProfileQuery,
   useProfilePostsQuery,
   useProfileRepostsQuery,
@@ -40,7 +44,7 @@ export {
   useUserSuggestionsQuery,
   PLACEHOLDER_PROFILE,
 } from './queries';
-export type { FollowCounts } from './queries';
+export type { FollowCounts, CurrentProfile, CurrentProfileStatus } from './queries';
 
 export { useToggleFollow, useUpdateProfile, useUploadAvatar } from './mutations';
 export type { FollowToggle, FollowTarget } from './mutations';

@@ -2,6 +2,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { authKeys } from './keys';
+// The account id brand lives on shared ground, beside UserProfile.
+import type { AuthUserId } from '../../types';
 
 /**
  * The signed-in account's auth user id, or undefined when signed out or not
@@ -15,8 +17,8 @@ import { authKeys } from './keys';
  * This is the **account**, not a profile. Anything attributed to a person —
  * a post, a like, a follow — wants a profile id instead.
  */
-export const useAuthUserId = (): string | undefined => {
-  const { data } = useQuery<string | null>({
+export const useAuthUserId = (): AuthUserId | undefined => {
+  const { data } = useQuery<AuthUserId | null>({
     queryKey: authKeys.session(),
     queryFn: () => null,
     enabled: false,

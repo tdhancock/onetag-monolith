@@ -4,7 +4,7 @@
 // `stories`; only new UI strings say OneSnap (ONE-19). `Story` stays in the
 // repo-root `types.ts` with the rest of the shared vocabulary.
 
-import type { Story } from '../../types';
+import type { ProfileId, Story } from '../../types';
 
 export type { Story };
 
@@ -17,7 +17,8 @@ export interface StoryViewer {
 
 /** Who a new story is attributed to, for the optimistic entry. */
 export interface StoryAuthor {
-  id: string;
+  /** The profile the story is posted as. */
+  id: ProfileId;
   username: string;
   avatar: string | null;
 }

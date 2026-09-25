@@ -7,13 +7,14 @@ const base = createQueryKeys('profiles');
 export const profileKeys = {
   ...base,
   /**
-   * The signed-in user's own identity row.
+   * Every profile the signed-in account owns (ONE-22).
    *
-   * Separate from `detail`, which is keyed by username: the current user is
-   * looked up by auth id, and the app reads it long before it knows what
-   * their username is.
+   * Keyed by the auth user id — the account — because that is all the app
+   * knows before it knows which profile it is acting as.
    */
-  me: (userId: string) => [...base.all, 'me', userId] as const,
+  mine: (authUserId: string) => [...base.all, 'mine', authUserId] as const,
+  /** Every account's `mine` list — for writes that know the profile, not the account. */
+  allMine: () => [...base.all, 'mine'] as const,
   /** Someone's profile, by username — what every screen navigates with. */
   byUsername: (username: string) => [...base.details(), username] as const,
   /** The posts on a profile screen. */

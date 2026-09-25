@@ -73,6 +73,17 @@ jest.mock('../../store/AppContext.native', () => ({
   useApp: () => mockAppState,
 }), { virtual: true });
 
+// The acting profile comes from features/profiles since ONE-22, not the context.
+jest.mock('../../features/profiles', () => ({
+  __esModule: true,
+  useCurrentProfile: () => ({
+    profile: { id: mockAppState.userProfile.id, username: 'u1' },
+    profileId: mockAppState.userProfile.id,
+    authUserId: 'auth-u1',
+    status: 'ready',
+  }),
+}), { virtual: true });
+
 jest.mock('../../features/notifications', () => ({
   __esModule: true,
   useUnreadNotificationCount: () => mockNotifications.current.filter((n) => !n.is_read).length,

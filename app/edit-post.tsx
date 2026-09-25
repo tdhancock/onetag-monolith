@@ -14,6 +14,7 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
+import { useCurrentProfile } from '../features/profiles';
 import { useUpdatePost } from '../features/posts';
 import { fetchPostById as getPostById } from '../features/posts';
 import type { Post } from '../types';
@@ -23,7 +24,8 @@ const MAX_CHARS = 280;
 export default function EditPostScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { userProfile, addToast } = useApp();
+  const { addToast } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
   const updatePost = useUpdatePost();
 
   const [post, setPost] = useState<Post | null>(null);

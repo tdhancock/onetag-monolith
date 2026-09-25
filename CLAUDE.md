@@ -70,8 +70,9 @@ Server data belongs in **TanStack Query**, in `features/`. `AppContext` holds on
 server owns — `theme`, `toasts`, `tooltip`, `topNotification`, `isViewingStory`, and the
 per-device `viewedStoryTimestamps`. Even the auth session is a query (`features/auth`,
 `useAuthUserId()`), and so is the admin flag (`features/admin`, `useIsAdmin()`).
-`useApp()` still hands out `userProfile` and the block pass-throughs, derived from queries
-and holding no state of their own. Putting server data back into `AppContext` is
+The signed-in identity is `useCurrentProfile()` from `features/profiles` — the acting
+`profileId`, the account's `authUserId`, and a display `profile`. `useApp()` keeps only the
+block pass-throughs, which hold no state. Putting server data back into `AppContext` is
 the mistake this rule exists to prevent; if a ticket asks you to, the ticket is wrong — say so
 on the ticket rather than working around it.
 
@@ -158,6 +159,10 @@ Agreement, along with the rest.
   Individual Profile on the single `profiles` table. Content is attributed to the **active
   profile**, never the auth user — but **storage upload paths stay keyed by the auth user id**,
   because storage RLS gates on `auth.uid()` appearing in the folder name.
+  The types enforce it: `ProfileId` and `AuthUserId` are branded (repo-root `types.ts`). Hooks
+  that act as someone take a `ProfileId` from `useCurrentProfile()`; account-scoped ones — push
+  tokens, blocks, admin, storage paths — take an `AuthUserId`. RLS ownership goes through
+  `public.owns_profile()`; `npm run db:test` runs the pgTAP RLS suite against the local stack.
 - **Tag URLs are built in exactly one place**, `lib/tagLinks.ts`, from
   `EXPO_PUBLIC_TAG_BASE_URL`. Never hardcode or assemble one elsewhere — these get printed onto
   physical objects and cannot be changed afterwards.
