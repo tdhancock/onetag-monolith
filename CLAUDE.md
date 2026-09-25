@@ -42,8 +42,6 @@ under `app/` (ONE-62).
 `store/AppContext.native.tsx` and `services/supabase.native.ts` keep a `.native` suffix left
 over from a web fork deleted in ONE-5. Neither has a non-native twin — import the `.native` one.
 
-**Not here yet:** `lib/tagLinks.ts` (M4). Don't import it before its ticket lands.
-
 ## Commands
 
 ```

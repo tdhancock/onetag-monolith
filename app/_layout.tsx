@@ -58,7 +58,11 @@ function RootLayoutNav() {
     // Initial session check + redirect
     supabase.auth.getSession().then(({ data: { session } }) => {
       const inAuthGroup = segments[0] === '(auth)';
-      if (!session && !inAuthGroup) {
+      // Tag Resolution never needs an account (ONE-30): a stranger who
+      // opens a scanned sticker's link must land on its Destination, not on
+      // the sign-in screen.
+      const resolvingTag = segments[0] === 't';
+      if (!session && !inAuthGroup && !resolvingTag) {
         router.replace('/(auth)/login');
       } else if (session && inAuthGroup) {
         router.replace('/(tabs)');

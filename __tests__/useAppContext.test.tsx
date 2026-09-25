@@ -496,6 +496,18 @@ describe('useApp (AppContext) — auth session transitions', () => {
     }
   });
 
+  it('records a launch with no session as signed out, not as unknown (ONE-30)', async () => {
+    const handle = mountWithProvider();
+    try {
+      expect(sessionOf(handle)).toBeUndefined();
+      await fire('INITIAL_SESSION', null);
+      expect(sessionOf(handle)).toBeNull();
+      expect(ensureCurrentUserProfile).not.toHaveBeenCalled();
+    } finally {
+      unmount(handle);
+    }
+  });
+
   it('treats the session restored on launch as a sign-in', async () => {
     const handle = mountWithProvider();
     try {

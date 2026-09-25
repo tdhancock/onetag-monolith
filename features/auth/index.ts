@@ -3,6 +3,7 @@
 // No api.ts: the session is pushed by Supabase, never fetched.
 
 export { authKeys } from './keys';
-export { useAuthUserId } from './queries';
+export { useAuthUserId, useAuthStatus } from './queries';
+export type { AuthStatus } from './queries';
 export { useAuthSessionSync } from './session';
 export type { AuthSessionSyncOptions } from './session';
