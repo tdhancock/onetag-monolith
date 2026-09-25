@@ -5,7 +5,7 @@
 // re-exported so callers can take everything about the domain from
 // `features/profiles`.
 
-export type { UserProfile, SimpleUser, ProfileType } from '../../types';
+export type { UserProfile, SimpleUser, ProfileType, BusinessProfileFields } from '../../types';
 
 // ─── Identity ─────────────────────────────────────────────────────────
 //
@@ -29,9 +29,26 @@ export type ProfileRow = {
     is_private: boolean;
     user_id: string;
     profile_type: import('../../types').ProfileType;
+    /**
+     * The embedded extension row, when the select asked for it (ONE-23).
+     * PostgREST returns a one-to-one embed as an object, but an older server
+     * or a mock may hand back a one-element array, so both are accepted.
+     */
+    business_profiles?: BusinessProfileRow | BusinessProfileRow[] | null;
+};
+
+/** The `business_profiles` columns this feature reads (ONE-23). */
+export type BusinessProfileRow = {
+    category: string | null;
+    website: string | null;
+    location: string | null;
+    logo_url: string | null;
 };
 
 /** The inverse of `mapProfileRow`: client field names → `profiles` columns. */
 export type ProfileUpdates = Partial<
     Pick<import('../../types').UserProfile, 'name' | 'username' | 'bio' | 'profilePicture' | 'isPrivate'>
 >;
+
+/** Edits to a business profile's own fields, in client field names. */
+export type BusinessProfileUpdates = Partial<import('../../types').BusinessProfileFields>;

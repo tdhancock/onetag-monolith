@@ -61,6 +61,23 @@ export interface UserProfile {
     isVerified?: boolean;
     /** `profiles.is_private`: only followers see this profile's posts (ONE-58). */
     isPrivate?: boolean;
+    /**
+     * A Business Profile's own fields, from its `business_profiles` row
+     * (ONE-23). Read only when `profileType` is `business` — what a profile
+     * shows is decided by its type, never by whether this happens to be set.
+     * Null for a business profile with no row yet.
+     */
+    business?: BusinessProfileFields | null;
+}
+
+/** The fields only a Business Profile carries (`business_profiles`, ONE-23). */
+export interface BusinessProfileFields {
+    category: string | null;
+    /** Normalized, scheme included, so it opens wherever it is tapped. */
+    website: string | null;
+    location: string | null;
+    /** In the `avatars` bucket, under the account's folder like an avatar. */
+    logoUrl: string | null;
 }
 
 export interface Post {

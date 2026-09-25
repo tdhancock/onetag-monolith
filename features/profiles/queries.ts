@@ -15,7 +15,8 @@ import {
   getFollowingList,
   getSmartUserSuggestions,
 } from './api';
-import { profileKeys } from './keys';
+import { activeProfileKeys, profileKeys } from './keys';
+import { chooseActiveProfile, readActiveProfileId } from './activeProfile';
 import type { Post } from '../posts';
 import { asProfileId } from './types';
 import type { AuthUserId, ProfileId, SimpleUser, UserProfile } from './types';
@@ -41,6 +42,25 @@ export const useMyProfilesQuery = (authUserId: AuthUserId | undefined) =>
     queryKey: profileKeys.mine(authUserId ?? ''),
     queryFn: () => fetchMyProfiles(authUserId!),
     enabled: Boolean(authUserId),
+  });
+
+/**
+ * The profile id this account chose to act as on this device, or null for no
+ * choice (ONE-24). Read from AsyncStorage once and then held here; the
+ * switch writes both. Not trusted on its own — `useCurrentProfile` uses it
+ * only when the account owns that profile.
+ */
+export const useActiveProfileIdQuery = (authUserId: AuthUserId | undefined) =>
+  useQuery<string | null>({
+    queryKey: activeProfileKeys.forAccount(authUserId ?? ''),
+    queryFn: () => readActiveProfileId(authUserId!),
+    enabled: Boolean(authUserId),
+    // Only this device writes it, and the switch writes the cache directly.
+    staleTime: Infinity,
+    retry: false,
+    // A read of local storage, not the network: it must resolve offline too,
+    // or the app would sit in `loading` with no connection.
+    networkMode: 'always',
   });
 
 /** Where the current profile is in its lifecycle. */
@@ -76,20 +96,25 @@ export interface CurrentProfile {
 }
 
 /**
- * The profile the signed-in account is acting as.
+ * The profile the signed-in account is acting as — the *active profile*
+ * (ONE-24).
  *
- * With one profile per account this is the only one; with two it is the
- * Individual Profile until the switcher lands (ONE-24), which will choose
- * among `useMyProfilesQuery()` behind this same signature — callers do not
- * change when it does.
+ * The account's stored choice when it owns that profile, otherwise its
+ * Individual Profile. Every write in the app is attributed to the
+ * `profileId` this returns, so it stays `loading` until both the account's
+ * profiles and its stored choice have been read: acting as the Individual
+ * for the moment before a Business choice loads would be a misattribution,
+ * not a flicker.
  */
 export const useCurrentProfile = (): CurrentProfile => {
   const authUserId = useAuthUserId();
-  const { data: profiles, isPending } = useMyProfilesQuery(authUserId);
+  const { data: profiles, isPending: profilesPending } = useMyProfilesQuery(authUserId);
+  const { data: activeProfileId, isPending: choicePending } = useActiveProfileIdQuery(authUserId);
+  const isPending = profilesPending || choicePending;
 
   return useMemo(
-    () => resolveCurrentProfile(authUserId, profiles, isPending),
-    [authUserId, profiles, isPending],
+    () => resolveCurrentProfile(authUserId, profiles, isPending, activeProfileId),
+    [authUserId, profiles, isPending, activeProfileId],
   );
 };
 
@@ -101,6 +126,8 @@ export const resolveCurrentProfile = (
   authUserId: AuthUserId | undefined,
   profiles: UserProfile[] | undefined,
   isPending: boolean,
+  /** The stored choice, trusted only if `profiles` contains it. */
+  activeProfileId?: string | null,
 ): CurrentProfile => {
   if (!authUserId) {
     return { profile: PLACEHOLDER_PROFILE, profileId: undefined, authUserId: undefined, status: 'signed-out' };
@@ -109,9 +136,7 @@ export const resolveCurrentProfile = (
     return { profile: PLACEHOLDER_PROFILE, profileId: undefined, authUserId, status: 'loading' };
   }
 
-  // Profiles arrive Individual first (fetchMyProfiles); the switcher (ONE-24)
-  // replaces this choice without changing the signature.
-  const acting = profiles[0];
+  const acting = chooseActiveProfile(profiles, activeProfileId);
   if (!acting) {
     return { profile: PLACEHOLDER_PROFILE, profileId: undefined, authUserId, status: 'missing' };
   }

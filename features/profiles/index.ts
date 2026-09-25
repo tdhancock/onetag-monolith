@@ -22,15 +22,44 @@ export {
   searchUsers,
   getSmartUserSuggestions,
   fetchMyProfiles,
+  updateBusinessProfile,
+  mapBusinessUpdatesToRow,
+  PROFILE_SELECT,
+  createProfile,
+  createProfileFailureFor,
+  CreateProfileError,
 } from './api';
+export type { NewProfile, CreateProfileFailure } from './api';
 
-export { profileKeys } from './keys';
+export { profileKeys, activeProfileKeys } from './keys';
+export {
+  activeProfileStorageKey,
+  readActiveProfileId,
+  chooseActiveProfile,
+  isProfileScoped,
+  isProfileSwitch,
+  resetProfileScopedQueries,
+  useProfileSwitchReset,
+} from './activeProfile';
+export type { ActingIdentity } from './activeProfile';
 
-export type { UserProfile, SimpleUser, ProfileRow, ProfileUpdates, ProfileType, AuthUserId, ProfileId } from './types';
+export type {
+  UserProfile,
+  SimpleUser,
+  ProfileRow,
+  ProfileUpdates,
+  ProfileType,
+  AuthUserId,
+  ProfileId,
+  BusinessProfileFields,
+  BusinessProfileRow,
+  BusinessProfileUpdates,
+} from './types';
 export { asAuthUserId, asProfileId } from './types';
 
 export {
   useMyProfilesQuery,
+  useActiveProfileIdQuery,
   useCurrentProfile,
   resolveCurrentProfile,
   useProfileQuery,
@@ -46,5 +75,13 @@ export {
 } from './queries';
 export type { FollowCounts, CurrentProfile, CurrentProfileStatus } from './queries';
 
-export { useToggleFollow, useUpdateProfile, useUploadAvatar } from './mutations';
+export {
+  useToggleFollow,
+  useUpdateProfile,
+  useUpdateBusinessProfile,
+  useUploadAvatar,
+  useSetActiveProfile,
+  setActiveProfile,
+  useCreateProfile,
+} from './mutations';
 export type { FollowToggle, FollowTarget } from './mutations';

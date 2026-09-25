@@ -1,12 +1,20 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Avatar, Pressable, Skeleton } from './ui';
+import { View, Text, Linking, StyleSheet } from 'react-native';
+import { Avatar, MonoLabel, Pressable, Skeleton } from './ui';
 import { VerifiedIcon } from './Icons';
 import RenderUserContent from './RenderUserContent';
-import { getBioText, getStatCell, PROFILE_STAT_COLUMNS, type ProfileStats } from '../../lib/screens/profile';
+import {
+  businessDetailsFor,
+  getBioText,
+  getStatCell,
+  PROFILE_STAT_COLUMNS,
+  type BusinessAwareProfile,
+  type BusinessDetails,
+  type ProfileStats,
+} from '../../lib/screens/profile';
 import { color, space, type } from '../../theme/tokens';
 
-export interface ProfileHeaderProfile {
+export interface ProfileHeaderProfile extends BusinessAwareProfile {
   username: string;
   name?: string;
   bio?: string | null;
@@ -55,9 +63,43 @@ const Stat: React.FC<{ value: string; label: string; onPress?: () => void }> = (
 };
 
 /**
+ * A business profile's category, location and website (ONE-23). The category
+ * sits under the handle as a mono label; location and website follow the bio,
+ * the website opening in the browser.
+ */
+const BusinessLines: React.FC<{ details: BusinessDetails }> = ({ details }) => {
+  if (!details.location && !details.website) return null;
+  const website = details.website;
+  return (
+    <View style={styles.business}>
+      {details.location ? (
+        <Text style={styles.location} accessibilityLabel={`Location, ${details.location}`}>
+          {details.location}
+        </Text>
+      ) : null}
+      {website ? (
+        <Pressable
+          onPress={() => { void Linking.openURL(website.url).catch(() => undefined); }}
+          accessibilityRole="link"
+          accessibilityLabel={`Website, ${website.label}`}
+          hitSlop={8}
+          style={styles.websiteHit}
+        >
+          <Text style={styles.website} numberOfLines={1}>
+            {website.label}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+};
+
+/**
  * The top of a profile: an 88pt avatar beside Posts / Followers / Following,
  * then the name with its verified mark, the handle, the bio, and an action
- * row. Shared by your own profile and everyone else's.
+ * row. Shared by your own profile and everyone else's. A business profile
+ * adds its category, location and website; an individual one shows nothing
+ * more than it always has.
  */
 const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   profile,
@@ -67,6 +109,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   actions,
 }) => {
   const bio = getBioText(profile);
+  const business = businessDetailsFor(profile);
   const onPress = { Posts: undefined, Followers: onPressFollowers, Following: onPressFollowing };
 
   return (
@@ -93,7 +136,13 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
           ) : null}
         </View>
         <Text style={styles.handle}>@{profile.username}</Text>
+        {business?.category ? (
+          <MonoLabel color="textMid" style={styles.category}>
+            {business.category}
+          </MonoLabel>
+        ) : null}
         {bio ? <RenderUserContent content={bio} style={styles.bio} /> : null}
+        {business ? <BusinessLines details={business} /> : null}
       </View>
 
       {actions ? <View style={styles.actions}>{actions}</View> : null}
@@ -187,6 +236,26 @@ const styles = StyleSheet.create({
     marginTop: space.sm,
     fontSize: 15,
     lineHeight: 22,
+  },
+  category: {
+    marginTop: space.sm,
+  },
+  business: {
+    marginTop: space.sm,
+    gap: 2,
+  },
+  location: {
+    fontFamily: type.body,
+    fontSize: 14,
+    color: color.textMid,
+  },
+  websiteHit: {
+    alignSelf: 'flex-start',
+  },
+  website: {
+    fontFamily: type.bodyBold,
+    fontSize: 14,
+    color: color.text,
   },
   actions: {
     flexDirection: 'row',

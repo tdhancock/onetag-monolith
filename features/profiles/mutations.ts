@@ -12,11 +12,23 @@
 // sibling callbacks below and restored by the same failure path.
 
 import { useCallback, useRef } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { followUser, unfollowUser, updateUserProfileData, uploadAvatar } from './api';
-import { profileKeys } from './keys';
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useAuthUserId } from '../auth';
+import {
+  createProfile,
+  fetchMyProfiles,
+  followUser,
+  unfollowUser,
+  updateBusinessProfile,
+  updateUserProfileData,
+  uploadAvatar,
+  type NewProfile,
+} from './api';
+import { activeProfileKeys, profileKeys } from './keys';
+import { writeActiveProfileId } from './activeProfile';
+import { asProfileId } from './types';
 import type { FollowCounts } from './queries';
-import type { ProfileId, ProfileUpdates, UserProfile } from './types';
+import type { AuthUserId, BusinessProfileUpdates, ProfileId, ProfileUpdates, UserProfile } from './types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
 
 /** What a screen needs to follow someone. */
@@ -154,6 +166,45 @@ export const useUpdateProfile = (profileId: ProfileId | undefined) => {
   });
 };
 
+/**
+ * Save a business profile's category, website, location or logo (ONE-23).
+ *
+ * The same cache treatment as `useUpdateProfile`: written through to the
+ * account's own list so the edit screen's caller shows the new values at
+ * once, then every profile query is invalidated so other screens catch up.
+ */
+export const useUpdateBusinessProfile = (profileId: ProfileId | undefined) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (updates: BusinessProfileUpdates): Promise<void> => {
+      if (!profileId) throw new Error('You must be signed in.');
+      await updateBusinessProfile(profileId, updates);
+    },
+    onSuccess: (_saved, updates) => {
+      queryClient.setQueriesData<UserProfile[]>({ queryKey: profileKeys.allMine() }, (profiles) =>
+        profiles?.map((profile) =>
+          profile.id === profileId
+            ? {
+                ...profile,
+                business: {
+                  category: null,
+                  website: null,
+                  location: null,
+                  logoUrl: null,
+                  ...profile.business,
+                  ...updates,
+                },
+              }
+            : profile,
+        ),
+      );
+
+      queryClient.invalidateQueries({ queryKey: profileKeys.all });
+    },
+  });
+};
+
 /** Upload a new avatar and hand back its public URL for the profile save. */
 export const useUploadAvatar = () =>
   useMutation({
@@ -163,3 +214,86 @@ export const useUploadAvatar = () =>
       return url;
     },
   });
+
+// ─── The active profile (ONE-24) ──────────────────────────────────────
+
+/**
+ * Make one of the account's profiles the one it acts as — the switch itself,
+ * outside the hook so it can be driven directly.
+ *
+ * Refuses a profile the account does not own. Remembers the choice for the
+ * next launch, then updates the cached choice, which moves
+ * `useCurrentProfile()` — and with it every write's attribution — at once.
+ * Push tokens are untouched: they belong to the account and the device.
+ */
+export const setActiveProfile = async (
+  queryClient: QueryClient,
+  authUserId: AuthUserId | undefined,
+  profileId: ProfileId,
+): Promise<void> => {
+  if (!authUserId) throw new Error('You must be signed in.');
+
+  const mineKey = profileKeys.mine(authUserId);
+  const owns = (profiles: UserProfile[] | undefined) => Boolean(profiles?.some(profile => profile.id === profileId));
+
+  // A profile created a moment ago may not be in the cached list yet, so
+  // read the list afresh before refusing.
+  if (!owns(queryClient.getQueryData<UserProfile[]>(mineKey))) {
+    const fresh = await queryClient.fetchQuery({
+      queryKey: mineKey,
+      queryFn: () => fetchMyProfiles(authUserId),
+      staleTime: 0,
+    });
+    if (!owns(fresh)) throw new Error('That profile does not belong to this account.');
+  }
+
+  const choiceKey = activeProfileKeys.forAccount(authUserId);
+  // A read of the stored choice still in flight would land after this and
+  // put the old one back.
+  await queryClient.cancelQueries({ queryKey: choiceKey });
+  await writeActiveProfileId(authUserId, profileId);
+  queryClient.setQueryData<string | null>(choiceKey, profileId);
+};
+
+/**
+ * Switch the profile the account acts as, as a single call — what the
+ * switcher and the create-profile flow drive: `mutate(profileId)`.
+ *
+ * The previous profile's cached feed, notifications and messages are reset
+ * by `useProfileSwitchReset`, which AppProvider mounts, once the screens have
+ * re-rendered as the new profile — see activeProfile.ts for why it waits.
+ */
+export const useSetActiveProfile = () => {
+  const queryClient = useQueryClient();
+  const authUserId = useAuthUserId();
+
+  return useMutation({
+    mutationFn: (profileId: ProfileId) => setActiveProfile(queryClient, authUserId, profileId),
+  });
+};
+
+// ─── Adding a profile (ONE-26) ────────────────────────────────────────
+
+/**
+ * Add a profile to the account and make it the one being acted as.
+ *
+ * Someone who has just created a business profile wants to be in it, so on
+ * success the account's list is refetched — the new profile must be in it
+ * before the switch will accept it — and the switch follows. Rejects with a
+ * `CreateProfileError` naming a taken handle or kind.
+ */
+export const useCreateProfile = () => {
+  const queryClient = useQueryClient();
+  const authUserId = useAuthUserId();
+
+  return useMutation({
+    mutationFn: async (input: NewProfile): Promise<UserProfile> => {
+      if (!authUserId) throw new Error('You must be signed in.');
+      const created = await createProfile(authUserId, input);
+
+      await queryClient.invalidateQueries({ queryKey: profileKeys.mine(authUserId) });
+      await setActiveProfile(queryClient, authUserId, asProfileId(created.id));
+      return created;
+    },
+  });
+};
