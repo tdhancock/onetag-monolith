@@ -1,7 +1,8 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { color, radius, space } from '../../../theme/tokens';
+import Pressable from './Pressable';
 import MonoLabel from './MonoLabel';
 
 export type ButtonVariant = 'primary' | 'outline' | 'inverse';

@@ -14,6 +14,7 @@ import {
   PROFILE_GRID_GAP,
   PROFILE_TAB_LABELS,
   userListEmptyTitle,
+  usernameError,
 } from '../../lib/screens/profile';
 
 describe('profileTabsFor', () => {
@@ -89,5 +90,29 @@ describe('hasProfileChanges', () => {
 
   it('treats a missing field on the profile as empty', () => {
     expect(hasProfileChanges({ username: 'ana' }, { name: '', username: 'ana', bio: '' }, false)).toBe(false);
+  });
+});
+
+describe('usernameError', () => {
+  // The rule sign-up has always applied, now shared with Edit profile.
+  it('accepts lowercase letters, numbers, "_" and "." within 3 to 20 characters', () => {
+    expect(usernameError('ana_b.3')).toBeNull();
+    expect(usernameError('abc')).toBeNull();
+    expect(usernameError('a'.repeat(20))).toBeNull();
+  });
+
+  it('refuses spaces, capitals and other characters, which break profile links', () => {
+    expect(usernameError('ana b')).toMatch(/lowercase letters/);
+    expect(usernameError('Ana')).toMatch(/lowercase letters/);
+    expect(usernameError('ana!')).toMatch(/lowercase letters/);
+  });
+
+  it('refuses a handle outside the length the database allows', () => {
+    expect(usernameError('ab')).toMatch(/between 3 and 20/);
+    expect(usernameError('a'.repeat(21))).toMatch(/between 3 and 20/);
+  });
+
+  it('has nothing to say about an empty field; the caller decides', () => {
+    expect(usernameError('')).toBeNull();
   });
 });

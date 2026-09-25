@@ -29,6 +29,7 @@ jest.mock('react-native', () => {
 }, { virtual: true });
 
 import Card, { PRESSED_OPACITY } from '../../../components/native/ui/Card';
+import Pressable from '../../../components/native/ui/Pressable';
 import type { CardProps } from '../../../components/native/ui/Card';
 import { color, radius, space } from '../../../theme/tokens';
 
@@ -130,7 +131,9 @@ describe('Card — press behaviour', () => {
   });
 
   it('becomes pressable when onPress is supplied', () => {
-    expect(displayNameOf({ children: 'x', onPress: () => {} })).toBe('button');
+    // The press-state-aware wrapper, not react-native's Pressable directly:
+    // NativeWind drops a style function handed straight to that one.
+    expect(render({ children: 'x', onPress: () => {} }).type).toBe(Pressable);
     expect(render({ children: 'x', onPress: () => {} }).props.accessibilityRole).toBe('button');
   });
 

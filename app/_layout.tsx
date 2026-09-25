@@ -148,9 +148,16 @@ function RootLayoutNav() {
     >
       <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
       <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
-      <Stack.Screen name="notifications" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="messages" options={{ presentation: 'modal' }} />
+      {/* Every modal is declared here, with whether it shows a header, and
+          never from inside the screen. A screen that sets `presentation` on
+          itself is first pushed as a card and then asked to become a modal,
+          which the native stack cannot do in place; one that changes its
+          header's visibility inside a modal is remounted, losing its state. */}
+      <Stack.Screen name="notifications" options={{ presentation: 'modal', headerShown: true }} />
+      <Stack.Screen name="messages" options={{ presentation: 'modal', headerShown: true }} />
+      <Stack.Screen name="share-post" options={{ presentation: 'modal', headerShown: true }} />
       <Stack.Screen name="compose" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
       <Stack.Screen name="story-viewer" options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="story-create" options={{ presentation: 'fullScreenModal' }} />
     </Stack>

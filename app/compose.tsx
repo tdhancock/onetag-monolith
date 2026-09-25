@@ -4,15 +4,12 @@ import {
   Text,
   TextInput,
   Pressable,
-  KeyboardAvoidingView,
-  Keyboard,
-  Platform,
   ScrollView,
   Alert,
   StyleSheet,
 } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
 import { useCurrentProfile } from '../features/profiles';
 import { useCreatePost } from '../features/posts';
@@ -27,9 +24,10 @@ import {
   type PickedMedia,
   type MediaPickerResult,
 } from '../services/mediaPicker';
-import { Avatar, Button, IconButton } from '../components/native/ui';
+import { Avatar, Button, IconButton, ICON_BUTTON_SIZE } from '../components/native/ui';
 import ComposeMedia from '../components/native/ComposeMedia';
 import CharacterRing from '../components/native/CharacterRing';
+import KeyboardAvoider from '../components/native/KeyboardAvoider';
 import { ImageIcon } from '../components/native/Icons';
 import { canPublish } from '../lib/screens/compose';
 import { color, space, type } from '../theme/tokens';
@@ -37,6 +35,9 @@ import type { Post } from '../types';
 
 /** What PostCard renders when a post carries no ratio. Kept in step with it. */
 const FALLBACK_ASPECT_RATIO = 1080 / 1350;
+
+/** Where the text starts: the page edge, the 40pt avatar, and the gap after it. */
+const TEXT_INSET = space.lg + 40 + space.md;
 
 /** A fallback for raising the keyboard if the modal reports no transition end. */
 const FOCUS_FALLBACK_MS = 600;
@@ -61,12 +62,10 @@ export default function ComposeScreen() {
   // draft intact (ONE-56).
   const createPost = useCreatePost(profileId);
   const inputRef = useRef<TextInput>(null);
-  const insets = useSafeAreaInsets();
 
   const [content, setContent] = useState('');
   const [isPosting, setIsPosting] = useState(false);
   const [uploadFailed, setUploadFailed] = useState(false);
-  const [keyboardUp, setKeyboardUp] = useState(false);
   const [attachment, setAttachmentState] = useState<PickedMedia | null>(() =>
     attachmentFromParams(mediaUri, paramMediaType, mediaWidth, mediaHeight),
   );
@@ -100,17 +99,6 @@ export default function ComposeScreen() {
     };
   }, [navigation]);
 
-  // The toolbar sits on the keyboard while it is up, and above the home
-  // indicator while it is down.
-  useEffect(() => {
-    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardUp(true));
-    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardUp(false));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-
   // The preview frames the photo exactly as the feed will: the same measured
   // and clamped ratio, letterboxed the same way. Before ONE-55 this previewed at
   // 1:1 and published at 4:5, so the author approved a framing nobody else ever
@@ -143,6 +131,9 @@ export default function ComposeScreen() {
       };
 
       await createPost.mutateAsync(newPost);
+      // The spinner stays up until the screen has gone. Clearing it here left
+      // Post live, over the same draft, for the moment before closing, and a
+      // second tap published the post twice.
       setTimeout(() => router.back(), 400);
     } catch (error) {
       console.error('Failed to publish post', error);
@@ -156,7 +147,6 @@ export default function ComposeScreen() {
       );
       // The draft stays on screen: router.back() only runs on the success
       // path above.
-    } finally {
       setIsPosting(false);
     }
   };
@@ -184,13 +174,8 @@ export default function ComposeScreen() {
   };
 
   return (
-    // Top edge only. Padding the bottom here as well shortens the
-    // KeyboardAvoidingView's frame while it still measures the keyboard
-    // against the full screen, which is what buried the old footer. The
-    // toolbar carries the bottom inset instead.
-    <SafeAreaView style={styles.screen} edges={['top']}>
-      <Stack.Screen options={{ headerShown: false, presentation: 'modal' }} />
-
+    // The modal's presentation is declared once, in app/_layout.tsx.
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <Pressable
           onPress={() => router.back()}
@@ -210,21 +195,13 @@ export default function ComposeScreen() {
         </View>
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        // The modal reaches the bottom of the screen and the root no longer
-        // pads that edge, so the view's frame and the keyboard's are measured
-        // against the same origin and no offset is needed.
-        keyboardVerticalOffset={0}
-        style={styles.fill}
-      >
+      <KeyboardAvoider style={styles.fill}>
         <ScrollView
           style={styles.fill}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           contentContainerStyle={styles.scroll}
         >
-          {/* The whole writing area focuses the input, not just its first line. */}
           <Pressable
             onPress={() => inputRef.current?.focus()}
             accessible={false}
@@ -258,11 +235,10 @@ export default function ComposeScreen() {
               />
             </View>
           )}
-        </ScrollView>
 
-        {/* Pinned above the keyboard. A post carries at most one photo, so
-            Photo is offered only while there is none. */}
-        <View style={[styles.toolbar, { paddingBottom: keyboardUp ? space.sm : Math.max(insets.bottom, space.sm) }]}>
+          {/* Directly under the draft, so it stays in view above the keyboard
+              rather than pinned to the bottom edge beneath it. A post carries
+              at most one photo, so Photo is offered only while there is none. */}
           <View style={styles.tools}>
             {!attachment && (
               <IconButton
@@ -271,10 +247,14 @@ export default function ComposeScreen() {
                 onPress={handleAttachMedia}
               />
             )}
+            <View style={styles.fill} />
+            {content.length > 0 && <CharacterRing length={content.length} />}
           </View>
-          {content.length > 0 && <CharacterRing length={content.length} />}
-        </View>
-      </KeyboardAvoidingView>
+
+          {/* The rest of the page still means "write here". */}
+          <Pressable onPress={() => inputRef.current?.focus()} accessible={false} style={styles.fill} />
+        </ScrollView>
+      </KeyboardAvoider>
     </SafeAreaView>
   );
 }
@@ -313,14 +293,14 @@ const styles = StyleSheet.create({
     color: color.text,
   },
   scroll: {
-    paddingBottom: space.lg,
+    flexGrow: 1,
   },
   body: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: space.md,
     padding: space.lg,
-    minHeight: 160,
+    paddingBottom: space.sm,
   },
   input: {
     flex: 1,
@@ -335,21 +315,15 @@ const styles = StyleSheet.create({
   },
   media: {
     paddingHorizontal: space.lg,
-  },
-  toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: space.xs,
-    paddingLeft: space.sm,
-    paddingRight: space.lg,
-    borderTopWidth: 1,
-    borderTopColor: color.border,
-    backgroundColor: color.bg,
+    paddingBottom: space.sm,
   },
   tools: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 44,
+    minHeight: ICON_BUTTON_SIZE,
+    // Lines the photo glyph up with the text beside the avatar: the IconButton
+    // centres its 24pt glyph in a 44pt box.
+    paddingLeft: TEXT_INSET - (ICON_BUTTON_SIZE - 24) / 2,
+    paddingRight: space.lg,
   },
 });

@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Avatar, Skeleton } from './ui';
+import { View, Text, StyleSheet } from 'react-native';
+import { Avatar, Pressable, Skeleton } from './ui';
 import { VerifiedIcon } from './Icons';
 import RenderUserContent from './RenderUserContent';
 import { getBioText, getStatCell, PROFILE_STAT_COLUMNS, type ProfileStats } from '../../lib/screens/profile';
@@ -137,12 +137,13 @@ const styles = StyleSheet.create({
   stats: {
     flex: 1,
     flexDirection: 'row',
-    justifyContent: 'space-around',
     marginLeft: space.lg,
   },
+  // Equal thirds, each label centred under its number, whatever the width of
+  // "Posts" against "Followers".
   stat: {
+    flex: 1,
     alignItems: 'center',
-    minWidth: 64,
     minHeight: 44,
     justifyContent: 'center',
   },

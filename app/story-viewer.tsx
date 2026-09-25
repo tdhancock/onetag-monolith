@@ -351,7 +351,7 @@ export default function StoryViewerScreen() {
         transform: [{ translateX }, { translateY }],
       }}
     >
-      <Stack.Screen options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+      <Stack.Screen options={{ headerShown: false }} />
       <StatusBar style="light" />
 
       <View style={styles.fill} {...panResponder.panHandlers}>

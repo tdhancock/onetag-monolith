@@ -178,13 +178,12 @@ export const getStatCell = (
 // ---------------------------------------------------------------------------
 
 /**
- * Describes the rendered Edit Profile button. The component always
- * pushes the user to `/settings` (the same target as the standalone
- * Settings icon in the header) — centralising the label and target
- * keeps both call sites aligned.
+ * Describes the rendered Edit Profile button. It opens the edit screen
+ * itself; Settings has its own control in the profile's top bar. (It used to
+ * open Settings too, one tap short of where the label said it went.)
  */
 export const EDIT_PROFILE_LABEL = 'Edit Profile';
-export const EDIT_PROFILE_TARGET = '/settings';
+export const EDIT_PROFILE_TARGET = '/edit-profile';
 
 export interface EditButtonProps {
     label: string;
@@ -329,6 +328,26 @@ export const userListEmptyTitle = (type: string | undefined): string =>
 // ---------------------------------------------------------------------------
 // Edit profile (ONE-68)
 // ---------------------------------------------------------------------------
+
+/** A handle's allowed length, as `profiles.username`'s CHECK constraint has it. */
+export const USERNAME_MIN_LENGTH = 3;
+export const USERNAME_MAX_LENGTH = 20;
+
+/**
+ * What is wrong with a username, or null when nothing is. Shared by Sign up
+ * and Edit profile, so a handle cannot be changed into one sign-up would have
+ * refused — a space or a capital breaks `/user/<username>` links. An empty
+ * field reads as nothing to report yet; the caller decides whether empty may
+ * be submitted.
+ */
+export const usernameError = (username: string): string | null => {
+  if (username.length === 0) return null;
+  if (!/^[a-z0-9_.]+$/.test(username)) return 'Only lowercase letters, numbers, "_", and "." are allowed.';
+  if (username.length < USERNAME_MIN_LENGTH || username.length > USERNAME_MAX_LENGTH) {
+    return `Username must be between ${USERNAME_MIN_LENGTH} and ${USERNAME_MAX_LENGTH} characters.`;
+  }
+  return null;
+};
 
 export interface EditableProfileFields {
   name: string;

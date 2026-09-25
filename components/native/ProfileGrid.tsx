@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
-import { Skeleton } from './ui';
+import { Pressable, Skeleton } from './ui';
 import {
   firstLine,
   profileGridTileSize,
@@ -49,7 +49,11 @@ export const GridTile: React.FC<GridTileProps> = React.memo(({ post, index, onPr
         </View>
       ) : (
         <Image
-          source={{ uri: post.media_preview_url || post.media }}
+          // The full photo, with the 50px preview only as its blur-up. The
+          // tile used to draw the preview itself, stretched ~8x: the photos
+          // looked zoomed in and soft.
+          source={{ uri: post.media }}
+          placeholder={post.media_preview_url ? { uri: post.media_preview_url } : undefined}
           style={styles.image}
           contentFit="cover"
           transition={200}

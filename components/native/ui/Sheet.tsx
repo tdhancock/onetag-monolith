@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, Pressable, Modal, StyleSheet } from 'react-native';
+import { View, Text, Modal, StyleSheet } from 'react-native';
 import { color, radius, space, type } from '../../../theme/tokens';
+import Pressable from './Pressable';
 import Button from './Button';
 import IconButton from './IconButton';
 import { ArrowLeftIcon, ChevronRightIcon } from '../Icons';

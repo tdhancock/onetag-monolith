@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Pressable, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Pressable } from './ui';
 import { GridIcon, RepostIcon, BookmarkIcon } from './Icons';
 import { PROFILE_TAB_LABELS, type ProfileTab } from '../../lib/screens/profile';
 import { color } from '../../theme/tokens';

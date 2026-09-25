@@ -70,6 +70,7 @@ export interface Post {
     avatar: string | null;
     content: string;
     media?: string;
+    /** A 50px, low-quality render of `media` for blur-up placeholders. Never the image itself. */
     media_preview_url?: string;
     media_type: 'text' | 'image';
     // Nullable, not merely optional: the column is nullable, every row

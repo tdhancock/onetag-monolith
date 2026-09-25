@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../../services/supabase.native';
 import { ensureCurrentUserProfile } from '../../services/profileBootstrap';
 import { checkUsernameExists } from '../../features/profiles';
+import { usernameError as usernameRuleError } from '../../lib/screens/profile';
 import { tokens } from '../../theme/tokens';
 
 export default function SignupScreen() {
@@ -39,14 +40,8 @@ export default function SignupScreen() {
   const handleUsernameChange = (value: string) => {
     const lower = value.toLowerCase();
     setUsername(lower);
-
-    if (lower.length > 0 && !/^[a-z0-9_.]+$/.test(lower)) {
-      setUsernameError('Only lowercase letters, numbers, "_", and "." are allowed.');
-    } else if (lower.length > 0 && (lower.length < 3 || lower.length > 20)) {
-      setUsernameError('Username must be between 3 and 20 characters.');
-    } else {
-      setUsernameError('');
-    }
+    // The rule Edit profile applies too (lib/screens/profile).
+    setUsernameError(usernameRuleError(lower) ?? '');
   };
 
   const isFormValid =

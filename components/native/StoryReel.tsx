@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, Pressable, FlatList, StyleSheet } from 'react-native';
+import { View, Text, FlatList, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Avatar, Skeleton } from './ui';
+import { Avatar, Pressable, Skeleton } from './ui';
 import { PlusIcon } from './Icons';
 import { useApp } from '../../store/AppContext.native';
 import { gradientFor, latestOneSnap } from '../../lib/oneSnaps';

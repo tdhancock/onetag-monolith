@@ -5,18 +5,17 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   StyleSheet,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '../store/AppContext.native';
 import { useUpdateProfile, useUploadAvatar, useCurrentProfile } from '../features/profiles';
 import { cleanHtml } from '../lib/cleanHtml';
 import { Avatar, TextField } from '../components/native/ui';
-import { hasProfileChanges } from '../lib/screens/profile';
+import KeyboardAvoider from '../components/native/KeyboardAvoider';
+import { hasProfileChanges, usernameError } from '../lib/screens/profile';
 import { color, space, type } from '../theme/tokens';
 
 export default function EditProfileScreen() {
@@ -32,9 +31,18 @@ export default function EditProfileScreen() {
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Save waits for a change: a new photo, or a field that differs.
+  // Save waits for a change: a new photo, or a field that differs. A new
+  // handle sign-up would refuse, or none at all, cannot be saved; an
+  // unchanged one is left alone, so an account older than the rule can still
+  // edit its bio.
   const dirty = hasProfileChanges(userProfile, { name, username, bio }, Boolean(avatarUri));
-  const canSave = dirty && !saving;
+  const handleProblem =
+    username === (userProfile?.username ?? '')
+      ? null
+      : username.length === 0
+        ? 'Choose a username.'
+        : usernameError(username);
+  const canSave = dirty && !saving && !handleProblem;
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -85,92 +93,92 @@ export default function EditProfileScreen() {
   };
 
   return (
-    <>
-      <Stack.Screen options={{ presentation: 'modal', headerShown: false }} />
-      <SafeAreaView style={styles.screen}>
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            hitSlop={12}
-            style={styles.headerSide}
-          >
-            <Text style={styles.cancel}>Cancel</Text>
-          </Pressable>
-          <Text style={styles.title} accessibilityRole="header">
-            Edit profile
-          </Text>
-          <View style={[styles.headerSide, styles.headerRight]}>
-            {saving ? (
-              <ActivityIndicator size="small" color={color.text} accessibilityLabel="Saving" />
-            ) : (
-              <Pressable
-                onPress={handleSave}
-                disabled={!canSave}
-                accessibilityRole="button"
-                accessibilityLabel="Save"
-                accessibilityState={{ disabled: !canSave }}
-                hitSlop={12}
-              >
-                <Text style={[styles.save, !canSave && styles.saveDisabled]}>Save</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
-
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.fill}
+    // A modal, declared in app/_layout.tsx. It used to set `presentation`
+    // itself, which only takes effect after the screen has been pushed as a
+    // card; the native stack cannot convert a pushed screen into a modal in
+    // place, and the screen reloaded instead of opening.
+    <SafeAreaView style={styles.screen}>
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          hitSlop={12}
+          style={styles.headerSide}
         >
-          <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
-            <View style={styles.avatar}>
-              <Avatar
-                uri={avatarUri ?? userProfile?.profilePicture}
-                name={name || username}
-                size={96}
-              />
-              <Pressable onPress={pickImage} accessibilityRole="button" hitSlop={8} style={styles.changePhoto}>
-                <Text style={styles.changePhotoText}>Change photo</Text>
-              </Pressable>
-            </View>
+          <Text style={styles.cancel}>Cancel</Text>
+        </Pressable>
+        <Text style={styles.title} accessibilityRole="header">
+          Edit profile
+        </Text>
+        <View style={[styles.headerSide, styles.headerRight]}>
+          {saving ? (
+            <ActivityIndicator size="small" color={color.text} accessibilityLabel="Saving" />
+          ) : (
+            <Pressable
+              onPress={handleSave}
+              disabled={!canSave}
+              accessibilityRole="button"
+              accessibilityLabel="Save"
+              accessibilityState={{ disabled: !canSave }}
+              hitSlop={12}
+            >
+              <Text style={[styles.save, !canSave && styles.saveDisabled]}>Save</Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
 
-            <View style={styles.fields}>
+      <KeyboardAvoider style={styles.fill}>
+        <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+          <View style={styles.avatar}>
+            <Avatar
+              uri={avatarUri ?? userProfile?.profilePicture}
+              name={name || username}
+              size={96}
+            />
+            <Pressable onPress={pickImage} accessibilityRole="button" hitSlop={8} style={styles.changePhoto}>
+              <Text style={styles.changePhotoText}>Change photo</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.fields}>
+            <TextField
+              label="Name"
+              value={name}
+              onChangeText={setName}
+              placeholder="Your name"
+              accessibilityLabel="Name"
+            />
+            <TextField
+              label="Username"
+              value={username}
+              // Handles are lowercase, as sign-up makes them.
+              onChangeText={(value) => setUsername(value.toLowerCase())}
+              placeholder="username"
+              autoCapitalize="none"
+              autoCorrect={false}
+              error={handleProblem}
+              accessibilityLabel="Username"
+            />
+            <View>
               <TextField
-                label="Name"
-                value={name}
-                onChangeText={setName}
-                placeholder="Your name"
-                accessibilityLabel="Name"
+                label="Bio"
+                value={bio}
+                onChangeText={setBio}
+                placeholder="Tell people about yourself"
+                multiline
+                inputStyle={styles.bio}
+                accessibilityLabel="Bio"
               />
-              <TextField
-                label="Username"
-                value={username}
-                onChangeText={setUsername}
-                placeholder="username"
-                autoCapitalize="none"
-                autoCorrect={false}
-                accessibilityLabel="Username"
-              />
-              <View>
-                <TextField
-                  label="Bio"
-                  value={bio}
-                  onChangeText={setBio}
-                  placeholder="Tell people about yourself"
-                  multiline
-                  inputStyle={styles.bio}
-                  accessibilityLabel="Bio"
-                />
-                {/* A count, not a limit: bios have no maximum (ONE-68). */}
-                <Text style={styles.count} accessibilityLabel={`${bio.length} characters`}>
-                  {bio.length}
-                </Text>
-              </View>
+              {/* A count, not a limit: bios have no maximum (ONE-68). */}
+              <Text style={styles.count} accessibilityLabel={`${bio.length} characters`}>
+                {bio.length}
+              </Text>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </>
+          </View>
+        </ScrollView>
+      </KeyboardAvoider>
+    </SafeAreaView>
   );
 }
 

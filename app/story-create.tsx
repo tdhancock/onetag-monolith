@@ -164,7 +164,7 @@ export default function StoryCreateScreen() {
   if (view === 'options') {
     return (
       <SafeAreaView style={[styles.fill, { backgroundColor: color.bg }]}>
-        <Stack.Screen options={{ headerShown: false, presentation: 'modal' }} />
+        <Stack.Screen options={{ headerShown: false }} />
         <StatusBar style="dark" />
 
         <View style={styles.optionsHeader}>

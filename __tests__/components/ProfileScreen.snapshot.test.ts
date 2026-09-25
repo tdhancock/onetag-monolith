@@ -75,7 +75,7 @@ describe('ProfileScreen utils – constant values', () => {
 
     it('the Edit button label and target are stable canonical strings', () => {
         expect(EDIT_PROFILE_LABEL).toBe('Edit Profile');
-        expect(EDIT_PROFILE_TARGET).toBe('/settings');
+        expect(EDIT_PROFILE_TARGET).toBe('/edit-profile');
     });
 
     it('the Edit button label and target are distinct (no accidental collapse)', () => {

@@ -1,7 +1,8 @@
 import React from 'react';
-import { Pressable, View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { color, type } from '../../../theme/tokens';
+import Pressable from './Pressable';
 
 export interface IconButtonProps {
   /** The icon element, e.g. `<BellIcon />`. It is centred in the hit area. */

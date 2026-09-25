@@ -37,6 +37,8 @@ const styles = StyleSheet.create({
     backgroundColor: color.bg,
     borderBottomWidth: 1,
     borderBottomColor: color.border,
+    // PostCard's own padding above the header.
+    paddingTop: space.sm,
   },
   header: {
     flexDirection: "row",

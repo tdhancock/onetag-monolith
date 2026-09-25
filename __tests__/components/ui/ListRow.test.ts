@@ -36,6 +36,7 @@ import ListRow, {
   PRESSED_BACKGROUND,
 } from '../../../components/native/ui/ListRow';
 import type { ListRowProps } from '../../../components/native/ui/ListRow';
+import Pressable from '../../../components/native/ui/Pressable';
 import Avatar from '../../../components/native/ui/Avatar';
 import { color, space, type } from '../../../theme/tokens';
 
@@ -55,7 +56,7 @@ type RowElement = React.ReactElement<{
   accessibilityRole?: string;
   accessibilityLabel?: string;
   children: React.ReactElement<{ children: [Node, Node, Node | null] }>;
-}> & { type: { displayName?: string } };
+}> & { type: unknown };
 
 const render = (props: ListRowProps): RowElement =>
   (ListRow as unknown as (p: ListRowProps) => RowElement)(props);
@@ -168,13 +169,13 @@ describe('ListRow — size and divider', () => {
 
 describe('ListRow — press behaviour', () => {
   it('is a plain view with no onPress', () => {
-    expect(render({ title: 'x' }).type.displayName).toBe('div');
+    expect((render({ title: 'x' }).type as { displayName?: string }).displayName).toBe('div');
   });
 
   it('becomes a labelled button with onPress, and fires it', () => {
     const onPress = jest.fn();
     const el = render({ title: 'x', onPress, accessibilityLabel: 'Open x' });
-    expect(el.type.displayName).toBe('button');
+    expect(el.type).toBe(Pressable);
     expect(el.props.accessibilityRole).toBe('button');
     expect(el.props.accessibilityLabel).toBe('Open x');
     el.props.onPress?.();

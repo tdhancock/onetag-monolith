@@ -469,11 +469,14 @@ const PostCard: React.FC<PostCardProps> = ({
 };
 
 const styles = StyleSheet.create({
+  // Room either side of the hairline between posts: 8pt barely separated the
+  // last line of one post from the next one's header.
   card: {
     backgroundColor: color.bg,
     borderBottomWidth: 1,
     borderBottomColor: color.border,
-    paddingBottom: space.sm,
+    paddingTop: space.sm,
+    paddingBottom: space.lg,
   },
 
   // Header

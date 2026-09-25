@@ -109,7 +109,9 @@ const ExploreTile: React.FC<{ post: Post; onPress: () => void }> = React.memo(({
         </View>
       ) : (
         <Image
-          source={{ uri: post.media_preview_url || post.media }}
+          // The preview is a 50px blur-up, not something to show on its own.
+          source={{ uri: post.media }}
+          placeholder={post.media_preview_url ? { uri: post.media_preview_url } : undefined}
           style={{ width: '100%', height: '100%' }}
           contentFit="cover"
           transition={200}

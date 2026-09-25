@@ -4,8 +4,6 @@ import {
   Text,
   TextInput,
   Pressable,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
 } from 'react-native';
@@ -18,6 +16,7 @@ import { fetchPostById as getPostById } from '../features/posts';
 import { Avatar, Button, EmptyState, Skeleton } from '../components/native/ui';
 import ComposeMedia from '../components/native/ComposeMedia';
 import CharacterRing from '../components/native/CharacterRing';
+import KeyboardAvoider from '../components/native/KeyboardAvoider';
 import { POST_MAX_CHARS } from '../lib/screens/compose';
 import { color, space, type } from '../theme/tokens';
 import type { Post } from '../types';
@@ -59,12 +58,15 @@ export default function EditPostScreen() {
   const isOverLimit = content.length > POST_MAX_CHARS;
   const canSave = Boolean(post) && content.trim().length > 0 && !isSaving && content !== post?.content && !isOverLimit;
 
+  // Stays on the screen, spinner showing, until the save resolves. It used to
+  // fire the update, report success and close at once, so a failed save
+  // looked exactly like a good one and the edit was lost.
   const handleSave = useCallback(async () => {
     if (!post || !canSave) return;
     setIsSaving(true);
     try {
       const updatedPost: Post = { ...post, content };
-      updatePost.mutate(updatedPost);
+      await updatePost.mutateAsync(updatedPost);
       addToast('Post updated.', 'success');
       if (router.canGoBack()) {
         router.back();
@@ -135,7 +137,7 @@ export default function EditPostScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       {header}
 
-      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoider style={styles.fill}>
         <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
           <View style={styles.body}>
             <Avatar
@@ -166,12 +168,13 @@ export default function EditPostScreen() {
               />
             </View>
           ) : null}
-        </ScrollView>
 
-        <View style={styles.toolbar}>
-          {content.length > 0 && <CharacterRing length={content.length} />}
-        </View>
-      </KeyboardAvoidingView>
+          {/* Under the draft, as in Compose, so it stays above the keyboard. */}
+          <View style={styles.tools}>
+            {content.length > 0 && <CharacterRing length={content.length} />}
+          </View>
+        </ScrollView>
+      </KeyboardAvoider>
     </SafeAreaView>
   );
 }
@@ -227,7 +230,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    minHeight: 120,
+    minHeight: 40,
     paddingTop: space.sm,
     fontFamily: type.body,
     fontSize: 17,
@@ -237,15 +240,13 @@ const styles = StyleSheet.create({
   },
   media: {
     paddingHorizontal: space.lg,
+    paddingBottom: space.sm,
   },
-  toolbar: {
+  tools: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
     minHeight: 44,
     paddingHorizontal: space.lg,
-    borderTopWidth: 1,
-    borderTopColor: color.border,
-    backgroundColor: color.bg,
   },
 });

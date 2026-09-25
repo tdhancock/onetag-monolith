@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { color, space, type } from '../../../theme/tokens';
+import Pressable from './Pressable';
 import Avatar from './Avatar';
 import { VerifiedIcon } from '../Icons';
 

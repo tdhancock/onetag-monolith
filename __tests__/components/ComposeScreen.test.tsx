@@ -22,10 +22,12 @@ jest.mock('react-native', () => {
   const React = require('react');
   const shim = require('../support/reactNativeDom');
   const box = (props: { children?: React.ReactNode }) => React.createElement('div', null, props.children);
+  const scroll = (props: { children?: React.ReactNode }) =>
+    React.createElement('div', { 'data-scroll': 'true' }, props.children);
   return {
     ...shim,
     KeyboardAvoidingView: box,
-    ScrollView: box,
+    ScrollView: scroll,
     Platform: { OS: 'ios' },
     Keyboard: { addListener: () => ({ remove: () => {} }) },
   };
@@ -165,6 +167,15 @@ describe('Compose — opening', () => {
     expect(document.activeElement).toBe(field);
   });
 
+  it('puts Add a photo directly under the text, in the page rather than pinned to the bottom edge', () => {
+    // Pinned to the bottom, it sat under the keyboard. In the page, under
+    // the draft, it stays in view above it.
+    const el = mount();
+    const photo = el.querySelector('[data-scroll] button[aria-label="Add a photo"]');
+    expect(photo).not.toBeNull();
+    expect(input(el).compareDocumentPosition(photo!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('offers no poll (ONE-59)', () => {
     const el = mount();
     expect(el.querySelector('button[aria-label="Add a poll"]')).toBeNull();
@@ -227,6 +238,16 @@ describe('Compose — publishing', () => {
     expect(mockMutateAsync.mock.calls[0][0]).not.toHaveProperty('poll');
     act(() => { jest.runAllTimers(); });
     expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('cannot publish twice while it closes', async () => {
+    mockMutateAsync.mockResolvedValue(undefined);
+    const el = mount();
+    type(el, 'hello');
+    await act(async () => { postButton(el).click(); });
+    // Still on screen, before the close: Post stays busy.
+    await act(async () => { postButton(el).click(); });
+    expect(mockMutateAsync).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the draft, with the inline note, when the photo fails to upload', async () => {

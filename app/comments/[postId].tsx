@@ -5,8 +5,6 @@ import {
   TextInput,
   Pressable,
   FlatList,
-  KeyboardAvoidingView,
-  Platform,
   RefreshControl,
   StyleSheet,
 } from 'react-native';
@@ -18,6 +16,7 @@ import { useCommentsQuery, useAddComment, useDeleteComment } from '../../feature
 import { cleanHtml } from '../../lib/cleanHtml';
 import CommentRow, { CommentRowSkeleton, COMMENT_AVATAR_SIZE } from '../../components/native/CommentRow';
 import { Avatar, EmptyState, TextField } from '../../components/native/ui';
+import KeyboardAvoider from '../../components/native/KeyboardAvoider';
 import { color, space, type } from '../../theme/tokens';
 import type { Comment } from '../../types';
 
@@ -171,12 +170,10 @@ export default function CommentsScreen() {
     <SafeAreaView style={styles.screen} edges={['bottom']}>
       <Stack.Screen options={{ headerShown: true, title: 'Comments' }} />
 
-      <KeyboardAvoidingView
-        style={styles.fill}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        // The stack header sits above this view on iOS.
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
+      {/* Measures itself against the keyboard, so the stack header's height
+          no longer has to be guessed: the fixed 90pt offset this replaced was
+          short of the real header and left the composer half under the keys. */}
+      <KeyboardAvoider style={styles.fill}>
         {renderBody()}
 
         {/* The composer, pinned above the keyboard and the home indicator. */}
@@ -212,7 +209,7 @@ export default function CommentsScreen() {
             <Text style={[styles.postLabel, !canPost && styles.postLabelDisabled]}>Post</Text>
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAvoider>
     </SafeAreaView>
   );
 }

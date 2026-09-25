@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, Text, SectionList, RefreshControl, Pressable, StyleSheet } from 'react-native';
+import { View, Text, SectionList, RefreshControl, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCurrentProfile, useFollowState, useToggleFollow } from '../features/profiles';
 import { useNotificationsQuery, useMarkAllRead } from '../features/notifications';
-import { Avatar, Button, EmptyState, MonoLabel, Skeleton } from '../components/native/ui';
+import { Avatar, Button, EmptyState, MonoLabel, Pressable, Skeleton } from '../components/native/ui';
 import { getTimeAgo } from '../lib/timeAgo';
 import { firstLine } from '../lib/screens/profile';
 import { groupNotifications, notificationSentence } from '../lib/screens/notifications';

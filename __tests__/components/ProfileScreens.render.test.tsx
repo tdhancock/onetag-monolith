@@ -188,6 +188,12 @@ describe('Your profile', () => {
     }
   });
 
+  it('opens the edit screen itself from Edit Profile, not Settings', async () => {
+    const el = await mount(<OwnProfileScreen />);
+    act(() => buttonByText(el, 'Edit Profile')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/edit-profile');
+  });
+
   it('draws a text post as its first line in the grid', async () => {
     const el = await mount(<OwnProfileScreen />);
     expect(button(el, 'first line')).not.toBeNull();
@@ -312,6 +318,25 @@ describe('Edit profile', () => {
     await act(async () => { save().click(); });
     expect(mockUpdateProfile).toHaveBeenCalledWith(expect.objectContaining({ bio: 'Builds better things.' }));
     expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('will not save a username sign-up would refuse, and says why', async () => {
+    const el = await mount(<EditProfileScreen />);
+    const username = field(el, 'Username');
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(username, 'me too');
+      username.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(button(el, 'Save')!.disabled).toBe(true);
+    expect(el.textContent).toContain('Only lowercase letters');
+
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(username, 'Me_Too');
+      username.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    // Lowercased as typed, as sign-up does, which makes it valid.
+    expect(username.value).toBe('me_too');
+    expect(button(el, 'Save')!.disabled).toBe(false);
   });
 
   it('labels its fields', async () => {

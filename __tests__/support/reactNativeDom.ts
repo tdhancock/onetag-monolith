@@ -87,7 +87,7 @@ export const Text: React.FC<React.PropsWithChildren<Record<string, unknown>>> = 
 };
 
 export const Pressable: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props => {
-  const { onPress, accessibilityLabel, style, ...rest } = props;
+  const { onPress, onPressIn, onPressOut, accessibilityLabel, style, ...rest } = props;
   // Pressable takes its style as a function of press state; render the
   // resting state, which is what a mounted-but-untouched control shows.
   const resolvedStyle =
@@ -97,6 +97,9 @@ export const Pressable: React.FC<React.PropsWithChildren<Record<string, unknown>
     {
       ...passthroughProps({ ...rest, style: resolvedStyle }),
       onClick: pressHandler(onPress),
+      // The finger going down and coming up, for press feedback.
+      onMouseDown: onPressIn as React.MouseEventHandler | undefined,
+      onMouseUp: onPressOut as React.MouseEventHandler | undefined,
       'aria-label': accessibilityLabel as string | undefined,
     },
     props.children,
@@ -147,6 +150,17 @@ export const ActivityIndicator: React.FC<Record<string, unknown>> = props =>
   });
 
 export const Alert = { alert: jest.fn() };
+
+/** Listeners register and never fire; a suite that needs a keyboard event captures the handler. */
+export const Keyboard = {
+  addListener: jest.fn(() => ({ remove: jest.fn() })),
+  dismiss: jest.fn(),
+};
+
+export const LayoutAnimation = {
+  configureNext: jest.fn(),
+  Types: { keyboard: 'keyboard' },
+};
 
 /**
  * Reduce-motion defaults to off. A suite that needs it on overrides
