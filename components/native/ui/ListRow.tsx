@@ -17,6 +17,10 @@ export interface ListRowProps {
   trailing?: React.ReactNode;
   /** Supplying this makes the row pressable, with press feedback. */
   onPress?: () => void;
+  /** A secondary action, e.g. a sheet of options. Only on a pressable row. */
+  onLongPress?: () => void;
+  /** Describes what a long press does, when there is one. */
+  accessibilityHint?: string;
   /** A `border` hairline along the row's bottom edge. */
   divider?: boolean;
   /** An ink verified mark after the title. */
@@ -45,6 +49,8 @@ const ListRow: React.FC<ListRowProps> = ({
   leading,
   trailing,
   onPress,
+  onLongPress,
+  accessibilityHint,
   divider = false,
   verified = false,
   accessibilityLabel,
@@ -84,7 +90,9 @@ const ListRow: React.FC<ListRowProps> = ({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       onPress={onPress}
+      onLongPress={onLongPress}
       style={({ pressed }) => [base, pressed && { backgroundColor: PRESSED_BACKGROUND }]}
     >
       {content}

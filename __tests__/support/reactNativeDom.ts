@@ -87,7 +87,7 @@ export const Text: React.FC<React.PropsWithChildren<Record<string, unknown>>> = 
 };
 
 export const Pressable: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props => {
-  const { onPress, onPressIn, onPressOut, accessibilityLabel, style, ...rest } = props;
+  const { onPress, onLongPress, onPressIn, onPressOut, accessibilityLabel, accessibilityHint, style, ...rest } = props;
   // Pressable takes its style as a function of press state; render the
   // resting state, which is what a mounted-but-untouched control shows.
   const resolvedStyle =
@@ -97,6 +97,9 @@ export const Pressable: React.FC<React.PropsWithChildren<Record<string, unknown>
     {
       ...passthroughProps({ ...rest, style: resolvedStyle }),
       onClick: pressHandler(onPress),
+      // A long press arrives as a contextmenu event, the nearest DOM analogue.
+      onContextMenu: pressHandler(onLongPress),
+      'aria-description': accessibilityHint as string | undefined,
       // The finger going down and coming up, for press feedback.
       onMouseDown: onPressIn as React.MouseEventHandler | undefined,
       onMouseUp: onPressOut as React.MouseEventHandler | undefined,
