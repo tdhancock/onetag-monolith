@@ -6,13 +6,7 @@ import { color, type } from "../../theme/tokens";
 
 interface RenderUserContentProps {
   content: string;
-  /**
-   * Screens still on the old dark skin pass their own text colour here. When
-   * one is given the default ink colour steps aside, so their light-on-dark
-   * text stays legible until their re-skin removes it.
-   */
-  className?: string;
-  /** Applied after the defaults — size and line height, for instance. */
+  /** Applied after the defaults — size, line height, or inverse on ink. */
   style?: StyleProp<TextStyle>;
   numberOfLines?: number;
 }
@@ -79,7 +73,6 @@ export const segmentUserContent = (content: string): Segment[] => {
  */
 const RenderUserContent: React.FC<RenderUserContentProps> = ({
   content,
-  className,
   style,
   numberOfLines,
 }) => {
@@ -91,9 +84,8 @@ const RenderUserContent: React.FC<RenderUserContentProps> = ({
 
   return (
     <Text
-      className={className}
       numberOfLines={numberOfLines}
-      style={[styles.body, className ? null : styles.ink, style]}
+      style={[styles.body, styles.ink, style]}
     >
       {segments.map((seg, i) => {
         if (seg.type === "mention") {

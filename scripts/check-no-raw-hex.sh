@@ -1,48 +1,63 @@
 #!/usr/bin/env sh
-# Fails if a raw hex colour appears outside the token layer.
+# Fails if a raw hex colour, or a class from the old dark skin, appears
+# outside the token layer.
 #
 # Roughly fifteen OneTag tickets carry an acceptance criterion of the form
 # "grep for raw hex returns no matches". This turns that from a request into
-# a gate.
+# a gate. Since M1c closed (ONE-77) it covers the whole app: every screen
+# under app/ and every component, so the old skin cannot creep back one
+# quick fix at a time. __tests__/scripts/noRawHexGate.test.ts pins the list
+# so it cannot be narrowed quietly.
 #
-# Deliberately scoped to paths that are clean. The pre-existing screens under
-# app/ and components/native/ are full of inline hex and get cleaned up
-# progressively by the M1c re-skin tickets — pointing this at them today would
-# just fail every build. Widen the lists below as those tickets land.
+# Usage: sh scripts/check-no-raw-hex.sh [path ...]
+#   With no arguments it checks DIRS below. Paths given on the command line
+#   are checked instead, which is how the gate's own test proves it fails.
 
 set -eu
 
-# Directories that are clean from birth, searched recursively.
-DIRS="theme lib features components/native/ui"
-
-# Shared components re-skinned onto the tokens (ONE-64 onward). Screens join
-# in the M1c close-out ticket.
-FILES="
-components/native/Icons.tsx
-components/native/UserAvatar.tsx
-components/native/Toast.tsx
-components/native/PostSkeleton.tsx
-components/native/RenderUserContent.tsx
-components/native/PostCard.tsx
-components/native/StoryReel.tsx
-components/native/StoryCreator.tsx
-components/native/HomeHeader.tsx
-components/native/ComposeMedia.tsx
-components/native/CharacterRing.tsx
-components/native/CommentRow.tsx
-components/native/ProfileHeader.tsx
-components/native/ProfileTabs.tsx
-components/native/ProfileGrid.tsx
-"
+# Searched recursively, .ts and .tsx only.
+DIRS="theme lib features app components"
 
 # theme/tokens.ts is the source of truth and must contain hex.
-# An explicit "allow-hex" comment on the line opts out (e.g. the QR code, which
-# is necessarily pure black on white for scan reliability).
+# An explicit "allow-hex" comment on the line opts out, with a stated reason
+# (e.g. a QR code, which is necessarily pure black on white to scan).
 EXCLUDE_FILE="theme/tokens.ts"
+
+# Six-, three- or eight-digit hex, not followed by more word characters.
+HEX_PATTERN='#[0-9a-f]{3}([0-9a-f]{3})?([0-9a-f]{2})?([^0-9a-z]|$)'
+
+# The old dark skin's NativeWind classes: black and grey grounds, white and
+# grey text, the blue accent, the red error tints. The token classes
+# (bg-bg, text-text, border-border, …) take their place.
+CLASS_PATTERN='(^|[^A-Za-z0-9_-])(bg-(black|gray-[0-9]+|blue-[0-9]+|red-[0-9]+)|text-(white|gray-[0-9]+|blue-[0-9]+|red-[0-9]+)|border-(gray|blue|red)-[0-9]+)([^A-Za-z0-9_-]|$)'
+
+if [ "$#" -gt 0 ]; then
+  PATHS="$*"
+else
+  PATHS="$DIRS"
+fi
 
 status=0
 
-for path in $DIRS $FILES; do
+# $1: path, $2: grep -E pattern, $3: extra grep flag ("-i" or ""), $4: what it found.
+scan() {
+  # -H so a single file reports its name the same way a directory does.
+  matches=$(
+    grep -rnHE $3 --include='*.ts' --include='*.tsx' "$2" "$1" 2>/dev/null \
+      | grep -v "^${EXCLUDE_FILE}:" \
+      | grep -v 'allow-hex' \
+      || true
+  )
+
+  if [ -n "$matches" ]; then
+    echo "$4 found in $1 — use theme/tokens.ts instead:"
+    echo "$matches"
+    echo ""
+    status=1
+  fi
+}
+
+for path in $PATHS; do
   # A listed path that has gone missing is a stale list, not a clean one.
   if [ ! -e "$path" ]; then
     echo "check-no-raw-hex: $path is listed but does not exist."
@@ -50,26 +65,13 @@ for path in $DIRS $FILES; do
     continue
   fi
 
-  # -H so a single file reports its name the same way a directory does.
-  matches=$(
-    grep -rniHE --include='*.ts' --include='*.tsx' \
-      '#[0-9a-f]{3}([0-9a-f]{3})?([0-9a-f]{2})?([^0-9a-z]|$)' "$path" 2>/dev/null \
-      | grep -v "^${EXCLUDE_FILE}:" \
-      | grep -v 'allow-hex' \
-      || true
-  )
-
-  if [ -n "$matches" ]; then
-    echo "Raw hex colours found in $path — use theme/tokens.ts instead:"
-    echo "$matches"
-    echo ""
-    status=1
-  fi
+  scan "$path" "$HEX_PATTERN" "-i" "Raw hex colours"
+  scan "$path" "$CLASS_PATTERN" "" "Old-skin classes"
 done
 
 if [ "$status" -ne 0 ]; then
-  echo "Add '// allow-hex' on a line only when a literal colour is genuinely required."
+  echo "Add '// allow-hex' on a line only when a literal colour is genuinely required, and say why."
   exit 1
 fi
 
-echo "No raw hex outside the token layer."
+echo "No raw hex or old-skin classes outside the token layer."

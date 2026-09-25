@@ -117,12 +117,20 @@ folder. When a feature's `api.ts` needs something another feature has, move it t
 
 ## Styling
 
-Once `theme/tokens.ts` lands (M1a) it is the single source of truth, and NativeWind classes and
-inline styles both resolve to it. **No raw hex in components.** `npm run verify` enforces this
-via `scripts/check-no-raw-hex.sh`, scoped to `theme/`, `lib/`, `features/` and
-`components/native/ui/` — clean from birth. Screens under `app/` and `components/native/` still
-hold inline hex and are cleaned up by the M1c re-skin tickets. Add `// allow-hex` only when a
-literal colour is genuinely required.
+`theme/tokens.ts` is the single source of truth, and NativeWind classes and inline styles both
+resolve to it. The whole app is on the tokens (M1c closed in ONE-77), and it is gated: **no raw
+hex and no old-skin classes anywhere.** `npm run verify` and CI run `scripts/check-no-raw-hex.sh`
+over `theme/`, `lib/`, `features/`, `app/` and `components/`, failing on a hex literal or on the
+old dark skin's NativeWind classes (`bg-black`, `bg-gray-*`, `text-white`, `text-gray-*`,
+`text-blue-*`, `border-gray-*`, …). `__tests__/scripts/noRawHexGate.test.ts` pins that directory
+list, so narrowing the gate means changing the test too. Add `// allow-hex` only when a literal
+colour is genuinely required, and say why on the line. Full-bleed media stays black through the
+`color.text` token, with `withAlpha` for scrims — never a literal.
+
+Before re-skinning or building a screen, read the
+[M1c screen style guide](https://linear.app/onetag/document/m1c-screen-style-guide-read-before-any-re-skin-ticket-8bb0f53b7796),
+and reach for `components/native/ui` (Button, IconButton, TextField, ListRow, SettingsRow, Sheet,
+EmptyState, Skeleton, …) rather than hand-rolling one inside a screen.
 
 ## Vocabulary
 
