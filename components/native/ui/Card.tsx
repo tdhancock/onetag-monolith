@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Pressable, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { color, radius, space } from '../../../theme/tokens';
+import Pressable from './Pressable';
 
 export type SpaceTokenKey = keyof typeof space;
 

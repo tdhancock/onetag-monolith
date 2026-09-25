@@ -1,11 +1,11 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { View, Text, Pressable, Animated, Modal, Alert, StyleSheet } from 'react-native';
+import { View, Text, Pressable, Animated, Alert, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
 import { useLikePost, useRepostPost, useSavePost, useDeletePost } from '../../features/posts';
-import { Avatar, Button, IconButton, ICON_BUTTON_SIZE } from './ui';
+import { Avatar, IconButton, ICON_BUTTON_SIZE, Sheet, SheetRow } from './ui';
 import RenderUserContent from './RenderUserContent';
 import {
   HeartIcon,
@@ -17,9 +17,7 @@ import {
   DotsHorizontalIcon,
   SendIcon,
   ReportIcon,
-  ArrowLeftIcon,
   PencilAltIcon,
-  ChevronRightIcon,
 } from './Icons';
 import { reportPost } from '../../features/moderation';
 import { useIsAdmin } from '../../features/admin';
@@ -33,7 +31,7 @@ import {
   repostsLabel,
   truncateForCard,
 } from '../../lib/screens/postCard';
-import { color, radius, space, type } from '../../theme/tokens';
+import { color, space, type } from '../../theme/tokens';
 import type { Post } from '../../types';
 
 // ─── Layout ────────────────────────────────────────
@@ -65,28 +63,13 @@ interface PostCardProps {
   onViewReposters?: (postId: string) => void;
   onSharePost?: (post: Post) => void;
   isPreview?: boolean;
+  /**
+   * Post detail: the text is shown whole rather than truncated, and the card
+   * drops its own "View all N comments" line because the screen lists the
+   * comments beneath it.
+   */
+  detail?: boolean;
 }
-
-// ─── Sheet rows ────────────────────────────────────
-
-const SheetRow: React.FC<{
-  label: string;
-  icon?: React.ReactNode;
-  destructive?: boolean;
-  chevron?: boolean;
-  onPress: () => void;
-}> = ({ label, icon, destructive = false, chevron = false, onPress }) => (
-  <Pressable
-    accessibilityRole="button"
-    accessibilityLabel={label}
-    onPress={onPress}
-    style={({ pressed }) => [styles.sheetRow, pressed && styles.sheetRowPressed]}
-  >
-    {icon ? <View style={styles.sheetRowIcon}>{icon}</View> : null}
-    <Text style={[styles.sheetRowLabel, destructive && styles.destructive]}>{label}</Text>
-    {chevron ? <ChevronRightIcon color={color.textMuted} size={18} /> : null}
-  </Pressable>
-);
 
 // ─── PostHeader ────────────────────────────────────
 
@@ -153,70 +136,45 @@ const PostHeader: React.FC<{
         />
       )}
 
-      {/* Options menu and report sheet */}
-      <Modal
+      {/* Options menu, and the report reasons as its second step */}
+      <Sheet
         visible={menuVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeMenu}
+        onClose={closeMenu}
+        title={showReport ? 'Why are you reporting this?' : undefined}
+        onBack={showReport ? () => setShowReport(false) : undefined}
       >
-        <View style={styles.sheetRoot}>
-          <Pressable
-            style={[StyleSheet.absoluteFill, styles.scrim]}
-            onPress={closeMenu}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-          />
-          <View style={styles.sheet}>
-            {!showReport ? (
-              <>
-                {(isMyPost || isAdmin) ? (
-                  <>
-                    {isMyPost && post.media_type === 'text' && onEditPost && (
-                      <SheetRow
-                        label="Edit Post"
-                        icon={<PencilAltIcon color={color.text} size={20} />}
-                        onPress={() => { setMenuVisible(false); onEditPost(); }}
-                      />
-                    )}
-                    <SheetRow
-                      label="Delete Post"
-                      destructive
-                      icon={<TrashIcon color={color.heart} size={20} />}
-                      onPress={() => { setMenuVisible(false); onDelete(); }}
-                    />
-                  </>
-                ) : (
-                  <SheetRow
-                    label="Report Post"
-                    destructive
-                    chevron
-                    icon={<ReportIcon color={color.heart} size={20} />}
-                    onPress={() => setShowReport(true)}
-                  />
-                )}
-              </>
-            ) : (
-              <>
-                <View style={styles.sheetTitleRow}>
-                  <IconButton
-                    icon={<ArrowLeftIcon color={color.text} size={20} />}
-                    accessibilityLabel="Back"
-                    onPress={() => setShowReport(false)}
-                  />
-                  <Text style={styles.sheetTitle}>Why are you reporting this?</Text>
-                </View>
-                {POST_REPORT_REASONS.map(reason => (
-                  <SheetRow key={reason} label={reason} onPress={() => handleReport(reason)} />
-                ))}
-              </>
-            )}
-            <Button variant="outline" onPress={closeMenu} style={styles.sheetCancel}>
-              Cancel
-            </Button>
-          </View>
-        </View>
-      </Modal>
+        {!showReport ? (
+          (isMyPost || isAdmin) ? (
+            <>
+              {isMyPost && post.media_type === 'text' && onEditPost && (
+                <SheetRow
+                  label="Edit Post"
+                  icon={<PencilAltIcon color={color.text} size={20} />}
+                  onPress={() => { setMenuVisible(false); onEditPost(); }}
+                />
+              )}
+              <SheetRow
+                label="Delete Post"
+                destructive
+                icon={<TrashIcon color={color.heart} size={20} />}
+                onPress={() => { setMenuVisible(false); onDelete(); }}
+              />
+            </>
+          ) : (
+            <SheetRow
+              label="Report Post"
+              destructive
+              chevron
+              icon={<ReportIcon color={color.heart} size={20} />}
+              onPress={() => setShowReport(true)}
+            />
+          )
+        ) : (
+          POST_REPORT_REASONS.map(reason => (
+            <SheetRow key={reason} label={reason} onPress={() => handleReport(reason)} />
+          ))
+        )}
+      </Sheet>
     </View>
   );
 });
@@ -234,6 +192,7 @@ const PostCard: React.FC<PostCardProps> = ({
   onViewReposters,
   onSharePost,
   isPreview = false,
+  detail = false,
 }) => {
   const {
     addToast,
@@ -273,7 +232,7 @@ const PostCard: React.FC<PostCardProps> = ({
   const saved = Boolean(post.isSaved);
 
   const [showHeart, setShowHeart] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(detail);
 
   const heartScale = useRef(new Animated.Value(0)).current;
 
@@ -364,7 +323,7 @@ const PostCard: React.FC<PostCardProps> = ({
   // is its content, so only a media post has a caption line here.
   const showCounts = !isStoryVersion && Boolean(likes || reposts);
   const showCaption = !isTextOnly && Boolean(post.content);
-  const showComments = !isStoryVersion && Boolean(commentsLink);
+  const showComments = !isStoryVersion && !detail && Boolean(commentsLink);
   const hasFooter = showCounts || showCaption || showComments;
 
   const moreControl = body.truncated ? (
@@ -510,11 +469,14 @@ const PostCard: React.FC<PostCardProps> = ({
 };
 
 const styles = StyleSheet.create({
+  // Room either side of the hairline between posts: 8pt barely separated the
+  // last line of one post from the next one's header.
   card: {
     backgroundColor: color.bg,
     borderBottomWidth: 1,
     borderBottomColor: color.border,
-    paddingBottom: space.sm,
+    paddingTop: space.sm,
+    paddingBottom: space.lg,
   },
 
   // Header
@@ -624,63 +586,6 @@ const styles = StyleSheet.create({
     fontFamily: type.body,
     fontSize: 14,
     color: color.textMuted,
-  },
-
-  // Options sheet
-  sheetRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  scrim: {
-    backgroundColor: color.text,
-    opacity: 0.4,
-  },
-  sheet: {
-    backgroundColor: color.bg,
-    borderTopWidth: 1,
-    borderTopColor: color.border,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    paddingTop: space.sm,
-    paddingBottom: space.xxl,
-  },
-  sheetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 56,
-    paddingHorizontal: space.xl,
-  },
-  sheetRowPressed: {
-    backgroundColor: color.bgSub,
-  },
-  sheetRowIcon: {
-    marginRight: space.md,
-  },
-  sheetRowLabel: {
-    flex: 1,
-    fontFamily: type.body,
-    fontSize: 16,
-    color: color.text,
-  },
-  destructive: {
-    color: color.heart,
-  },
-  sheetTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: space.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: color.border,
-  },
-  sheetTitle: {
-    marginLeft: space.xs,
-    fontFamily: type.bodyBold,
-    fontSize: 16,
-    color: color.text,
-  },
-  sheetCancel: {
-    marginTop: space.md,
-    marginHorizontal: space.xl,
   },
 });
 

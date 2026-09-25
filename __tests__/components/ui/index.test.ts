@@ -32,10 +32,13 @@ jest.mock('react-native', () => {
 }, { virtual: true });
 
 jest.mock('expo-image', () => require('../../support/expoImageStub'), { virtual: true });
+// The barrel reaches the icons (ListRow, Sheet), and through them react-native-svg.
+jest.mock('react-native-svg', () => require('../../support/reactNativeSvgStub'), { virtual: true });
 
 // The import line from the acceptance criterion, verbatim in spirit: every
 // primitive, one specifier. If this does not typecheck, tsc fails.
 import {
+  Pressable,
   Button,
   Card,
   MonoLabel,
@@ -94,6 +97,12 @@ describe('components/native/ui — public surface', () => {
     ['Skeleton', Skeleton],
   ])('exports %s as a component', (_name, Component) => {
     expect(typeof Component).toBe('function');
+  });
+
+  it('exports Pressable, a forwardRef component', () => {
+    // The press-state-aware wrapper every pressed style goes through.
+    expect(Pressable).toBeDefined();
+    expect((Pressable as unknown as { displayName?: string }).displayName).toBe('Pressable');
   });
 
   it('exports TextField, a forwardRef component', () => {

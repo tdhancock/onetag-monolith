@@ -1,69 +1,27 @@
-
-
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  FlatList,
-  RefreshControl,
-  Dimensions,
-} from 'react-native';
-import { Image } from 'expo-image';
+import { View, Text, FlatList, RefreshControl, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../store/AppContext.native';
 import { useFollowCountsQuery, profileKeys, useCurrentProfile } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
-import {
-  getUserPosts,
-  getUserReposts,
-  getFollowerCount,
-  getFollowingCount,
-} from '../../features/profiles';
+import { getUserPosts, getUserReposts } from '../../features/profiles';
 import { getSavedPosts } from '../../features/posts';
-import { supabase } from '../../services/supabase.native';
-import UserAvatar from '../../components/native/UserAvatar';
-import RenderUserContent from '../../components/native/RenderUserContent';
-import { VerifiedIcon, ThreeDotsVerticalIcon } from '../../components/native/Icons';
-import PostSkeleton from '../../components/native/PostSkeleton';
+import ProfileHeader, { ProfileHeaderSkeleton } from '../../components/native/ProfileHeader';
+import ProfileTabs from '../../components/native/ProfileTabs';
+import { GridTile, ProfileGridSkeleton } from '../../components/native/ProfileGrid';
+import { Button, EmptyState, IconButton } from '../../components/native/ui';
+import { MenuIcon } from '../../components/native/Icons';
+import {
+  getEditButtonProps,
+  profileEmptyState,
+  profileTabsFor,
+  PROFILE_GRID_COLUMNS,
+  type ProfileTab,
+} from '../../lib/screens/profile';
+import { color, space, type } from '../../theme/tokens';
 import type { Post } from '../../types';
-
-const GRID_GAP = 2;
-const NUM_COLUMNS = 3;
-const screenWidth = Dimensions.get('window').width;
-const tileSize = (screenWidth - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
-
-type TabType = 'posts' | 'reposts' | 'saved';
-
-// ─── Grid Tile ───────────────────────────────────
-
-const GridTile: React.FC<{ post: Post; onPress: () => void }> = React.memo(({ post, onPress }) => {
-  const isTextPost = post.media_type === 'text' || !post.media;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{ width: tileSize, height: tileSize, marginRight: GRID_GAP, marginBottom: GRID_GAP }}
-    >
-      {isTextPost ? (
-        <View className="flex-1 p-2 justify-center bg-gray-800">
-          <Text className="text-white text-xs" numberOfLines={6}>
-            {post.content}
-          </Text>
-        </View>
-      ) : (
-        <Image
-          source={{ uri: post.media_preview_url || post.media }}
-          style={{ width: '100%', height: '100%' }}
-          contentFit="cover"
-          transition={200}
-        />
-      )}
-    </Pressable>
-  );
-});
 
 // ─── Profile Screen ──────────────────────────────
 
@@ -77,7 +35,7 @@ export default function ProfileScreen() {
   const { data: followCounts } = useFollowCountsQuery(profileId);
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<TabType>('posts');
+  const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [posts, setPosts] = useState<Post[]>([]);
   const [reposts, setReposts] = useState<Post[]>([]);
   // The posts on the Saved tab, not the viewer's set of saved ids — that
@@ -156,130 +114,110 @@ export default function ProfileScreen() {
 
   const handlePostPress = useCallback((post: Post) => {
     router.push(`/post/${post.id}`);
-  }, []);
+  }, [router]);
+
+  const renderItem = useCallback(({ item, index }: { item: Post; index: number }) => (
+    <GridTile post={item} index={index} onPress={() => handlePostPress(item)} />
+  ), [handlePostPress]);
 
   if (!userProfile) return null;
 
-  // ─── Profile Header ────────────────────────────
+  const editButton = getEditButtonProps(userProfile);
+  const empty = profileEmptyState(activeTab, true);
 
-  const ProfileHeader = () => (
-    <View>
-      <View className="px-4 py-3 border-b border-gray-800 flex-row justify-between items-center">
-        <Text className="text-white font-bold text-xl">@{userProfile.username}</Text>
-        <Pressable
-          onPress={() => router.push('/settings')}
-          className="p-2"
-          hitSlop={8}
-          accessibilityLabel="Settings"
-        >
-          <ThreeDotsVerticalIcon color="#fff" size={22} />
-        </Pressable>
-      </View>
-
-      <View className="p-4">
-        <View className="flex-row items-center">
-          <UserAvatar
-            username={userProfile.username}
-            avatarUrl={userProfile.profilePicture}
-            size={80}
-          />
-          <View className="flex-1 flex-row justify-around ml-4">
-            <View className="items-center">
-              <Text className="text-white font-bold text-lg">{posts.length}</Text>
-              <Text className="text-gray-500 text-sm">Posts</Text>
-            </View>
-            <Pressable
-              onPress={() => router.push({ pathname: '/user-list', params: { type: 'followers', userId: profileId, title: 'Followers' } })}
-              className="items-center"
-            >
-              <Text className="text-white font-bold text-lg">{followCounts?.followers ?? 0}</Text>
-              <Text className="text-gray-500 text-sm">Followers</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => router.push({ pathname: '/user-list', params: { type: 'following', userId: profileId, title: 'Following' } })}
-              className="items-center"
-            >
-              <Text className="text-white font-bold text-lg">{followCounts?.following ?? 0}</Text>
-              <Text className="text-gray-500 text-sm">Following</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <View className="mt-4">
-          <View className="flex-row items-center" style={{ gap: 4 }}>
-            <Text className="text-white text-xl font-bold">@{userProfile.username}</Text>
-            {userProfile.isVerified && <VerifiedIcon color="#3b82f6" size={18} />}
-          </View>
-          <Text className="text-gray-400">{userProfile.name}</Text>
-          {userProfile.bio ? (
-            <View className="mt-2">
-              <RenderUserContent content={userProfile.bio} className="text-white" />
-            </View>
-          ) : null}
-        </View>
-
-        <Pressable
-          onPress={() => router.push('/settings')}
-          className="mt-4 bg-gray-800 py-2 rounded-full items-center"
-        >
-          <Text className="text-white font-semibold">Edit Profile</Text>
-        </Pressable>
-      </View>
-
-      {/* Tabs */}
-      <View className="flex-row border-b border-gray-800">
-        {(['posts', 'reposts', 'saved'] as TabType[]).map(tab => (
-          <Pressable
-            key={tab}
-            onPress={() => setActiveTab(tab)}
-            className={`flex-1 py-3 items-center ${activeTab === tab ? 'border-b-2 border-white' : ''}`}
-          >
-            <Text className={`font-semibold capitalize ${activeTab === tab ? 'text-white' : 'text-gray-500'}`}>
-              {tab}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+  // A bar of its own above the header: your handle, and Settings.
+  const topBar = (
+    <View style={styles.topBar}>
+      <Text style={styles.topBarTitle} numberOfLines={1} accessibilityRole="header">
+        @{userProfile.username}
+      </Text>
+      <IconButton
+        icon={<MenuIcon color={color.text} size={24} strokeWidth={1.8} />}
+        accessibilityLabel="Settings"
+        onPress={() => router.push('/settings')}
+      />
     </View>
   );
 
-  // ─── Render ────────────────────────────────────
-
-  const renderItem = useCallback(({ item }: { item: Post }) => (
-    <GridTile post={item} onPress={() => handlePostPress(item)} />
-  ), [handlePostPress]);
-
-  const emptyMessage = activeTab === 'posts'
-    ? 'No posts yet.'
-    : activeTab === 'reposts'
-    ? "You haven't reposted anything yet."
-    : "You haven't saved any posts yet.";
+  const header = (
+    <View>
+      <ProfileHeader
+        profile={userProfile}
+        stats={{ posts: posts.length, followers: followCounts?.followers, following: followCounts?.following }}
+        onPressFollowers={() => router.push({ pathname: '/user-list', params: { type: 'followers', userId: profileId, title: 'Followers' } })}
+        onPressFollowing={() => router.push({ pathname: '/user-list', params: { type: 'following', userId: profileId, title: 'Following' } })}
+        // Share waits for profile links in M4 (ONE-68 allows hiding it until
+        // then), so Edit profile has the row to itself.
+        actions={
+          editButton.isEnabled ? (
+            <Button variant="outline" size="sm" fullWidth onPress={() => router.push(editButton.target)}>
+              {editButton.label}
+            </Button>
+          ) : null
+        }
+      />
+      <ProfileTabs tabs={profileTabsFor(true)} selected={activeTab} onSelect={setActiveTab} />
+    </View>
+  );
 
   return (
-    <SafeAreaView className="flex-1 bg-black">
+    <SafeAreaView style={styles.screen} edges={['top']}>
+      {topBar}
       <FlatList
-        data={currentData}
+        data={isLoading ? [] : currentData}
         renderItem={renderItem}
         keyExtractor={item => item.id}
-        numColumns={NUM_COLUMNS}
-        ListHeaderComponent={ProfileHeader}
+        numColumns={PROFILE_GRID_COLUMNS}
+        ListHeaderComponent={isLoading ? <ProfileHeaderSkeleton /> : header}
         ListEmptyComponent={
           isLoading ? (
-            <View className="py-4">
-              <PostSkeleton />
-              <PostSkeleton />
-            </View>
+            <ProfileGridSkeleton />
           ) : (
-            <View className="py-20 items-center">
-              <Text className="text-gray-500 text-lg">{emptyMessage}</Text>
-            </View>
+            <EmptyState
+              title={empty.title}
+              body={empty.body}
+              action={empty.action ? { label: empty.action.label, onPress: () => router.push(empty.action!.target) } : undefined}
+            />
           )
         }
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3b82f6" />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={color.textMuted}
+            colors={[color.textMuted]}
+          />
         }
-        contentContainerStyle={{ flexGrow: 1 }}
+        contentContainerStyle={styles.list}
       />
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: color.bg,
+  },
+  list: {
+    flexGrow: 1,
+    backgroundColor: color.bg,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 52,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: color.border,
+    backgroundColor: color.bg,
+  },
+  topBarTitle: {
+    flexShrink: 1,
+    fontFamily: type.bodyBold,
+    fontSize: 17,
+    color: color.text,
+  },
+});

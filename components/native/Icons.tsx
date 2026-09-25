@@ -191,6 +191,12 @@ export const ThreeDotsVerticalIcon: React.FC<IconProps> = ({ color = palette.tex
   </Svg>
 );
 
+export const GridIcon: React.FC<IconProps> = ({ color = palette.text, size = 24, strokeWidth }) => (
+  <Svg width={size} height={size} fill="none" stroke={color} strokeWidth={strokeWidth} viewBox="0 0 24 24">
+    <Path strokeLinejoin="miter" d="M4 4h6.5v6.5H4zM13.5 4H20v6.5h-6.5zM4 13.5h6.5V20H4zM13.5 13.5H20V20h-6.5z" />
+  </Svg>
+);
+
 export const DotsHorizontalIcon: React.FC<IconProps> = ({ color = palette.text, size = 24 }) => (
   <Svg width={size} height={size} fill={color} viewBox="0 0 20 20">
     <Path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
@@ -225,12 +231,6 @@ export const ReplyIcon: React.FC<IconProps> = ({ color = palette.text, size = 24
 export const HashtagIcon: React.FC<IconProps> = ({ color = palette.text, size = 24, strokeWidth }) => (
   <Svg width={size} height={size} fill="none" stroke={color} strokeWidth={strokeWidth} viewBox="0 0 24 24">
     <Path strokeLinecap="round" strokeLinejoin="round" d="M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5l-3.9 19.5m-2.1-19.5l-3.9 19.5" />
-  </Svg>
-);
-
-export const PollIcon: React.FC<IconProps> = ({ color = palette.text, size = 24, strokeWidth }) => (
-  <Svg width={size} height={size} fill="none" stroke={color} strokeWidth={strokeWidth} viewBox="0 0 24 24">
-    <Path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V5.25A2.25 2.25 0 0018 3H6A2.25 2.25 0 003.75 5.25v12.75A2.25 2.25 0 006 20.25z" />
   </Svg>
 );
 

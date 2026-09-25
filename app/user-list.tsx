@@ -1,92 +1,78 @@
-
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, Pressable, ActivityIndicator } from 'react-native';
+import { View, FlatList, RefreshControl, StyleSheet } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
 import { useFollowState, useToggleFollow, useCurrentProfile } from '../features/profiles';
 import { getFollowerUsers, getFollowingUsers } from '../features/profiles';
 import { getPostLikers, getPostReposters } from '../features/posts';
-import { getStoryViewers } from '../features/stories';
-import UserAvatar from '../components/native/UserAvatar';
-import { VerifiedIcon } from '../components/native/Icons';
+import { Button, EmptyState, ListRow, Skeleton } from '../components/native/ui';
+import { userListEmptyTitle, type UserListType } from '../lib/screens/profile';
+import { color, space } from '../theme/tokens';
 import type { SimpleUser } from '../types';
-import type { StoryViewer } from '../features/stories';
+
+/** Placeholder rows while the list loads. */
+const SKELETON_ROWS = 8;
+
+/** A ListRow-shaped placeholder. */
+const RowSkeleton: React.FC = () => (
+  <View style={styles.skeletonRow}>
+    <Skeleton circle height={40} />
+    <View style={styles.skeletonText}>
+      <Skeleton width={140} height={12} />
+      <Skeleton width={90} height={10} style={styles.skeletonGap} />
+    </View>
+  </View>
+);
 
 export default function UserListScreen() {
-  const { type, userId, postId, storyId, title } = useLocalSearchParams<{
-    type: 'followers' | 'following' | 'likes' | 'reposts' | 'storyViews';
+  const { type, userId, postId, title } = useLocalSearchParams<{
+    type: UserListType;
     userId?: string;
     postId?: string;
-    storyId?: string;
     title: string;
   }>();
   const router = useRouter();
   const { isUserBlocked } = useApp();
-  const { profile: userProfile, profileId } = useCurrentProfile();
+  const { profileId } = useCurrentProfile();
   const { isFollowing: isUserFollowing } = useFollowState(profileId);
   const follow = useToggleFollow(profileId);
 
   const [users, setUsers] = useState<SimpleUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pendingUsernames, setPendingUsernames] = useState<Set<string>>(new Set());
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchUsers = useCallback(async (): Promise<SimpleUser[]> => {
+    if (type === 'followers' && userId) return getFollowerUsers(userId);
+    if (type === 'following' && userId) return getFollowingUsers(userId);
+    if (type === 'likes' && postId) return getPostLikers(postId);
+    if (type === 'reposts' && postId) return getPostReposters(postId);
+    return [];
+  }, [type, userId, postId]);
 
   useEffect(() => {
     let cancelled = false;
-
-    const fetchUsers = async () => {
-      setLoading(true);
-      try {
-        let result: SimpleUser[] = [];
-        if (type === 'followers' && userId) {
-          result = await getFollowerUsers(userId);
-        } else if (type === 'following' && userId) {
-          result = await getFollowingUsers(userId);
-        } else if (type === 'likes' && postId) {
-          result = await getPostLikers(postId);
-        } else if (type === 'reposts' && postId) {
-          result = await getPostReposters(postId);
-        } else if (type === 'storyViews' && storyId) {
-          const viewers = await getStoryViewers(storyId);
-          result = viewers.map((v: StoryViewer) => ({
-            id: v.user_id,
-            username: v.username,
-            name: v.username,
-            avatar: v.avatar_url,
-            isVerified: false,
-          }));
-        }
-        if (!cancelled) {
-          setUsers(result);
-        }
-      } catch (err) {
-        console.error('Failed to fetch user list:', err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    fetchUsers();
+    setLoading(true);
+    fetchUsers()
+      .then((result) => { if (!cancelled) setUsers(result); })
+      .catch((err) => console.error('Failed to fetch user list:', err))
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [type, userId, postId, storyId]);
+  }, [fetchUsers]);
 
-  const withPendingUsername = useCallback((username: string, add: boolean) => {
-    const key = username.trim().toLowerCase();
-    if (!key) return;
-    setPendingUsernames((prev) => {
-      const next = new Set(prev);
-      if (add) {
-        next.add(key);
-      } else {
-        next.delete(key);
-      }
-      return next;
-    });
-  }, []);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      setUsers(await fetchUsers());
+    } catch (err) {
+      console.error('Failed to refresh user list:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchUsers]);
 
-  // The optimistic toggle flips the cache immediately, so the per-row pending
-  // flag is gone with the await it used to guard (ONE-15).
+  // The optimistic toggle flips the cache immediately, so there is no per-row
+  // pending state to keep (ONE-15).
   const handleToggleFollow = useCallback(
     (user: SimpleUser) => follow.toggle({ userId: user.id, username: user.username }),
     [follow],
@@ -111,55 +97,31 @@ export default function UserListScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: SimpleUser }) => {
-      const usernameKey = item.username.trim().toLowerCase();
       const isFollowing = isUserFollowing(item.username);
       const isSelf = Boolean(profileId && item.id === profileId);
-      const isPending = follow.isPending;
 
       return (
-        <View className="flex-row items-center px-4 py-3 border-b border-gray-800">
-          <Pressable
-            className="flex-row items-center flex-1"
-            onPress={() => router.push(`/user/${item.username}`)}
-          >
-            <UserAvatar username={item.username} avatarUrl={item.avatar} size={48} />
-            <View className="flex-1 ml-3">
-              <View className="flex-row items-center">
-                <Text className="text-white font-bold text-base" numberOfLines={1}>
-                  @{item.username}
-                </Text>
-                {item.isVerified && (
-                  <View className="ml-1">
-                    <VerifiedIcon size={16} />
-                  </View>
-                )}
-              </View>
-              <Text className="text-gray-400 text-sm" numberOfLines={1}>
-                {item.name}
-              </Text>
-            </View>
-          </Pressable>
-          {isSelf ? (
-            <View className="px-3 py-1 rounded-full border border-gray-700">
-              <Text className="text-gray-400 text-sm font-semibold">You</Text>
-            </View>
-          ) : (
-            <Pressable
-              onPress={(event) => {
-                event.stopPropagation();
-                handleToggleFollow(item);
-              }}
-              disabled={isPending}
-              className={`px-4 py-1.5 rounded-full ${
-                isFollowing ? 'border border-gray-500' : 'bg-blue-500'
-              } ${isPending ? 'opacity-60' : ''}`}
-            >
-              <Text className="text-sm font-semibold text-white">
-                {isPending ? '...' : (isFollowing ? 'Following' : 'Follow')}
-              </Text>
-            </Pressable>
-          )}
-        </View>
+        <ListRow
+          title={item.name || item.username}
+          subtitle={`@${item.username}`}
+          avatarUri={item.avatar}
+          verified={item.isVerified}
+          onPress={() => router.push(`/user/${item.username}`)}
+          accessibilityLabel={`View ${item.username}'s profile`}
+          // You cannot follow yourself: your own row has no button.
+          trailing={
+            isSelf ? null : (
+              <Button
+                size="sm"
+                variant={isFollowing ? 'outline' : 'primary'}
+                onPress={() => handleToggleFollow(item)}
+                disabled={follow.isPending}
+              >
+                {isFollowing ? 'Following' : 'Follow'}
+              </Button>
+            )
+          }
+        />
       );
     },
     [handleToggleFollow, isUserFollowing, follow.isPending, router, profileId],
@@ -168,22 +130,11 @@ export default function UserListScreen() {
   const keyExtractor = useCallback((item: SimpleUser) => item.id || item.username, []);
 
   return (
-    <SafeAreaView className="flex-1 bg-black" edges={['bottom']}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: (title as string) || 'Users',
-          headerStyle: { backgroundColor: '#000' },
-          headerTintColor: '#fff',
-        }}
-      />
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
+      <Stack.Screen options={{ headerShown: true, title: (title as string) || 'People' }} />
       {loading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#3b82f6" />
-        </View>
-      ) : filteredUsers.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
-          <Text className="text-gray-400 text-base">No users to show.</Text>
+        <View>
+          {Array.from({ length: SKELETON_ROWS }, (_, i) => <RowSkeleton key={i} />)}
         </View>
       ) : (
         <FlatList
@@ -191,8 +142,41 @@ export default function UserListScreen() {
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={color.textMuted}
+              colors={[color.textMuted]}
+            />
+          }
+          ListEmptyComponent={<EmptyState title={userListEmptyTitle(type)} />}
+          contentContainerStyle={styles.list}
         />
       )}
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: color.bg,
+  },
+  list: {
+    flexGrow: 1,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 56,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+  },
+  skeletonText: {
+    marginLeft: space.md,
+  },
+  skeletonGap: {
+    marginTop: space.sm,
+  },
+});

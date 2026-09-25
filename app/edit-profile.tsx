@@ -1,15 +1,23 @@
-
-
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import {
+  View,
+  Text,
+  Pressable,
+  ScrollView,
+  ActivityIndicator,
+  StyleSheet,
+} from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '../store/AppContext.native';
 import { useUpdateProfile, useUploadAvatar, useCurrentProfile } from '../features/profiles';
 import { cleanHtml } from '../lib/cleanHtml';
-import { uploadAvatar, updateUserProfileData } from '../features/profiles';
-import UserAvatar from '../components/native/UserAvatar';
+import { Avatar, TextField } from '../components/native/ui';
+import KeyboardAvoider from '../components/native/KeyboardAvoider';
+import { hasProfileChanges, usernameError } from '../lib/screens/profile';
+import { color, space, type } from '../theme/tokens';
+
 export default function EditProfileScreen() {
   const router = useRouter();
   const { addToast } = useApp();
@@ -22,6 +30,19 @@ export default function EditProfileScreen() {
   const [bio, setBio] = useState(userProfile?.bio ?? '');
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Save waits for a change: a new photo, or a field that differs. A new
+  // handle sign-up would refuse, or none at all, cannot be saved; an
+  // unchanged one is left alone, so an account older than the rule can still
+  // edit its bio.
+  const dirty = hasProfileChanges(userProfile, { name, username, bio }, Boolean(avatarUri));
+  const handleProblem =
+    username === (userProfile?.username ?? '')
+      ? null
+      : username.length === 0
+        ? 'Choose a username.'
+        : usernameError(username);
+  const canSave = dirty && !saving && !handleProblem;
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -37,7 +58,7 @@ export default function EditProfileScreen() {
   };
 
   const handleSave = async () => {
-    if (saving) return;
+    if (!canSave) return;
     setSaving(true);
 
     const cleanedBio = cleanHtml(bio);
@@ -72,103 +93,165 @@ export default function EditProfileScreen() {
   };
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          presentation: 'modal',
-          headerShown: false,
-        }}
-      />
-      <SafeAreaView className="flex-1 bg-black">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          className="flex-1"
+    // A modal, declared in app/_layout.tsx. It used to set `presentation`
+    // itself, which only takes effect after the screen has been pushed as a
+    // card; the native stack cannot convert a pushed screen into a modal in
+    // place, and the screen reloaded instead of opening.
+    <SafeAreaView style={styles.screen}>
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          hitSlop={12}
+          style={styles.headerSide}
         >
-          {/* Header */}
-          <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-800">
-            <Pressable onPress={() => router.back()}>
-              <Text className="text-white text-base">Cancel</Text>
-            </Pressable>
-            <Text className="text-white text-lg font-semibold">Edit Profile</Text>
+          <Text style={styles.cancel}>Cancel</Text>
+        </Pressable>
+        <Text style={styles.title} accessibilityRole="header">
+          Edit profile
+        </Text>
+        <View style={[styles.headerSide, styles.headerRight]}>
+          {saving ? (
+            <ActivityIndicator size="small" color={color.text} accessibilityLabel="Saving" />
+          ) : (
             <Pressable
               onPress={handleSave}
-              disabled={saving}
-              className="bg-blue-500 rounded-full px-5 py-1.5 min-w-[70px] items-center"
+              disabled={!canSave}
+              accessibilityRole="button"
+              accessibilityLabel="Save"
+              accessibilityState={{ disabled: !canSave }}
+              hitSlop={12}
             >
-              {saving ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text className="text-white font-semibold text-sm">Save</Text>
-              )}
+              <Text style={[styles.save, !canSave && styles.saveDisabled]}>Save</Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      <KeyboardAvoider style={styles.fill}>
+        <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+          <View style={styles.avatar}>
+            <Avatar
+              uri={avatarUri ?? userProfile?.profilePicture}
+              name={name || username}
+              size={96}
+            />
+            <Pressable onPress={pickImage} accessibilityRole="button" hitSlop={8} style={styles.changePhoto}>
+              <Text style={styles.changePhotoText}>Change photo</Text>
             </Pressable>
           </View>
 
-          <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
-            {/* Avatar Section */}
-            <View className="items-center py-6">
-              <UserAvatar
-                username={userProfile?.username || ''}
-                avatarUrl={avatarUri ?? userProfile?.profilePicture}
-                size={90}
+          <View style={styles.fields}>
+            <TextField
+              label="Name"
+              value={name}
+              onChangeText={setName}
+              placeholder="Your name"
+              accessibilityLabel="Name"
+            />
+            <TextField
+              label="Username"
+              value={username}
+              // Handles are lowercase, as sign-up makes them.
+              onChangeText={(value) => setUsername(value.toLowerCase())}
+              placeholder="username"
+              autoCapitalize="none"
+              autoCorrect={false}
+              error={handleProblem}
+              accessibilityLabel="Username"
+            />
+            <View>
+              <TextField
+                label="Bio"
+                value={bio}
+                onChangeText={setBio}
+                placeholder="Tell people about yourself"
+                multiline
+                inputStyle={styles.bio}
+                accessibilityLabel="Bio"
               />
-              <Pressable onPress={pickImage} className="mt-3">
-                <Text className="text-blue-500 text-base font-medium">Change Photo</Text>
-              </Pressable>
+              {/* A count, not a limit: bios have no maximum (ONE-68). */}
+              <Text style={styles.count} accessibilityLabel={`${bio.length} characters`}>
+                {bio.length}
+              </Text>
             </View>
-
-            {/* Form Fields */}
-            <View className="px-4 gap-5">
-              {/* Name */}
-              <View>
-                <Text className="text-gray-400 text-sm mb-1.5">Name</Text>
-                <TextInput
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Your name"
-                  placeholderTextColor="#6b7280"
-                  className="bg-gray-800 text-white rounded-lg px-4 py-3 text-base border border-gray-700"
-                />
-              </View>
-
-              {/* Username */}
-              <View>
-                <Text className="text-gray-400 text-sm mb-1.5">Username</Text>
-                <View className="flex-row items-center bg-gray-800 rounded-lg border border-gray-700">
-                  <View className="pl-4 pr-1 py-3">
-                    <Text className="text-gray-400 text-base">@</Text>
-                  </View>
-                  <TextInput
-                    value={username}
-                    onChangeText={setUsername}
-                    placeholder="username"
-                    placeholderTextColor="#6b7280"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    className="flex-1 text-white px-2 py-3 text-base"
-                  />
-                </View>
-              </View>
-
-              {/* Bio */}
-              <View>
-                <Text className="text-gray-400 text-sm mb-1.5">Bio</Text>
-                <View className="relative">
-                  <TextInput
-                    value={bio}
-                    onChangeText={setBio}
-                    placeholder="Tell us about yourself"
-                    placeholderTextColor="#6b7280"
-                    multiline
-                    numberOfLines={4}
-                    textAlignVertical="top"
-                    className="bg-gray-800 text-white rounded-lg px-4 py-3 text-base border border-gray-700 min-h-[110px]"
-                  />
-                </View>
-              </View>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </>
+          </View>
+        </ScrollView>
+      </KeyboardAvoider>
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: color.bg,
+  },
+  fill: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 52,
+    paddingHorizontal: space.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: color.border,
+  },
+  headerSide: {
+    minWidth: 64,
+  },
+  headerRight: {
+    alignItems: 'flex-end',
+  },
+  cancel: {
+    fontFamily: type.body,
+    fontSize: 16,
+    color: color.text,
+  },
+  title: {
+    fontFamily: type.bodyBold,
+    fontSize: 17,
+    color: color.text,
+  },
+  save: {
+    fontFamily: type.bodyBold,
+    fontSize: 16,
+    color: color.text,
+  },
+  saveDisabled: {
+    color: color.textMuted,
+  },
+  scroll: {
+    paddingBottom: space.xxl,
+  },
+  avatar: {
+    alignItems: 'center',
+    paddingVertical: space.xl,
+  },
+  changePhoto: {
+    marginTop: space.md,
+    minHeight: 32,
+    justifyContent: 'center',
+  },
+  changePhotoText: {
+    fontFamily: type.bodyBold,
+    fontSize: 15,
+    color: color.text,
+  },
+  fields: {
+    paddingHorizontal: space.lg,
+    gap: space.lg,
+  },
+  bio: {
+    minHeight: 110,
+  },
+  count: {
+    marginTop: space.xs,
+    alignSelf: 'flex-end',
+    fontFamily: type.body,
+    fontSize: 12,
+    color: color.textMuted,
+  },
+});

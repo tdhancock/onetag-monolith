@@ -24,8 +24,18 @@ export const flattenStyle = (style: unknown): Record<string, unknown> => {
 };
 
 const passthroughProps = (props: Record<string, unknown>) => {
-  const { style, children, testID, className, ...rest } = props;
+  // `accessible` is RN-only; dropping it keeps React's DOM warnings quiet.
+  const {
+    style,
+    children,
+    testID,
+    className,
+    accessible: _accessible,
+    accessibilityLabel,
+    ...rest
+  } = props;
   const domProps: Record<string, unknown> = { ...rest };
+  if (typeof accessibilityLabel === 'string') domProps['aria-label'] = accessibilityLabel;
   if (typeof testID === 'string') domProps['data-testid'] = testID;
   if (typeof className === 'string') domProps.className = className;
   const flat = flattenStyle(style);
@@ -77,7 +87,7 @@ export const Text: React.FC<React.PropsWithChildren<Record<string, unknown>>> = 
 };
 
 export const Pressable: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props => {
-  const { onPress, accessibilityLabel, style, ...rest } = props;
+  const { onPress, onPressIn, onPressOut, accessibilityLabel, style, ...rest } = props;
   // Pressable takes its style as a function of press state; render the
   // resting state, which is what a mounted-but-untouched control shows.
   const resolvedStyle =
@@ -87,6 +97,9 @@ export const Pressable: React.FC<React.PropsWithChildren<Record<string, unknown>
     {
       ...passthroughProps({ ...rest, style: resolvedStyle }),
       onClick: pressHandler(onPress),
+      // The finger going down and coming up, for press feedback.
+      onMouseDown: onPressIn as React.MouseEventHandler | undefined,
+      onMouseUp: onPressOut as React.MouseEventHandler | undefined,
       'aria-label': accessibilityLabel as string | undefined,
     },
     props.children,
@@ -109,11 +122,14 @@ export const TextInput = React.forwardRef<HTMLInputElement, Record<string, unkno
       placeholder,
       placeholderTextColor,
       multiline,
+      accessibilityLabel,
+      selectionColor: _selectionColor,
       ...rest
     } = props;
     return React.createElement('input', {
       ...passthroughProps(rest),
       ref,
+      'aria-label': accessibilityLabel as string | undefined,
       placeholder,
       'data-placeholder-color': placeholderTextColor,
       'data-multiline': multiline ? 'true' : undefined,
@@ -125,7 +141,26 @@ export const TextInput = React.forwardRef<HTMLInputElement, Record<string, unkno
   },
 );
 
+/** A spinner, marked so a suite can find it. */
+export const ActivityIndicator: React.FC<Record<string, unknown>> = props =>
+  React.createElement('div', {
+    'data-spinner': 'true',
+    'data-color': props.color as string | undefined,
+    'data-size': props.size as string | undefined,
+  });
+
 export const Alert = { alert: jest.fn() };
+
+/** Listeners register and never fire; a suite that needs a keyboard event captures the handler. */
+export const Keyboard = {
+  addListener: jest.fn(() => ({ remove: jest.fn() })),
+  dismiss: jest.fn(),
+};
+
+export const LayoutAnimation = {
+  configureNext: jest.fn(),
+  Types: { keyboard: 'keyboard' },
+};
 
 /**
  * Reduce-motion defaults to off. A suite that needs it on overrides

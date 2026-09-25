@@ -2,6 +2,9 @@
 // `components/native/ui`, never from the individual files, so the set can be
 // reshaped without touching every caller.
 
+export { default as Pressable } from './Pressable';
+export type { PressableProps } from './Pressable';
+
 export { default as MonoLabel, letterSpacingFor } from './MonoLabel';
 export type { MonoLabelProps, ColorTokenKey } from './MonoLabel';
 
@@ -33,3 +36,6 @@ export { default as Skeleton } from './Skeleton';
 export type { SkeletonProps } from './Skeleton';
 
 export { useReducedMotion } from './useReducedMotion';
+
+export { default as Sheet, SheetRow, SHEET_ROW_HEIGHT } from './Sheet';
+export type { SheetProps, SheetRowProps } from './Sheet';

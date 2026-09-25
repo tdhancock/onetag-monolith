@@ -71,7 +71,9 @@ const SharedPostPreview: React.FC<{ post: Post; onPress: () => void }> = ({ post
     {post.media ? (
       <View className="aspect-square rounded-md overflow-hidden bg-gray-800">
         <Image
-          source={{ uri: post.media_preview_url || post.media }}
+          // The preview is a 50px blur-up, not something to show on its own.
+          source={{ uri: post.media }}
+          placeholder={post.media_preview_url ? { uri: post.media_preview_url } : undefined}
           style={{ width: '100%', height: '100%' }}
           contentFit="cover"
         />

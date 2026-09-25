@@ -178,13 +178,12 @@ export const getStatCell = (
 // ---------------------------------------------------------------------------
 
 /**
- * Describes the rendered Edit Profile button. The component always
- * pushes the user to `/settings` (the same target as the standalone
- * Settings icon in the header) — centralising the label and target
- * keeps both call sites aligned.
+ * Describes the rendered Edit Profile button. It opens the edit screen
+ * itself; Settings has its own control in the profile's top bar. (It used to
+ * open Settings too, one tap short of where the label said it went.)
  */
 export const EDIT_PROFILE_LABEL = 'Edit Profile';
-export const EDIT_PROFILE_TARGET = '/settings';
+export const EDIT_PROFILE_TARGET = '/edit-profile';
 
 export interface EditButtonProps {
     label: string;
@@ -249,3 +248,123 @@ export const isProfileLocked = ({
   isFollowing,
   isAdmin = false,
 }: ProfileVisibility): boolean => Boolean(isPrivate) && !isOwnProfile && !isFollowing && !isAdmin;
+
+// ---------------------------------------------------------------------------
+// Tabs, grid and empty states (ONE-68)
+// ---------------------------------------------------------------------------
+
+export type ProfileTab = 'posts' | 'reposts' | 'saved';
+
+/** The tabs a profile shows: Saved is yours alone. */
+export const profileTabsFor = (isOwnProfile: boolean): ProfileTab[] =>
+  isOwnProfile ? ['posts', 'reposts', 'saved'] : ['posts', 'reposts'];
+
+/** Each tab's accessibility label; the tabs themselves are icons. */
+export const PROFILE_TAB_LABELS: Record<ProfileTab, string> = {
+  posts: 'Posts',
+  reposts: 'Reposts',
+  saved: 'Saved',
+};
+
+export interface ProfileEmptyState {
+  title: string;
+  body: string;
+  /** Your own empty Posts tab offers a way to fill it. */
+  action?: { label: string; target: string };
+}
+
+/** What an empty tab says, which differs between your profile and someone else's. */
+export const profileEmptyState = (tab: ProfileTab, isOwnProfile: boolean): ProfileEmptyState => {
+  switch (tab) {
+    case 'posts':
+      return isOwnProfile
+        ? {
+            title: 'No posts yet',
+            body: 'Share a photo or a thought.',
+            action: { label: 'Create your first post', target: '/compose' },
+          }
+        : { title: 'No posts yet', body: 'Nothing has been posted here.' };
+    case 'reposts':
+      return isOwnProfile
+        ? { title: 'No reposts yet', body: 'Posts you repost show up here.' }
+        : { title: 'No reposts yet', body: 'Nothing has been reposted here.' };
+    case 'saved':
+      return { title: 'Nothing saved yet', body: 'Save posts to find them again here.' };
+  }
+};
+
+/** The gap between grid tiles, in points. */
+export const PROFILE_GRID_GAP = 1;
+export const PROFILE_GRID_COLUMNS = 3;
+
+/** A square tile's side: the width shared by three columns and two gaps. */
+export const profileGridTileSize = (
+  width: number,
+  columns: number = PROFILE_GRID_COLUMNS,
+  gap: number = PROFILE_GRID_GAP,
+): number => (width - gap * (columns - 1)) / columns;
+
+/** The first line of a text post, as its grid tile shows it. */
+export const firstLine = (content: string | null | undefined): string =>
+  (content ?? '').split('\n').map(line => line.trim()).find(Boolean) ?? '';
+
+// ---------------------------------------------------------------------------
+// User lists (ONE-68)
+// ---------------------------------------------------------------------------
+
+export type UserListType = 'followers' | 'following' | 'likes' | 'reposts';
+
+/** What an empty list says, by what it lists. */
+export const USER_LIST_EMPTY_TITLES: Record<UserListType, string> = {
+  followers: 'No followers yet',
+  following: 'Not following anyone yet',
+  likes: 'No likes yet',
+  reposts: 'No reposts yet',
+};
+
+export const userListEmptyTitle = (type: string | undefined): string =>
+  USER_LIST_EMPTY_TITLES[type as UserListType] ?? 'No one here yet';
+
+// ---------------------------------------------------------------------------
+// Edit profile (ONE-68)
+// ---------------------------------------------------------------------------
+
+/** A handle's allowed length, as `profiles.username`'s CHECK constraint has it. */
+export const USERNAME_MIN_LENGTH = 3;
+export const USERNAME_MAX_LENGTH = 20;
+
+/**
+ * What is wrong with a username, or null when nothing is. Shared by Sign up
+ * and Edit profile, so a handle cannot be changed into one sign-up would have
+ * refused — a space or a capital breaks `/user/<username>` links. An empty
+ * field reads as nothing to report yet; the caller decides whether empty may
+ * be submitted.
+ */
+export const usernameError = (username: string): string | null => {
+  if (username.length === 0) return null;
+  if (!/^[a-z0-9_.]+$/.test(username)) return 'Only lowercase letters, numbers, "_", and "." are allowed.';
+  if (username.length < USERNAME_MIN_LENGTH || username.length > USERNAME_MAX_LENGTH) {
+    return `Username must be between ${USERNAME_MIN_LENGTH} and ${USERNAME_MAX_LENGTH} characters.`;
+  }
+  return null;
+};
+
+export interface EditableProfileFields {
+  name: string;
+  username: string;
+  bio: string;
+}
+
+/**
+ * Whether Edit profile has anything to save: a new photo, or a field that
+ * differs from what the profile holds. Save stays disabled until it does.
+ */
+export const hasProfileChanges = (
+  original: Partial<EditableProfileFields> | null | undefined,
+  edited: EditableProfileFields,
+  hasNewAvatar: boolean,
+): boolean =>
+  hasNewAvatar ||
+  edited.name !== (original?.name ?? '') ||
+  edited.username !== (original?.username ?? '') ||
+  edited.bio !== (original?.bio ?? '');

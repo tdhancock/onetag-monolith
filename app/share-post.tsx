@@ -76,7 +76,6 @@ export default function SharePostScreen() {
           title: 'Send to Messages',
           headerStyle: { backgroundColor: '#000' },
           headerTintColor: '#fff',
-          presentation: 'modal',
         }}
       />
 

@@ -26,6 +26,8 @@ jest.mock('react-native', () => require('../support/reactNativeDom'), { virtual:
 // Skeleton comes through the components/native/ui barrel, which also carries
 // Avatar and so expo-image.
 jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
+// The barrel reaches the icons (ListRow, Sheet), and through them react-native-svg.
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
 
 // ─── 2. Imports ─────────────────────────────────────────────────────────
 import React from 'react';

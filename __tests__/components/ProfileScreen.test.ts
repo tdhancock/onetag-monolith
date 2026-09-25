@@ -191,7 +191,7 @@ describe('ProfileScreen – edit button', () => {
         // distinct so a regression can't collapse them into the same
         // value.
         expect(EDIT_PROFILE_LABEL).toBe('Edit Profile');
-        expect(EDIT_PROFILE_TARGET).toBe('/settings');
+        expect(EDIT_PROFILE_TARGET).toBe('/edit-profile');
         expect(EDIT_PROFILE_LABEL).not.toBe(EDIT_PROFILE_TARGET);
     });
 
@@ -199,13 +199,13 @@ describe('ProfileScreen – edit button', () => {
         const props = getEditButtonProps({ username: 'amelia' });
         expect(props).toEqual({
             label: 'Edit Profile',
-            target: '/settings',
+            target: '/edit-profile',
             isEnabled: true,
         });
     });
 
     it('renders the button as enabled even if the profile has no id yet', () => {
-        // The Edit button stays available — the route is `/settings`
+        // The Edit button stays available — the route is `/edit-profile`
         // which is reachable without a numeric id.
         const props = getEditButtonProps({ username: 'amelia' });
         expect(props.isEnabled).toBe(true);

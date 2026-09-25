@@ -169,7 +169,12 @@ export const useUpdatePost = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (post: Post) => updatePost(post),
+    mutationFn: async (post: Post): Promise<Post> => {
+      // updatePost reports failure by returning null rather than throwing.
+      const updated = await updatePost(post);
+      if (!updated) throw new Error('Could not save that post.');
+      return updated;
+    },
     onSuccess: (_updated, post) => {
       queryClient.invalidateQueries({ queryKey: postKeys.detail(post.id) });
       queryClient.invalidateQueries({ queryKey: postKeys.all });

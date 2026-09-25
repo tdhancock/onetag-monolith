@@ -1,19 +1,26 @@
-
-
-import React, { useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, Pressable, ScrollView, RefreshControl, StyleSheet } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
 import { usePostQuery } from '../../features/posts';
+import { useCommentsQuery } from '../../features/comments';
 import PostCard from '../../components/native/PostCard';
+import PostSkeleton from '../../components/native/PostSkeleton';
+import CommentRow from '../../components/native/CommentRow';
+import { EmptyState } from '../../components/native/ui';
+import { commentsLinkLabel } from '../../lib/screens/postCard';
+import { color, space, type } from '../../theme/tokens';
+
+/** How many comments post detail shows inline before "View all". */
+const INLINE_COMMENT_COUNT = 3;
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { isUserBlocked } = useApp();
-  const { profile: userProfile, profileId } = useCurrentProfile();
+  const { profileId } = useCurrentProfile();
 
   // The post is read from the cache entry the like, repost and save toggles
   // and the comment mutations patch (ONE-13, ONE-14). Holding it in local
@@ -24,100 +31,122 @@ export default function PostDetailScreen() {
   const loading = postQuery.isPending;
   const [refreshing, setRefreshing] = useState(false);
 
+  // The same query the comments screen reads, so opening it is instant.
+  const commentsQuery = useCommentsQuery(post ? post.id : undefined);
+  const firstComments = useMemo(
+    () => (commentsQuery.data ?? []).filter(c => !isUserBlocked(c.username)).slice(0, INLINE_COMMENT_COUNT),
+    [commentsQuery.data, isUserBlocked],
+  );
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await postQuery.refetch();
-    setRefreshing(false);
+    try {
+      await Promise.all([postQuery.refetch(), commentsQuery.refetch()]);
+    } finally {
+      setRefreshing(false);
+    }
   };
+
+  const header = <Stack.Screen options={{ headerShown: true, title: 'Post' }} />;
 
   if (loading) {
     return (
-      <SafeAreaView className="flex-1 bg-black">
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Post',
-            headerStyle: { backgroundColor: '#000' },
-            headerTintColor: '#fff',
-            headerTitleStyle: { fontWeight: 'bold' },
-          }}
-        />
-        <View className="flex-1 justify-center items-center">
-          <ActivityIndicator color="#3b82f6" size="large" />
-        </View>
+      <SafeAreaView style={styles.screen} edges={['bottom']}>
+        {header}
+        <PostSkeleton />
       </SafeAreaView>
     );
   }
 
-  if (!post) {
+  // A missing post and a blocked author's post read the same: there is
+  // nothing here for this viewer.
+  if (!post || isUserBlocked(post.username)) {
     return (
-      <SafeAreaView className="flex-1 bg-black">
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Post',
-            headerStyle: { backgroundColor: '#000' },
-            headerTintColor: '#fff',
-            headerTitleStyle: { fontWeight: 'bold' },
-          }}
+      <SafeAreaView style={styles.screen} edges={['bottom']}>
+        {header}
+        <EmptyState
+          title="This post isn't available"
+          body="It may have been deleted."
+          action={{ label: 'Back', onPress: () => router.back() }}
         />
-        <View className="flex-1 justify-center items-center">
-          <Text className="text-gray-400 text-lg">Post not found.</Text>
-          <Text className="text-gray-600 text-sm mt-2">
-            It may have been deleted or is no longer available.
-          </Text>
-        </View>
       </SafeAreaView>
     );
   }
 
-  if (isUserBlocked(post.username)) {
-    return (
-      <SafeAreaView className="flex-1 bg-black">
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Post',
-            headerStyle: { backgroundColor: '#000' },
-            headerTintColor: '#fff',
-            headerTitleStyle: { fontWeight: 'bold' },
-          }}
-        />
-        <View className="flex-1 justify-center items-center">
-          <Text className="text-gray-400 text-lg">This post is unavailable.</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const openComments = () => router.push(`/comments/${post.id}`);
+  const viewAll = commentsLinkLabel(post.replies);
 
   return (
-    <SafeAreaView className="flex-1 bg-black">
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Post',
-          headerStyle: { backgroundColor: '#000' },
-          headerTintColor: '#fff',
-          headerTitleStyle: { fontWeight: 'bold' },
-        }}
-      />
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
+      {header}
       <ScrollView
-        className="flex-1"
+        style={styles.screen}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3b82f6" />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={color.textMuted}
+            colors={[color.textMuted]}
+          />
         }
-        contentContainerStyle={{ flexGrow: 1 }}
+        contentContainerStyle={styles.content}
       >
         <PostCard
           post={post}
+          detail
           onViewProfile={(username) => router.push(`/user/${username}`)}
-          onViewComments={(postId) => router.push(`/comments/${postId}`)}
+          onViewComments={() => openComments()}
           onViewLikers={(postId) => router.push({ pathname: '/user-list', params: { type: 'likes', postId, title: 'Likes' } })}
           onViewReposters={(postId) => router.push({ pathname: '/user-list', params: { type: 'reposts', postId, title: 'Reposts' } })}
           onSharePost={(p) => router.push({ pathname: '/share-post', params: { id: p.id } })}
           onEditPost={(p) => router.push({ pathname: '/edit-post', params: { id: p.id } })}
         />
+
+        {firstComments.length > 0 && (
+          <View style={styles.comments}>
+            {firstComments.map(comment => (
+              <CommentRow
+                key={comment.id}
+                comment={comment}
+                onViewProfile={(username) => router.push(`/user/${username}`)}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* Always a way into the conversation, even before anyone has spoken. */}
+        <Pressable
+          onPress={openComments}
+          accessibilityRole="button"
+          style={styles.viewAll}
+        >
+          <Text style={styles.viewAllText}>{viewAll ?? 'Add a comment'}</Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: color.bg,
+  },
+  content: {
+    flexGrow: 1,
+    paddingBottom: space.xl,
+  },
+  comments: {
+    paddingTop: space.xs,
+  },
+  viewAll: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: space.lg,
+  },
+  viewAllText: {
+    fontFamily: type.bodyMedium,
+    fontSize: 14,
+    color: color.textMuted,
+  },
+});
