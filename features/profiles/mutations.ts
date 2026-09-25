@@ -14,9 +14,19 @@
 import { useCallback, useRef } from 'react';
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useAuthUserId } from '../auth';
-import { fetchMyProfiles, followUser, unfollowUser, updateBusinessProfile, updateUserProfileData, uploadAvatar } from './api';
+import {
+  createProfile,
+  fetchMyProfiles,
+  followUser,
+  unfollowUser,
+  updateBusinessProfile,
+  updateUserProfileData,
+  uploadAvatar,
+  type NewProfile,
+} from './api';
 import { activeProfileKeys, profileKeys } from './keys';
 import { writeActiveProfileId } from './activeProfile';
+import { asProfileId } from './types';
 import type { FollowCounts } from './queries';
 import type { AuthUserId, BusinessProfileUpdates, ProfileId, ProfileUpdates, UserProfile } from './types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
@@ -259,5 +269,31 @@ export const useSetActiveProfile = () => {
 
   return useMutation({
     mutationFn: (profileId: ProfileId) => setActiveProfile(queryClient, authUserId, profileId),
+  });
+};
+
+// ─── Adding a profile (ONE-26) ────────────────────────────────────────
+
+/**
+ * Add a profile to the account and make it the one being acted as.
+ *
+ * Someone who has just created a business profile wants to be in it, so on
+ * success the account's list is refetched — the new profile must be in it
+ * before the switch will accept it — and the switch follows. Rejects with a
+ * `CreateProfileError` naming a taken handle or kind.
+ */
+export const useCreateProfile = () => {
+  const queryClient = useQueryClient();
+  const authUserId = useAuthUserId();
+
+  return useMutation({
+    mutationFn: async (input: NewProfile): Promise<UserProfile> => {
+      if (!authUserId) throw new Error('You must be signed in.');
+      const created = await createProfile(authUserId, input);
+
+      await queryClient.invalidateQueries({ queryKey: profileKeys.mine(authUserId) });
+      await setActiveProfile(queryClient, authUserId, asProfileId(created.id));
+      return created;
+    },
   });
 };

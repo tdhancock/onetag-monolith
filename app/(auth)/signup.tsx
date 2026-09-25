@@ -12,31 +12,13 @@ import {
   USERNAME_CHECK_DEBOUNCE_MS,
   signupFormValid,
   signupPasswordErrors,
-  usernameAvailabilityLabel,
   type UsernameAvailability,
 } from '../../lib/screens/auth';
 import { Button, EmptyState, MonoLabel, Pressable, TextField } from '../../components/native/ui';
 import AuthScaffold, { AuthFormError, AuthSwitch, PasswordField } from '../../components/native/AuthScaffold';
+import UsernameStatus from '../../components/native/UsernameStatus';
 import { EnvelopeIcon } from '../../components/native/Icons';
 import { color, radius, space, type } from '../../theme/tokens';
-
-/** The status inside the username field: a spinner, then Available or Taken. */
-const UsernameStatus: React.FC<{ status: UsernameAvailability }> = ({ status }) => {
-  if (status === 'checking') {
-    return (
-      <View style={styles.status}>
-        <ActivityIndicator size="small" color={color.textMuted} accessibilityLabel="Checking username" />
-      </View>
-    );
-  }
-  const label = usernameAvailabilityLabel(status);
-  if (!label) return null;
-  return (
-    <View style={styles.status} accessibilityLiveRegion="polite">
-      <Text style={[styles.statusLabel, status === 'taken' && styles.statusTaken]}>{label}</Text>
-    </View>
-  );
-};
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -371,19 +353,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     backgroundColor: color.bg,
-  },
-  status: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingRight: space.sm,
-  },
-  statusLabel: {
-    fontFamily: type.bodyMedium,
-    fontSize: 13,
-    color: color.textMid,
-  },
-  statusTaken: {
-    color: color.heart,
   },
   fieldLabel: {
     marginBottom: space.sm,

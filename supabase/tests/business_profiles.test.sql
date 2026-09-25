@@ -8,7 +8,7 @@
 -- Account Y: individual profile YA (signup trigger).
 
 BEGIN;
-SELECT plan(12);
+SELECT plan(18);
 
 -- ─── Fixtures (as the database owner) ─────────────────────────────────
 
@@ -80,6 +80,41 @@ SELECT is((SELECT count(*)::int FROM d), 0, 'another account cannot delete the b
 SELECT is(
   (SELECT category FROM public.business_profiles WHERE profile_id = (SELECT xb FROM ids)),
   'Bakery', 'other accounts read business fields, and the owner''s edit stands');
+
+-- ─── 4. Adding a business profile, as the app does it (ONE-26) ───────
+--
+-- Y holds only its individual profile. The create flow inserts the profile
+-- row and then its business row, both as Y, under RLS.
+
+SELECT lives_ok(
+  $$INSERT INTO public.profiles (user_id, profile_type, username, full_name)
+    VALUES ('22222222-0000-0000-0000-0000000000b3', 'business', 'one26_y_biz', 'Y Works')$$,
+  'an account can add a business profile to itself');
+
+SELECT lives_ok(
+  $$INSERT INTO public.business_profiles (profile_id)
+    VALUES ((SELECT id FROM public.profiles WHERE username = 'one26_y_biz'))$$,
+  'and its business row, in the same flow');
+
+SELECT is(
+  (SELECT count(*)::int FROM public.profiles p JOIN public.business_profiles b ON b.profile_id = p.id
+   WHERE p.username = 'one26_y_biz'),
+  1, 'a created business profile has both its profiles row and its business row');
+
+SELECT throws_ok(
+  $$INSERT INTO public.profiles (user_id, profile_type, username, full_name)
+    VALUES ('22222222-0000-0000-0000-0000000000b3', 'business', 'one26_y_biz2', 'Again')$$,
+  '23505', NULL, 'a second business profile for the same account hits the one-of-each index');
+
+SELECT throws_ok(
+  $$INSERT INTO public.profiles (user_id, profile_type, username, full_name)
+    VALUES ('22222222-0000-0000-0000-0000000000b3', 'business', 'ONE23_X_BIZ', 'Copycat')$$,
+  '23505', NULL, 'a handle already held, in any case, hits the handle index');
+
+SELECT throws_ok(
+  $$INSERT INTO public.profiles (user_id, profile_type, username, full_name)
+    VALUES ('11111111-0000-0000-0000-0000000000a3', 'business', 'one26_forged', 'Forged')$$,
+  '42501', NULL, 'an account cannot add a profile to another account');
 
 -- ─── Read without signing in ──────────────────────────────────────────
 

@@ -112,6 +112,11 @@ describe('the behavioural suite', () => {
     'another account cannot delete the business fields',
     'business fields are readable without signing in',
     'a website without a scheme is rejected',
+    // Adding a business profile as the app does it (ONE-26).
+    'a created business profile has both its profiles row and its business row',
+    'a second business profile for the same account hits the one-of-each index',
+    'a handle already held, in any case, hits the handle index',
+    'an account cannot add a profile to another account',
   ])('covers: %s', (description) => {
     expect(pgTap).toContain(description);
   });

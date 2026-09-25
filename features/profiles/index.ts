@@ -25,7 +25,11 @@ export {
   updateBusinessProfile,
   mapBusinessUpdatesToRow,
   PROFILE_SELECT,
+  createProfile,
+  createProfileFailureFor,
+  CreateProfileError,
 } from './api';
+export type { NewProfile, CreateProfileFailure } from './api';
 
 export { profileKeys, activeProfileKeys } from './keys';
 export {
@@ -78,5 +82,6 @@ export {
   useUploadAvatar,
   useSetActiveProfile,
   setActiveProfile,
+  useCreateProfile,
 } from './mutations';
 export type { FollowToggle, FollowTarget } from './mutations';

@@ -44,10 +44,11 @@ describe('modal presentation lives in app/_layout.tsx', () => {
     expect(fs.readFileSync(file, 'utf8')).not.toMatch(/\bpresentation\s*:/);
   });
 
-  it('declares Compose and Edit profile as modals', () => {
+  it('declares Compose, Edit profile and Create profile as modals', () => {
     const declared = declaredScreens();
     expect(declared.get('compose')).toMatch(/presentation:\s*'modal'/);
     expect(declared.get('edit-profile')).toMatch(/presentation:\s*'modal'/);
+    expect(declared.get('create-profile')).toMatch(/presentation:\s*'modal'/);
   });
 });
 

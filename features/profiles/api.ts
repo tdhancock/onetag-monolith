@@ -23,6 +23,7 @@ import type {
     SimpleUser,
     UserProfile,
     ProfileRow,
+    ProfileType,
     ProfileUpdates,
     BusinessProfileFields,
     BusinessProfileRow,
@@ -187,6 +188,96 @@ export const updateUserProfileData = async (profileId: ProfileId, updates: Profi
     }
 
     return true;
+};
+
+// =========================================================
+// Adding a profile (ONE-26)
+// =========================================================
+
+/** What adding a profile to an account takes: its kind, handle, name and an optional bio. */
+export interface NewProfile {
+    profileType: ProfileType;
+    username: string;
+    fullName: string;
+    bio?: string | null;
+}
+
+/** Why adding a profile failed, in terms a screen can say something about. */
+export type CreateProfileFailure =
+    /** The handle is someone's — possibly claimed between the check and the insert. */
+    | 'handle-taken'
+    /** The account already holds a profile of this kind. */
+    | 'kind-taken'
+    | 'failed';
+
+export class CreateProfileError extends Error {
+    constructor(readonly reason: CreateProfileFailure, readonly cause?: unknown) {
+        super(
+            reason === 'handle-taken'
+                ? 'That handle is taken.'
+                : reason === 'kind-taken'
+                    ? 'You already have a profile of that kind.'
+                    : 'Could not create the profile.',
+        );
+        this.name = 'CreateProfileError';
+    }
+}
+
+/**
+ * Name the unique index a failed insert hit. Both of the ones that can refuse
+ * a new profile surface as 23505; the constraint name tells them apart.
+ */
+export const createProfileFailureFor = (error: { code?: string; message?: string; details?: string } | null | undefined): CreateProfileFailure => {
+    if (error?.code !== '23505') return 'failed';
+    const text = `${error.message ?? ''} ${error.details ?? ''}`;
+    if (text.includes('profiles_one_per_type')) return 'kind-taken';
+    // The handle index, or a duplicate the server did not name: either way
+    // the only unique thing the form chose is the handle.
+    return 'handle-taken';
+};
+
+/**
+ * Add a profile to the signed-in account, with a fresh id, and — for a
+ * business profile — its `business_profiles` row, so it satisfies the type
+ * guard and can be edited at once.
+ *
+ * The handle is checked by the caller first, but two submissions, or a
+ * handle claimed in between, still reach the unique index; that surfaces as
+ * a `CreateProfileError` saying which one, never as a raw database error.
+ *
+ * The business row is best-effort. The profile is already real, and already
+ * renders as a business profile — that follows its type — and saving its
+ * business fields upserts the row. Failing the whole flow here would leave
+ * the user retrying a handle their own new profile now holds.
+ */
+export const createProfile = async (authUserId: AuthUserId, input: NewProfile): Promise<UserProfile> => {
+    const { data, error } = await supabase
+        .from('profiles')
+        .insert({
+            user_id: authUserId,
+            profile_type: input.profileType,
+            username: input.username,
+            full_name: input.fullName,
+            bio: input.bio ?? null,
+        })
+        .select(PROFILE_SELECT)
+        .single();
+
+    if (error || !data) throw new CreateProfileError(createProfileFailureFor(error), error);
+    const created = mapProfileRow(data as ProfileRow);
+
+    if (input.profileType === 'business') {
+        const { error: businessError } = await supabase
+            .from('business_profiles')
+            .insert({ profile_id: created.id });
+        if (businessError) {
+            console.error('Created a business profile without its business row:', businessError);
+        } else {
+            created.business = { category: null, website: null, location: null, logoUrl: null };
+        }
+    }
+
+    return created;
 };
 
 /**

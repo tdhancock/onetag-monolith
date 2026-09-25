@@ -158,6 +158,7 @@ function RootLayoutNav() {
       <Stack.Screen name="share-post" options={{ presentation: 'modal', headerShown: true }} />
       <Stack.Screen name="compose" options={{ presentation: 'modal' }} />
       <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="create-profile" options={{ presentation: 'modal' }} />
       <Stack.Screen name="story-viewer" options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="story-create" options={{ presentation: 'fullScreenModal' }} />
     </Stack>

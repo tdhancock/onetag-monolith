@@ -524,3 +524,38 @@ export const switcherRowLabel = (profile: SwitcherRowProfile, isActive: boolean)
 /** What the composer says a post will publish as, for a screen reader. */
 export const postingAsLabel = (profile: SwitcherRowProfile): string =>
   `Posting as @${profile.username}, ${profile.profileType === 'business' ? 'business' : 'individual'} profile`;
+
+// ---------------------------------------------------------------------------
+// Adding a profile (ONE-26)
+// ---------------------------------------------------------------------------
+
+/** The name field's label: a business profile's name is the business's. */
+export const profileNameLabel = (kind: ProfileKind): string => (kind === 'business' ? 'Business name' : 'Name');
+
+/** The create screen's title for the kind being added. */
+export const createProfileTitle = (kind: ProfileKind): string =>
+  kind === 'business' ? 'New business profile' : 'New individual profile';
+
+export interface CreateProfileFields {
+  username: string;
+  /** The username rule's message, from `usernameError`. */
+  usernameError: string | null;
+  /** Where the live availability check stands (lib/screens/auth). */
+  usernameStatus: 'idle' | 'checking' | 'available' | 'taken' | 'unknown';
+  name: string;
+}
+
+/**
+ * Whether Create can be pressed: a handle the database would accept and that
+ * is not known to be taken (nor still being checked), and a name. The bio is
+ * optional.
+ */
+export const createProfileFormValid = (fields: CreateProfileFields): boolean =>
+  fields.username.length > 0 &&
+  !fields.usernameError &&
+  fields.usernameStatus !== 'taken' &&
+  fields.usernameStatus !== 'checking' &&
+  fields.name.trim().length > 0;
+
+/** What the handle field says when the database refused the handle after all. */
+export const HANDLE_TAKEN_MESSAGE = 'That handle is taken.';
