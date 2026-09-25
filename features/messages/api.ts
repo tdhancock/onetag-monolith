@@ -1,13 +1,10 @@
 // Pure Supabase access for direct messages.
 //
-// Moved out of `services/apiService.ts`, and the thread fetch out of
+// Moved out of the old shared service module, and the thread fetch out of
 // `app/messages.tsx` where it ran inline (ONE-18). The client-side hydration
 // of `sharedPost` / `sharedUser` / `repliedMessage` comes with it unchanged:
 // rows are joined, mapped onto the render shape, then linked to the message
 // they reply to.
-//
-// Never imports services/apiService — it re-exports features, so that import
-// is a cycle Metro crashes on at boot (__tests__/import-cycles.test.ts).
 
 import { supabase } from '../../services/supabase.native';
 import { mapPostData } from '../../services/postRows';

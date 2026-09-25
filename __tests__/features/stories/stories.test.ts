@@ -50,10 +50,11 @@ import {
   serializeViewedStoryTimestamps,
 } from '../../../lib/viewedStories';
 import type { Story } from '../../../types';
+import { asProfileId } from '../../../types';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────
 
-const ME = { id: 'me', username: 'me', avatar: null };
+const ME = { id: asProfileId('me'), username: 'me', avatar: null };
 const MINE = storyKeys.mine(ME.id);
 const REEL = storyKeys.reel(ME.id);
 const LIKED = storyKeys.liked(ME.id);

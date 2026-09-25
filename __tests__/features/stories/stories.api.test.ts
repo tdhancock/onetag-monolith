@@ -33,6 +33,7 @@ jest.mock('../../../services/storyUpload', () => ({}));
 jest.mock('../../../services/mediaUpload', () => ({}));
 
 import { getMyStories, getStories, isLive, liveCutoff, STORY_LIFETIME_MS } from '../../../features/stories/api';
+import { asProfileId } from '../../../types';
 
 const NOW = Date.parse('2026-09-24T12:00:00.000Z');
 
@@ -50,7 +51,7 @@ const cutoffs = () =>
 
 describe('24-hour expiry', () => {
   it('the reel only asks for stories newer than 24 hours', async () => {
-    await getStories();
+    await getStories(asProfileId('me'));
     expect(cutoffs()).toEqual([new Date(NOW - STORY_LIFETIME_MS).toISOString()]);
   });
 

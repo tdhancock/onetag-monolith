@@ -6,6 +6,7 @@ import { fetchFeedPage, fetchPostById, nextFeedCursor } from './api';
 import type { FeedCursor } from './api';
 import { postKeys } from './keys';
 import type { Post } from './types';
+import type { ProfileId } from '../../types';
 
 /**
  * The signed-in user's feed, one page at a time.
@@ -17,7 +18,7 @@ import type { Post } from './types';
  * me", which is meaningless without one, and firing it anyway would cache a
  * page under an empty key.
  */
-export const useFeedQuery = (userId: string | undefined) =>
+export const useFeedQuery = (userId: ProfileId | undefined) =>
   // The generics are spelled out because inference widens the page param to
   // `unknown` once getNextPageParam is a named function rather than an inline
   // arrow, which then leaks into every consumer of `data`.
@@ -42,7 +43,7 @@ export const useFeedQuery = (userId: string | undefined) =>
  * to clear the cache rather than out-key it — `QueryProvider` is where that
  * belongs, and it is worth its own ticket.
  */
-export const usePostQuery = (postId: string | undefined, viewerId?: string) =>
+export const usePostQuery = (postId: string | undefined, viewerId?: ProfileId) =>
   useQuery<Post | undefined>({
     queryKey: postKeys.detail(postId ?? ''),
     queryFn: () => fetchPostById(postId!, viewerId),

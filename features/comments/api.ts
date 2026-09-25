@@ -1,6 +1,6 @@
 // Pure Supabase access for the comments domain.
 //
-// Moved out of `services/apiService.ts` in ONE-14. The notification and
+// Moved out of the old shared service module in ONE-14. The notification and
 // mention side effects come from `services/notificationWrites.ts`, which
 // ONE-17 consolidated out of the three copies that briefly existed here, in
 // posts and in profiles.
@@ -8,6 +8,7 @@
 import { supabase } from '../../services/supabase.native';
 import { notifyPostAuthor, notifyMentionedUsers } from '../../services/notificationWrites';
 import type { Comment } from './types';
+import type { ProfileId } from '../../types';
 
 export const getCommentsForPost = async (postId: string): Promise<Comment[]> => {
     const { data, error } = await supabase
@@ -30,7 +31,7 @@ export const getCommentsForPost = async (postId: string): Promise<Comment[]> => 
     }));
 };
 
-export async function addComment(postId: string, userId: string, content: string) {
+export async function addComment(postId: string, userId: ProfileId, content: string) {
   const { data, error } = await supabase
     .from('comments')
     .insert([{ post_id: postId, user_id: userId, content }])
@@ -41,7 +42,7 @@ export async function addComment(postId: string, userId: string, content: string
     console.error("Yorum ekleme hatası:", error.message || error);
     throw error;
   }
-  
+
   if (data) {
     await notifyPostAuthor(postId, userId, 'comment', {
       commentId: data.id,
@@ -53,27 +54,26 @@ export async function addComment(postId: string, userId: string, content: string
   return data;
 }
 
+/**
+ * Delete a comment. RLS allows it only when the account owns the comment's
+ * author profile — whichever of its profiles wrote it — so no author filter
+ * is needed here. It used to filter on the auth user id, which stopped
+ * matching once a profile id could differ from it (ONE-22).
+ */
 export const deleteComment = async (commentId: string): Promise<void> => {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-        throw new Error('User not authenticated');
-    }
-
     const { error } = await supabase
         .from('comments')
         .delete()
-        .eq('id', commentId)
-        .eq('user_id', user.id);
+        .eq('id', commentId);
 
     if (error) {
         throw error;
     }
 };
 
-export const isCommentLikedByUser = async (commentId: string): Promise<boolean> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
-    const { data, error } = await supabase.from('comment_likes').select('*').match({ comment_id: commentId, user_id: user.id }).maybeSingle();
+/** Whether `viewerId` — the profile being acted as — likes this comment. */
+export const isCommentLikedByUser = async (commentId: string, viewerId: ProfileId): Promise<boolean> => {
+    const { data, error } = await supabase.from('comment_likes').select('*').match({ comment_id: commentId, user_id: viewerId }).maybeSingle();
     return !!data && !error;
 };
 
@@ -82,17 +82,15 @@ export const getCommentLikesCount = async (commentId: string): Promise<number> =
     return error ? 0 : count || 0;
 };
 
-export const toggleCommentLike = async (commentId: string): Promise<boolean> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("User not authenticated");
-    
-    const isLiked = await isCommentLikedByUser(commentId);
+/** Like or unlike a comment as `viewerId`, the profile being acted as. */
+export const toggleCommentLike = async (commentId: string, viewerId: ProfileId): Promise<boolean> => {
+    const isLiked = await isCommentLikedByUser(commentId, viewerId);
 
     if (isLiked) {
-        await supabase.from('comment_likes').delete().match({ comment_id: commentId, user_id: user.id });
+        await supabase.from('comment_likes').delete().match({ comment_id: commentId, user_id: viewerId });
         return false;
     } else {
-        await supabase.from('comment_likes').insert({ comment_id: commentId, user_id: user.id });
+        await supabase.from('comment_likes').insert({ comment_id: commentId, user_id: viewerId });
         return true;
     }
 };

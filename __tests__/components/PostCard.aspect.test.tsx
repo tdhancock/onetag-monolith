@@ -45,7 +45,18 @@ jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { 
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }) }), {
   virtual: true,
 });
-jest.mock('../../services/apiService', () => ({ reportPost: jest.fn() }), { virtual: true });
+jest.mock('../../features/moderation', () => ({ reportPost: jest.fn() }), { virtual: true });
+jest.mock('../../features/admin', () => ({ useIsAdmin: () => false }), { virtual: true });
+jest.mock('../../features/auth', () => ({ useAuthUserId: () => undefined }), { virtual: true });
+// The acting profile comes from features/profiles since ONE-22, not the context.
+jest.mock('../../features/profiles', () => ({
+  useCurrentProfile: () => ({
+    profile: { id: 'p-tanner', username: 'tanner', name: 'Tanner', profilePicture: null },
+    profileId: 'p-tanner',
+    authUserId: 'a-tanner',
+    status: 'ready',
+  }),
+}), { virtual: true });
 
 // The toggle hooks need a QueryClientProvider, and this suite is about
 // framing rather than mutations — a stub keeps the mount free of both.
@@ -69,14 +80,11 @@ jest.mock('../../store/AppContext.native', () => ({
     userProfile: { username: 'tanner', name: 'Tanner', profilePicture: null },
     deleteProfilePost: jest.fn(),
     getComments: () => [],
-    voteInPoll: jest.fn(),
-    getPollVote: () => null,
     addToast: jest.fn(),
     isPostReposted: () => false,
     togglePostRepost: jest.fn(),
     isPostSaved: () => false,
     toggleSavePost: jest.fn(),
-    isAdmin: false,
     triggerHapticFeedback: jest.fn(),
   }),
 }), { virtual: true });

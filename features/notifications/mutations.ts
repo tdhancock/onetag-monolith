@@ -17,6 +17,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { markNotificationAsRead, markNotificationsAsRead } from './api';
 import { notificationKeys } from './keys';
 import type { Notification } from './types';
+import type { ProfileId } from '../../types';
 
 interface Snapshot {
   previous: Notification[] | undefined;
@@ -80,13 +81,13 @@ export const markOneReadOptions = (queryClient: QueryClient, userId: string | un
 });
 
 /** Mark everything read. */
-export const useMarkAllRead = (userId: string | undefined) => {
+export const useMarkAllRead = (userId: ProfileId | undefined) => {
   const queryClient = useQueryClient();
   return useMutation(markAllReadOptions(queryClient, userId));
 };
 
 /** Mark one read — what opening it from the list does. */
-export const useMarkOneRead = (userId: string | undefined) => {
+export const useMarkOneRead = (userId: ProfileId | undefined) => {
   const queryClient = useQueryClient();
   return useMutation(markOneReadOptions(queryClient, userId));
 };

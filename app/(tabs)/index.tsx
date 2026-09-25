@@ -13,11 +13,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
-import { useFollowState, useToggleFollow, profileKeys } from '../../features/profiles';
+import { useFollowState, useToggleFollow, profileKeys, getSmartUserSuggestions, useCurrentProfile, type ProfileId } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
 import { useUnreadNotificationCount } from '../../features/notifications';
 import { useUnreadMessageCount } from '../../features/messages';
-import { getSmartUserSuggestions } from '../../services/apiService';
 import { useStoriesQuery, useStoriesRealtime, storyKeys } from '../../features/stories';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -53,18 +52,18 @@ const dedupeStoriesById = (stories: Story[]): Story[] => {
 
 export default function HomeFeedScreen() {
   const {
-    userProfile,
     isUserBlocked,
     addToast,
   } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
 
   // Follow state is a query now (ONE-15), shared with every other screen that
   // renders a Follow button.
-  const { following, isFollowing: isUserFollowing } = useFollowState(userProfile?.id || undefined);
-  const follow = useToggleFollow(userProfile?.id || undefined);
+  const { following, isFollowing: isUserFollowing } = useFollowState(profileId);
+  const follow = useToggleFollow(profileId);
   const router = useRouter();
-  const unreadNotificationCount = useUnreadNotificationCount(userProfile?.id || undefined);
-  const unreadMessageCount = useUnreadMessageCount(userProfile?.id || undefined);
+  const unreadNotificationCount = useUnreadNotificationCount(profileId);
+  const unreadMessageCount = useUnreadMessageCount(profileId);
 
   const queryClient = useQueryClient();
   const [suggestedUsers, setSuggestedUsers] = useState<SimpleUser[]>([]);
@@ -73,8 +72,8 @@ export default function HomeFeedScreen() {
   // ─── Feed ──────────────────────────────────────
   // Page state belongs to the query, not to this component and not to a
   // module-level cursor, so a second mount starts from the top on its own.
-  const feedQuery = useFeedQuery(userProfile?.id);
-  const feedKey = postKeys.feed(userProfile?.id ?? '');
+  const feedQuery = useFeedQuery(profileId);
+  const feedKey = postKeys.feed(profileId ?? '');
 
   // Blocked authors are filtered here rather than inside the query, so the
   // cache holds what the server returned and `getNextPageParam` measures a
@@ -85,14 +84,14 @@ export default function HomeFeedScreen() {
     [feedQuery.data, isUserBlocked],
   );
 
-  const isFeedLoading = Boolean(userProfile?.id) && feedQuery.isPending;
+  const isFeedLoading = Boolean(profileId) && feedQuery.isPending;
 
   // ─── Stories ───────────────────────────────────
   // The reel is a query (ONE-19). A failed refetch keeps the last good reel
   // on screen, which is what the old "don't clear transiently" guard did by
   // hand.
-  const reelQuery = useStoriesQuery(userProfile?.id || undefined);
-  const isStoriesLoading = Boolean(userProfile?.id) && reelQuery.isPending;
+  const reelQuery = useStoriesQuery(profileId);
+  const isStoriesLoading = Boolean(profileId) && reelQuery.isPending;
 
   const { storyGroups, allStories } = useMemo(() => {
     const filteredStories = (reelQuery.data ?? []).filter(story => !isUserBlocked(story.username));
@@ -118,7 +117,7 @@ export default function HomeFeedScreen() {
   }, [reelQuery.data, isUserBlocked, userProfile?.username]);
   const isLoading = isFeedLoading || isStoriesLoading;
 
-  const loadSuggestions = useCallback(async (userId: string) => {
+  const loadSuggestions = useCallback(async (userId: ProfileId) => {
     try {
       const suggestions = await getSmartUserSuggestions(userId);
       const mappedSuggestions: SimpleUser[] = (suggestions || [])
@@ -158,29 +157,29 @@ export default function HomeFeedScreen() {
   // the ones that were not the viewer's.
   useRealtimeSync({
     table: 'follows',
-    filter: `follower_id=eq.${userProfile?.id ?? ''}`,
+    filter: `follower_id=eq.${profileId ?? ''}`,
     queryKey: profileKeys.all,
-    enabled: Boolean(userProfile?.id),
+    enabled: Boolean(profileId),
     // A new follow changes whose stories are in the reel.
     onInsert: () => { void queryClient.invalidateQueries({ queryKey: storyKeys.lists() }); return true; },
     onDelete: () => { void queryClient.invalidateQueries({ queryKey: storyKeys.lists() }); return true; },
   });
 
   useEffect(() => {
-    if (!userProfile?.id || isLoading) return;
+    if (!profileId || isLoading) return;
     const hasFollows = following.length > 0;
     if (posts.length === 0 && !hasFollows) {
-      void loadSuggestions(userProfile.id);
+      void loadSuggestions(profileId);
     } else if (suggestedUsers.length > 0) {
       setSuggestedUsers([]);
     }
-  }, [following, isLoading, loadSuggestions, posts.length, suggestedUsers.length, userProfile?.id]);
+  }, [following, isLoading, loadSuggestions, posts.length, suggestedUsers.length, profileId]);
 
   // Realtime edits land in the query cache — the list is the query's data
   // now, so there is no local array to fold them into. ONE-16 generalizes
   // this bridge across domains.
   const handlePostUpdates = useCallback(async (payload: any) => {
-    if (!userProfile?.id) return;
+    if (!profileId) return;
 
     try {
       if (payload.eventType === 'DELETE') {
@@ -207,7 +206,7 @@ export default function HomeFeedScreen() {
     } catch (error) {
       console.error('Realtime post handling error:', error);
     }
-  }, [isUserBlocked, queryClient, feedKey, userProfile?.id]);
+  }, [isUserBlocked, queryClient, feedKey, profileId]);
 
   useRealtimeSync({
     table: 'posts',

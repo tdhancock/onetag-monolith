@@ -7,17 +7,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
 import { supabase } from '../services/supabase.native';
 import { LogoutIcon, ChevronRightIcon, TrashIcon } from '../components/native/Icons';
-import { useUpdateProfile } from '../features/profiles';
+import { useUpdateProfile, useCurrentProfile } from '../features/profiles';
 import { PRIVATE_ACCOUNT_LABEL, PRIVATE_ACCOUNT_DESCRIPTION } from '../lib/screens/profile';
 
 export default function SettingsScreen() {
-  const { theme, setTheme, addToast, userProfile } = useApp();
+  const { theme, setTheme, addToast } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
   const router = useRouter();
 
   // Private account writes `profiles.is_private` through the profile
   // mutation (ONE-58). While the save is in flight the switch shows the value
   // being saved, so it does not snap back until the server answers.
-  const updateProfile = useUpdateProfile(userProfile?.id || undefined);
+  const updateProfile = useUpdateProfile(profileId);
   const isPrivate = updateProfile.isPending
     ? Boolean(updateProfile.variables?.isPrivate)
     : Boolean(userProfile?.isPrivate);
@@ -111,7 +112,7 @@ export default function SettingsScreen() {
               <Switch
                 value={isPrivate}
                 onValueChange={handlePrivateChange}
-                disabled={!userProfile?.id || updateProfile.isPending}
+                disabled={!profileId || updateProfile.isPending}
                 accessibilityLabel={PRIVATE_ACCOUNT_LABEL}
               />
             </View>

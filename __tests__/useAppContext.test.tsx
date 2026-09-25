@@ -53,11 +53,8 @@ const mockAuthGetUser = jest.fn(async () => ({
   error: null,
 }));
 
-// The row `syncUserData` reads the admin flag from. A test sets it before
-// firing SIGNED_IN.
-let mockProfileRow: { is_admin: boolean } | null = null;
-
-// The auth user id the provider hands to useCurrentUserQuery, last render.
+// The account id the profile layer saw on the provider's last render — the
+// session features/auth recorded, which is what the current profile keys on.
 let mockCurrentUserArg: string | undefined;
 
 // The native provider persists the block-list to AsyncStorage and reads it
@@ -100,7 +97,6 @@ jest.mock('../services/supabase.native', () => ({
       select: jest.fn(() => ({
         eq: jest.fn(() => ({
           order: jest.fn(() => Promise.resolve({ data: [], error: null })),
-          maybeSingle: jest.fn(() => Promise.resolve({ data: mockProfileRow, error: null })),
         })),
       })),
     })),
@@ -112,60 +108,41 @@ jest.mock('../services/supabase.native', () => ({
   },
 }), { virtual: true });
 
-// Mock the apiService that AppContext.native.tsx pulls in. We provide a no-op
-// shape for every named import the file references. The provider uses
-// some of these inside useCallbacks that aren't invoked by these tests,
-// but the import must resolve cleanly. The `supabase` re-export is
-// forwarded to the mock above so the provider's effects can call
-// `supabase.auth.onAuthStateChange` against a fully-shaped client.
-class FakeMediaUploadError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'MediaUploadError';
-  }
-}
-
-jest.mock('../services/apiService', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { supabase } = require('../services/supabase.native');
-  return {
-    MediaUploadError: FakeMediaUploadError,
-    publishPost: jest.fn(),
-    deletePost: jest.fn(),
-    updatePost: jest.fn(),
-    supabase,
-    toggleLike: jest.fn(),
-    toggleRepost: jest.fn(),
-    addComment: jest.fn(),
-    getFollowingList: jest.fn(async () => []),
-    unfollowUser: jest.fn(),
-    followUser: jest.fn(),
-    markNotificationsAsRead: jest.fn(),
-    toggleSavePost: jest.fn(),
-    adminDeletePost: jest.fn(),
-    ensureCurrentUserProfile: jest.fn(),
-  };
-}, { virtual: true });
+// The session sync makes sure a profile row exists before recording who is
+// signed in. The real function talks to Supabase; the suite drives its outcome.
+jest.mock('../services/profileBootstrap', () => ({
+  ensureCurrentUserProfile: jest.fn(async () => true),
+}), { virtual: true });
 
 // features/blocks talks to Supabase and TanStack Query. This suite is about
 // the provider, so the feature is stubbed and only the calls the provider
 // makes into it are asserted.
 const mockMigrateLocalBlocks = jest.fn(async () => null);
 
+// The signed-out placeholder is one object, as the real hook's is, so a
+// render that changes nothing hands out the same reference.
+const mockPlaceholderProfile = {
+  id: '',
+  name: 'OneTag User',
+  username: 'onetag_user',
+  bio: 'Hello, I am using OneTag',
+  profilePicture: null,
+};
+
+// The current profile, stubbed but driven by the real session: it reads the
+// account id through features/auth exactly as the real hook does, so the
+// sign-in and sign-out tests below still exercise the real session wiring.
 jest.mock('../features/profiles', () => ({
-  useCurrentUserQuery: (authUserId: string | undefined) => {
+  useCurrentProfile: () => {
+    const { useAuthUserId } = require('../features/auth');
+    const authUserId: string | undefined = useAuthUserId();
     mockCurrentUserArg = authUserId;
     return {
-    data: undefined,
-    isPending: true,
-    userProfile: {
-      id: '',
-      name: 'OneTag User',
-      username: 'onetag_user',
-      bio: 'Hello, I am using OneTag',
-      profilePicture: null,
-    },
-  };
+      profile: mockPlaceholderProfile,
+      profileId: authUserId ? `profile-of-${authUserId}` : undefined,
+      authUserId,
+      status: authUserId ? 'ready' : 'signed-out',
+    };
   },
 }), { virtual: true });
 
@@ -195,7 +172,8 @@ import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useApp } from '../store/AppContext.native';
-import { publishPost, ensureCurrentUserProfile } from '../services/apiService';
+import { ensureCurrentUserProfile } from '../services/profileBootstrap';
+import { authKeys } from '../features/auth';
 type AppContextType = ReturnType<typeof useApp>;
 
 // ─── 3. Helpers ─────────────────────────────────────────────────────────
@@ -216,9 +194,7 @@ const Probe: React.FC<{ capture: Captured }> = ({ capture }) => {
     hasSetIsViewingStory: typeof ctx.setIsViewingStory === 'function',
     hasAddToast: typeof ctx.addToast === 'function',
     theme: ctx.theme,
-    userProfileName: ctx.userProfile.name,
     hasIsUserBlocked: typeof ctx.isUserBlocked === 'function',
-    isAdmin: ctx.isAdmin,
   }));
 };
 
@@ -316,9 +292,8 @@ describe('useApp (AppContext) — provider wrapper', () => {
       // not undefined. This guards the "must be used within a provider"
       // contract from the consumer side.
       expect(ctx).toBeDefined();
-      // Default user profile (per the AppContext initial state).
-      expect(ctx!.userProfile.name).toBe('OneTag User');
-      expect(ctx!.userProfile.username).toBe('onetag_user');
+      // Identity is useCurrentProfile() now, not the context (ONE-22).
+      expect(ctx).not.toHaveProperty('userProfile');
       // Default theme.
       expect(ctx!.theme).toBe('dark');
       // Server-owned state is no longer here: likes, reposts and saves live
@@ -331,7 +306,11 @@ describe('useApp (AppContext) — provider wrapper', () => {
       // Unread messages are a query too (ONE-18).
       expect(ctx).not.toHaveProperty('unreadMessageCount');
       expect(ctx).not.toHaveProperty('unreadChats');
-      expect(ctx!.isAdmin).toBe(false);
+      // The session, the admin flag and poll votes left in ONE-20: the first
+      // two are queries (features/auth, features/admin), polls never existed.
+      expect(ctx).not.toHaveProperty('authUserId');
+      expect(ctx).not.toHaveProperty('isAdmin');
+      expect(ctx).not.toHaveProperty('votedPolls');
       // The notification list is a query now (ONE-17); the transient
       // top-of-screen banner is UI state and stays.
       expect(ctx).not.toHaveProperty('notifications');
@@ -351,7 +330,8 @@ describe('useApp (AppContext) — provider wrapper', () => {
       expect(typeof ctx.addToast).toBe('function');
       expect(typeof ctx.removeToast).toBe('function');
       expect(typeof ctx.setTheme).toBe('function');
-      expect(typeof ctx.refreshAllData).toBe('function');
+      // Pull-to-refresh invalidates the queries it needs at its call site.
+      expect(ctx).not.toHaveProperty('refreshAllData');
       expect(ctx).not.toHaveProperty('markAllMessagesAsRead');
       expect(ctx).not.toHaveProperty('markChatAsRead');
     } finally {
@@ -468,7 +448,6 @@ describe('useApp (AppContext) — auth session transitions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockAsyncStore = {};
-    mockProfileRow = null;
     mockCurrentUserArg = undefined;
   });
 
@@ -481,40 +460,40 @@ describe('useApp (AppContext) — auth session transitions', () => {
   const fire = async (event: string, session: unknown) => {
     await act(async () => {
       await authListener()(event, session);
+      // TanStack notifies observers on a timeout tick, not synchronously.
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
   };
 
   const signedIn = { user: { id: 'user-1' } };
 
-  it('signs in: records the auth user, keys the profile query by it, and reads the admin flag', async () => {
-    mockProfileRow = { is_admin: true };
+  /** The session as features/auth records it in the cache. */
+  const sessionOf = (handle: MountedHandle) => handle.queryClient.getQueryData(authKeys.session());
+
+  it('signs in: makes sure the profile row exists, records the session, keys the profile query by it', async () => {
     const handle = mountWithProvider();
     try {
       await fire('SIGNED_IN', signedIn);
 
-      const ctx = handle.capture.current!;
-      expect(ctx.authUserId).toBe('user-1');
-      expect(mockCurrentUserArg).toBe('user-1');
-      expect(ctx.isAdmin).toBe(true);
       expect(ensureCurrentUserProfile).toHaveBeenCalledTimes(1);
+      expect(sessionOf(handle)).toBe('user-1');
+      expect(mockCurrentUserArg).toBe('user-1');
     } finally {
       unmount(handle);
     }
   });
 
-  it('is not an admin unless the profile row says so', async () => {
-    mockProfileRow = { is_admin: false };
+  it('treats the session restored on launch as a sign-in', async () => {
     const handle = mountWithProvider();
     try {
       await fire('INITIAL_SESSION', signedIn);
-      expect(handle.capture.current!.isAdmin).toBe(false);
+      expect(sessionOf(handle)).toBe('user-1');
     } finally {
       unmount(handle);
     }
   });
 
   it('signs out: forgets the user, clears every cached query, keeps device-local state', async () => {
-    mockProfileRow = { is_admin: true };
     const handle = mountWithProvider();
     await flushHydration();
     try {
@@ -528,9 +507,8 @@ describe('useApp (AppContext) — auth session transitions', () => {
       await fire('SIGNED_OUT', null);
 
       const ctx = handle.capture.current!;
-      expect(ctx.authUserId).toBe('');
+      expect(sessionOf(handle)).toBeNull();
       expect(mockCurrentUserArg).toBeUndefined();
-      expect(ctx.isAdmin).toBe(false);
       // Everything cached belonged to the previous account.
       expect(handle.queryClient.getQueryData(['posts', 'feed', 'user-1'])).toBeUndefined();
       // Theme is UI state and the viewed set is per device, not per account.
@@ -542,7 +520,6 @@ describe('useApp (AppContext) — auth session transitions', () => {
   });
 
   it('a silent token refresh neither re-syncs nor clears anything', async () => {
-    mockProfileRow = { is_admin: true };
     const handle = mountWithProvider();
     try {
       await fire('SIGNED_IN', signedIn);
@@ -551,10 +528,8 @@ describe('useApp (AppContext) — auth session transitions', () => {
 
       await fire('TOKEN_REFRESHED', signedIn);
 
-      const ctx = handle.capture.current!;
       expect(ensureCurrentUserProfile).not.toHaveBeenCalled();
-      expect(ctx.authUserId).toBe('user-1');
-      expect(ctx.isAdmin).toBe(true);
+      expect(sessionOf(handle)).toBe('user-1');
       expect(handle.queryClient.getQueryData(['posts', 'feed', 'user-1'])).toEqual({ pages: [] });
     } finally {
       unmount(handle);
@@ -569,7 +544,7 @@ describe('useApp (AppContext) — auth session transitions', () => {
       await fire('SIGNED_IN', signedIn);
 
       const ctx = handle.capture.current!;
-      expect(ctx.authUserId).toBe('');
+      expect(sessionOf(handle)).toBeUndefined();
       expect(ctx.toasts.map((t) => t.type)).toContain('error');
     } finally {
       unmount(handle);
@@ -585,7 +560,6 @@ describe('useApp (AppContext) — auth session transitions', () => {
 
       const after = handle.capture.current!;
       expect(after.theme).toBe('light');
-      expect(after.authUserId).toBe(before.authUserId);
       expect(after.toasts).toBe(before.toasts);
       expect(after.viewedStoryTimestamps).toBe(before.viewedStoryTimestamps);
     } finally {
@@ -690,15 +664,13 @@ describe('post writes are not on the context any more', () => {
     },
   );
 
-  it.each(['userProfile'])('still exposes %s, because it is the identity object', (name) => {
-    // ONE-15 moved it to a query but deliberately kept it on the context, and
-    // kept the placeholder's empty-string id, so `userProfile?.id` guards —
-    // push-notification registration above all — behave as they did.
+  it('no longer hands out userProfile — identity is useCurrentProfile() (ONE-22)', () => {
+    // ONE-15 kept the signed-in profile on the context as a pass-through.
+    // Since an account can act as more than one profile, the acting profile
+    // and the account are read from features/profiles directly.
     const handle = mountWithProvider();
     try {
-      expect(handle.capture.current!).toHaveProperty(name);
-      expect(handle.capture.current!.userProfile.id).toBe('');
-      expect(handle.capture.current!.userProfile.username).toBe('onetag_user');
+      expect(handle.capture.current!).not.toHaveProperty('userProfile');
     } finally {
       unmount(handle);
     }

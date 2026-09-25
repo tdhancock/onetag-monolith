@@ -1,5 +1,5 @@
 //
-// target: __tests__/services/apiService.upload.test.ts
+// target: __tests__/services/post-media-upload.test.ts
 //
 // The post media upload path. The defect: when the upload threw, the caller
 // swallowed it and published anyway with a `file://` URI, so the post rendered
@@ -31,10 +31,14 @@ jest.mock('../../services/supabase.native', () => ({
   },
 }), { virtual: true });
 
-import { publishPost, assertRemoteMediaUrl, MediaUploadError } from '../../services/apiService';
+import { publishPost } from '../../features/posts';
+import { assertRemoteMediaUrl, MediaUploadError } from '../../services/mediaUpload';
 import type { Post } from '../../types';
+import { asProfileId } from '../../types';
 
 const USER_ID = '22222222-2222-2222-2222-222222222222';
+// A profile id that is not the auth id — every account after ONE-21.
+const AUTHOR = asProfileId('33333333-3333-3333-3333-333333333333');
 const LOCAL_URI = 'file:///var/mobile/Containers/photo.jpg';
 const PUBLIC_URL = `https://example.supabase.co/storage/v1/object/public/post-media/${USER_ID}/posts/1.jpg`;
 
@@ -72,7 +76,7 @@ describe('post media upload path', () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'profiles') {
         return {
-          select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: USER_ID }, error: null }) }) }),
+          select: () => ({ eq: () => ({ limit: async () => ({ data: [{ id: AUTHOR }], error: null }) }) }),
         };
       }
       return {
@@ -102,7 +106,7 @@ describe('post media upload path', () => {
   it('rejects rather than publishing when the media upload fails', async () => {
     global.fetch = jest.fn().mockRejectedValue(new TypeError('Network request failed')) as unknown as typeof fetch;
 
-    await expect(publishPost(draft())).rejects.toBeInstanceOf(MediaUploadError);
+    await expect(publishPost(draft(), AUTHOR)).rejects.toBeInstanceOf(MediaUploadError);
     expect(mockInsert).not.toHaveBeenCalled();
   });
 
@@ -111,25 +115,36 @@ describe('post media upload path', () => {
     // data: URL — readable only on this device, so the insert must not happen.
     mockUpload.mockResolvedValue({ error: { message: 'new row violates row-level security policy' } });
 
-    await expect(publishPost(draft())).rejects.toBeInstanceOf(MediaUploadError);
+    await expect(publishPost(draft(), AUTHOR)).rejects.toBeInstanceOf(MediaUploadError);
     expect(mockInsert).not.toHaveBeenCalled();
   });
 
   it('inserts the remote https URL when the upload succeeds', async () => {
-    await publishPost(draft());
+    await publishPost(draft(), AUTHOR);
 
     expect(lastInsertedRow().image_url).toBe(PUBLIC_URL);
     expect(String(lastInsertedRow().image_url).startsWith('https://')).toBe(true);
   });
 
+  it('attributes the post to the profile and uploads under the account (ONE-22)', async () => {
+    await publishPost(draft(), AUTHOR);
+
+    // The row belongs to the profile being acted as...
+    expect(lastInsertedRow().user_id).toBe(AUTHOR);
+    // ...while storage RLS keys the path on auth.uid(), never a profile id.
+    const [path] = mockUpload.mock.calls[0] as [string];
+    expect(path).toContain(USER_ID);
+    expect(path).not.toContain(AUTHOR);
+  });
+
   it('uploads the image exactly once', async () => {
-    await publishPost(draft());
+    await publishPost(draft(), AUTHOR);
 
     expect(mockUpload).toHaveBeenCalledTimes(1);
   });
 
   it('leaves an already-remote URL alone', async () => {
-    await publishPost({ ...draft(), media: PUBLIC_URL });
+    await publishPost({ ...draft(), media: PUBLIC_URL }, AUTHOR);
 
     expect(mockUpload).not.toHaveBeenCalled();
     expect(lastInsertedRow().image_url).toBe(PUBLIC_URL);

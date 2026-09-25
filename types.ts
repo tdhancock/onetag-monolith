@@ -2,6 +2,38 @@
 
 
 // FIX: Define and export all shared types to resolve circular dependencies and import errors.
+
+// ─── Identity (ONE-22) ─────────────────────────────────────────────────────────
+//
+// Since ONE-21 an account and a profile are different things with different
+// ids. `AuthUserId` is the account — the Supabase session's user id, what
+// push tokens, blocks, the admin flag and storage paths key on. `ProfileId`
+// is who is acting — what posts, likes, follows and messages are attributed
+// to. Both are strings at runtime; the brands exist so TypeScript refuses to
+// pass one where the other is wanted, which is the whole bug class this
+// separation invites.
+//
+// Every hook and API function that takes *the acting profile* takes a
+// `ProfileId`; get one from `useCurrentProfile()`. Every account-scoped one
+// takes an `AuthUserId`; get one from `useAuthUserId()`. Ids of *other*
+// profiles, read off rows, stay plain strings.
+
+declare const identityBrand: unique symbol;
+
+/** An account: `auth.users.id`. */
+export type AuthUserId = string & { readonly [identityBrand]: 'AuthUserId' };
+
+/** A profile: `profiles.id`. */
+export type ProfileId = string & { readonly [identityBrand]: 'ProfileId' };
+
+/** Mark a string as an account id. Only where it demonstrably is one. */
+export const asAuthUserId = (id: string): AuthUserId => id as AuthUserId;
+
+/** Mark a string as a profile id. Only where it demonstrably is one. */
+export const asProfileId = (id: string): ProfileId => id as ProfileId;
+
+/** The two kinds of Profile an account can hold, at most one of each. */
+export type ProfileType = 'individual' | 'business';
 export interface SimpleUser {
     id: string;
     name: string;
@@ -12,7 +44,16 @@ export interface SimpleUser {
 }
 
 export interface UserProfile {
+    /**
+     * The profile's own id — what posts, follows, likes and messages are
+     * attributed to. Not the account's auth user id: an account can hold an
+     * Individual and a Business Profile (ONE-21), each with its own id.
+     */
     id: string;
+    /** The account that owns this profile (`profiles.user_id`, the auth user id). */
+    userId?: string;
+    /** Individual or Business. */
+    profileType?: ProfileType;
     name: string;
     username: string;
     bio: string;

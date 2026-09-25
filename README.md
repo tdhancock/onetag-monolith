@@ -42,7 +42,8 @@ OneTag is a social media app with feeds, stories, profiles and messaging, backed
 - Expo Router provides file-based navigation via the app/ directory. Each folder maps to a route segment, with layout files (`_layout.tsx`) controlling navigation containers.
 - Supabase handles the entire backend: Auth for user sessions, Database (PostgreSQL) for data, Storage for media uploads, and Realtime for live messaging/notifications.
 - NativeWind (Tailwind CSS for React Native) is used throughout for styling — all component classes follow Tailwind conventions.
-- AppContext (`store/AppContext.native.tsx`) manages global state (auth session, user profile, feed data) using React Context + hooks.
+- Server data — the auth session, profiles, the feed, messages, everything read from Supabase — lives in TanStack Query, one folder per domain under `features/`.
+- AppContext (`store/AppContext.native.tsx`) holds only UI state no server owns: theme, toasts, the tooltip, and which stories this device has seen.
 
 ## Getting Started
 
@@ -106,12 +107,12 @@ onetag-monolith/
 │   ├── post/              # Post detail views
 │   └── user/              # User profiles
 ├── components/            # Reusable components
-│   ├── native/            # Native-specific components
-│   └── screens/           # Screen components
-├── services/              # API and business logic
-│   ├── apiService.ts      # Supabase API layer
+│   └── native/            # Shared components (ui/ holds token-only primitives)
+├── features/              # The data layer: one folder per domain (api, keys, queries, mutations)
+├── lib/                   # Query client, realtime bridge, pure utilities
+├── services/              # Supabase client and helpers shared between features
 │   └── supabase.native.ts # Supabase client
-├── store/                 # State management
+├── store/                 # UI-only state
 │   └── AppContext.native.tsx
 ├── assets/                # Images, fonts, icons
 └── app.json               # Expo configuration

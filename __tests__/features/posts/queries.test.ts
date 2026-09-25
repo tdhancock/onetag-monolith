@@ -33,6 +33,7 @@ import { useFeedQuery, usePostQuery } from '../../../features/posts/queries';
 import { fetchPostById, nextFeedCursor, FEED_PAGE_SIZE } from '../../../features/posts/api';
 import { postKeys } from '../../../features/posts/keys';
 import type { Post } from '../../../types';
+import { asProfileId } from '../../../types';
 
 type FeedOptions = {
   queryKey: readonly unknown[];
@@ -46,7 +47,7 @@ type FeedOptions = {
 // and a default would silently substitute one.
 const feedOptions = (userId: string | undefined): FeedOptions => {
   mockUseInfiniteQuery.mockClear();
-  useFeedQuery(userId);
+  useFeedQuery(userId === undefined ? undefined : asProfileId(userId));
   return mockUseInfiniteQuery.mock.calls[0]![0] as FeedOptions;
 };
 

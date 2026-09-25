@@ -18,20 +18,18 @@
 //      to the correct expo-router destination (follow → user profile,
 //      post → post detail, message → messages, fallback → notifications).
 //
-// The mock object mirrors the real Supabase v2 chain used by
-// services/apiService.ts. Every `from(table)` call returns a fresh
+// The mock object mirrors the real Supabase v2 chain the app uses. Every `from(table)` call returns a fresh
 // thenable query builder that resolves to a per-table canned result
 // the test controls via `testHooks.setHandler(table, fn)`. The builder
 // records every `insert()` call so tests can assert the row payload
-// captured by sendNotification → handleMentions.
+// captured by sendNotification (services/notificationWrites.ts).
 
 import type { Post, UserProfile } from '../types';
-import {
-  checkUsernameExists,
-  ensureCurrentUserProfile,
-  publishPost,
-  sendNotification,
-} from '../services/apiService';
+import { checkUsernameExists } from '../features/profiles';
+import { ensureCurrentUserProfile } from '../services/profileBootstrap';
+import { publishPost } from '../features/posts';
+import { asProfileId } from '../types';
+import { sendNotification } from '../services/notificationWrites';
 
 // ─── 1. Supabase mock ───────────────────────────────────────────────────
 
@@ -249,7 +247,7 @@ beforeEach(() => {
 // 1. COMPLETE SIGNUP FLOW
 // =========================================================================
 //
-// Drives the same surface app/(auth)/signup.tsx → services/apiService.ts:
+// Drives the same surface app/(auth)/signup.tsx calls:
 //   1) user submits form → handleSignUp()
 //   2) checkUsernameExists(username)  → profiles.username lookup
 //   3) supabase.auth.signUp(...)       → returns user (+ optional session)
@@ -391,9 +389,7 @@ describe('E2E — complete signup flow', () => {
 // 2. POST CREATE FLOW
 // =========================================================================
 //
-// Mirrors what app/compose.tsx → features/posts publishPost() does (moved
-// out of services/apiService to break an import cycle; apiService still
-// re-exports it):
+// Mirrors what app/compose.tsx → features/posts publishPost() does:
 //   1) auth.getUser()            → guard against unauthenticated callers
 //   2) ensureProfileRowForUser() → guard against missing profile row
 //   3) posts.insert(...).select('id').single() → create the row
@@ -404,13 +400,17 @@ describe('E2E — complete signup flow', () => {
 // We assert the call shape, the returned Post, and the notification row
 // payloads captured by the mock builder.
 
+// The profile noor posts as. Deliberately not her auth id: since ONE-21 every
+// new account's profile has its own id, and a post belongs to the profile.
+const NOOR_PROFILE = asProfileId('profile-noor');
+
 describe('E2E — post create flow', () => {
   it('publishes a text post end-to-end and returns the populated Post', async () => {
     const authUser = makeAuthUser();
     testHooks.mockGetUser.mockResolvedValue({ data: { user: authUser }, error: null });
 
-    // profileExists inside ensureProfileRowForUser → already exists.
-    testHooks.setHandler('profiles', () => ({ data: { id: authUser.id }, error: null }));
+    // profileExists inside ensureProfileRowForUser → the account owns one.
+    testHooks.setHandler('profiles', () => ({ data: [{ id: NOOR_PROFILE }], error: null }));
 
     // posts chain pattern:
     //   1st call: insert([...]).select('id').single() → returns { id: ... }
@@ -425,7 +425,7 @@ describe('E2E — post create flow', () => {
     });
 
     const draft: Post = makeFeedPost();
-    const published = await publishPost(draft);
+    const published = await publishPost(draft, NOOR_PROFILE);
 
     expect(published).not.toBeNull();
     expect(published!.id).toBe('new-post-1');
@@ -445,7 +445,7 @@ describe('E2E — post create flow', () => {
     expect(postInsert).toBeDefined();
     expect(postInsert!.rows[0]).toEqual(
       expect.objectContaining({
-        user_id: authUser.id,
+        user_id: NOOR_PROFILE,
         content: 'Just joined OneTag! #hello',
         media_type: 'text',
       }),
@@ -462,7 +462,7 @@ describe('E2E — post create flow', () => {
     testHooks.setHandler('profiles', () => {
       profilesLookups += 1;
       if (profilesLookups === 1) {
-        return { data: { id: authUser.id }, error: null };
+        return { data: [{ id: NOOR_PROFILE }], error: null };
       }
       return { data: { id: 'mentioned-user-1' }, error: null };
     });
@@ -479,14 +479,14 @@ describe('E2E — post create flow', () => {
     });
 
     const draft: Post = makeFeedPost({ content: 'Salam @ahmed, glad to be here!' });
-    await publishPost(draft);
+    await publishPost(draft, NOOR_PROFILE);
 
     // The mention handler should have inserted a notification row.
     const notifInsert = testHooks.insertCalls.find((c) => c.table === 'notifications');
     expect(notifInsert).toBeDefined();
     expect(notifInsert!.rows[0]).toEqual(
       expect.objectContaining({
-        sender_id: authUser.id,
+        sender_id: NOOR_PROFILE,
         receiver_id: 'mentioned-user-1',
         type: 'mention',
         post_id: 'new-post-1',
@@ -497,20 +497,18 @@ describe('E2E — post create flow', () => {
   it('rejects publishPost when there is no authenticated user', async () => {
     testHooks.mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
 
-    await expect(publishPost(makeFeedPost())).rejects.toThrow(/not authenticated/i);
+    await expect(publishPost(makeFeedPost(), NOOR_PROFILE)).rejects.toThrow(/not authenticated/i);
     // Never touches `posts`.
     expect(testHooks.mockFrom).not.toHaveBeenCalledWith('posts');
   });
 
   it('skips notification inserts when sender and receiver are the same user', async () => {
-    // The profiles handler is consulted by ensureProfileForNotificationUser
-    // for both sender and receiver, but since they match, the function
-    // returns early before any insert.
-    testHooks.setHandler('profiles', () => ({ data: { id: 'same-user' }, error: null }));
-
+    // The live notification write (services/notificationWrites.ts, since
+    // ONE-17) returns before touching the table when sender and receiver
+    // match — nobody is notified about their own action.
     await sendNotification({
-      sender_id: 'same-user',
-      receiver_id: 'same-user',
+      senderId: 'same-user',
+      receiverId: 'same-user',
       type: 'follow',
     });
 

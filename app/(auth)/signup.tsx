@@ -15,7 +15,9 @@ import {
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { supabase, checkUsernameExists, ensureCurrentUserProfile } from '../../services/apiService';
+import { supabase } from '../../services/supabase.native';
+import { ensureCurrentUserProfile } from '../../services/profileBootstrap';
+import { checkUsernameExists } from '../../features/profiles';
 import { tokens } from '../../theme/tokens';
 
 export default function SignupScreen() {

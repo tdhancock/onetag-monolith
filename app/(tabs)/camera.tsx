@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useApp } from '../../store/AppContext.native';
+import { useCurrentProfile } from '../../features/profiles';
 import { useUploadStory } from '../../features/stories';
 import { pickImageFromLibrary } from '../../services/mediaPicker';
 import {
@@ -17,12 +18,13 @@ import {
 
 export default function CameraScreen() {
   const router = useRouter();
-  const { userProfile, addToast, triggerHapticFeedback } = useApp();
+  const { addToast, triggerHapticFeedback } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
   // The optimistic entry, its replacement by the server copy and its removal
   // on failure all happen inside the mutation (ONE-19).
   const uploadStory = useUploadStory(
-    userProfile?.id
-      ? { id: userProfile.id, username: userProfile.username, avatar: userProfile.profilePicture || null }
+    profileId
+      ? { id: profileId, username: userProfile.username, avatar: userProfile.profilePicture || null }
       : undefined,
   );
   const cameraRef = useRef<CameraView>(null);
@@ -38,7 +40,7 @@ export default function CameraScreen() {
   }, [triggerHapticFeedback]);
 
   const handleUploadStory = useCallback(async (uri: string) => {
-    if (!userProfile?.id || uploading) return;
+    if (!profileId || uploading) return;
 
     setUploading(true);
     addToast('Uploading story...', 'info');
@@ -53,7 +55,7 @@ export default function CameraScreen() {
       // Small delay so toast is visible
       setTimeout(() => router.navigate('/(tabs)'), 1000);
     }
-  }, [userProfile?.id, uploading, uploadStory, addToast, router]);
+  }, [profileId, uploading, uploadStory, addToast, router]);
 
   const takePhoto = useCallback(async () => {
     if (!cameraRef.current || capturing) return;

@@ -15,11 +15,9 @@ import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
-import { useFollowState, useToggleFollow } from '../../features/profiles';
-import {
-  getTrendingPosts,
-  searchUsers,
-} from '../../services/apiService';
+import { useFollowState, useToggleFollow, useCurrentProfile } from '../../features/profiles';
+import { fetchTrendingPosts as getTrendingPosts } from '../../features/posts';
+import { searchUsers } from '../../features/profiles';
 import { useHashtagsQuery } from '../../features/hashtags';
 import UserAvatar from '../../components/native/UserAvatar';
 import { SearchIcon, VerifiedIcon, HeartIcon, CommentIcon } from '../../components/native/Icons';
@@ -40,9 +38,9 @@ const UserSearchResult: React.FC<{
   user: SimpleUser;
   onViewProfile: (username: string) => void;
 }> = React.memo(({ user, onViewProfile }) => {
-  const { userProfile } = useApp();
-  const { isFollowing: isUserFollowing } = useFollowState(userProfile?.id || undefined);
-  const follow = useToggleFollow(userProfile?.id || undefined);
+  const { profile: userProfile, profileId } = useCurrentProfile();
+  const { isFollowing: isUserFollowing } = useFollowState(profileId);
+  const follow = useToggleFollow(profileId);
   const isFollowing = isUserFollowing(user.username);
   const isMyProfile = userProfile?.username === user.username;
 

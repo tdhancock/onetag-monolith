@@ -5,6 +5,7 @@ import { View, Text, FlatList, RefreshControl, Pressable } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
+import { useCurrentProfile } from '../features/profiles';
 import { useNotificationsQuery, useMarkAllRead } from '../features/notifications';
 import { supabase } from '../services/supabase.native';
 import UserAvatar from '../components/native/UserAvatar';
@@ -36,20 +37,20 @@ const getTimeAgo = (dateStr: string): string => {
 };
 
 export default function NotificationsScreen() {
-  const { userProfile } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
   const router = useRouter();
 
   const { data: notifications, isFetching, refetch } = useNotificationsQuery(
-    userProfile?.id || undefined,
+    profileId,
   );
-  const markAllRead = useMarkAllRead(userProfile?.id || undefined);
+  const markAllRead = useMarkAllRead(profileId);
 
   // Opening the screen marks everything read. The rows and the tab badge
   // change immediately and revert together if the server refuses (ONE-17).
   const { mutate: markAll } = markAllRead;
   useEffect(() => {
-    if (userProfile?.id) markAll();
-  }, [userProfile?.id, markAll]);
+    if (profileId) markAll();
+  }, [profileId, markAll]);
 
   const onRefresh = useCallback(async () => {
     await refetch();

@@ -9,6 +9,7 @@
 // No React and nothing from another feature; the client and `./types` only.
 
 import { supabase } from '../../services/supabase.native';
+import type { AuthUserId } from '../../types';
 import type { BlockedUser } from './types';
 
 /**
@@ -24,7 +25,7 @@ import type { BlockedUser } from './types';
  * belt and braces rather than the protection — but it keeps the query honest
  * about what it is asking for.
  */
-export const fetchBlocks = async (blockerId: string): Promise<BlockedUser[]> => {
+export const fetchBlocks = async (blockerId: AuthUserId): Promise<BlockedUser[]> => {
   const { data: blocks, error } = await supabase
     .from('blocks')
     .select('blocked_id, created_at')
@@ -34,33 +35,45 @@ export const fetchBlocks = async (blockerId: string): Promise<BlockedUser[]> => 
   if (error) throw error;
   if (!blocks || blocks.length === 0) return [];
 
+  // A block names an account; its profiles are found by `user_id` (ONE-21).
   const { data: profiles, error: profileError } = await supabase
     .from('profiles')
-    .select('id, username, full_name, avatar_url')
-    .in('id', blocks.map((b: { blocked_id: string }) => b.blocked_id));
+    .select('user_id, profile_type, username, full_name, avatar_url')
+    .in('user_id', blocks.map((b: { blocked_id: string }) => b.blocked_id));
 
   if (profileError) throw profileError;
 
-  const byId = new Map((profiles || []).map((p: any) => [p.id, p]));
+  // Each account's profiles, the Individual Profile first.
+  const byAccount = new Map<string, any[]>();
+  for (const profile of profiles || []) {
+    const list = byAccount.get(profile.user_id) ?? [];
+    list.push(profile);
+    byAccount.set(profile.user_id, list);
+  }
+  for (const list of byAccount.values()) {
+    list.sort((a, b) => (a.profile_type === 'individual' ? -1 : 0) - (b.profile_type === 'individual' ? -1 : 0));
+  }
 
   return blocks.map((block: { blocked_id: string; created_at: string }) => {
-    const profile = byId.get(block.blocked_id) || {};
+    const owned = byAccount.get(block.blocked_id) ?? [];
+    const shown = owned[0] || {};
 
     return {
       userId: block.blocked_id,
-      // A blocked account whose profile row has gone is still blocked. It
+      // A blocked account whose profile rows have gone is still blocked. It
       // renders as a placeholder rather than vanishing from the list, so
       // there is always something to unblock.
-      username: profile.username || 'unknown_user',
-      name: profile.full_name ?? null,
-      avatarUrl: profile.avatar_url ?? null,
+      username: shown.username || 'unknown_user',
+      usernames: owned.map((p) => p.username),
+      name: shown.full_name ?? null,
+      avatarUrl: shown.avatar_url ?? null,
       blockedAt: block.created_at,
     };
   });
 };
 
 /** Block someone. Idempotent: blocking twice is not an error. */
-export const blockUser = async (blockerId: string, blockedId: string): Promise<void> => {
+export const blockUser = async (blockerId: AuthUserId, blockedId: string): Promise<void> => {
   const { error } = await supabase
     .from('blocks')
     .upsert({ blocker_id: blockerId, blocked_id: blockedId }, { onConflict: 'blocker_id,blocked_id' });
@@ -69,7 +82,7 @@ export const blockUser = async (blockerId: string, blockedId: string): Promise<v
 };
 
 /** Unblock someone. Idempotent in the same way. */
-export const unblockUser = async (blockerId: string, blockedId: string): Promise<void> => {
+export const unblockUser = async (blockerId: AuthUserId, blockedId: string): Promise<void> => {
   const { error } = await supabase
     .from('blocks')
     .delete()
@@ -89,13 +102,14 @@ export const unblockUser = async (blockerId: string, blockedId: string): Promise
 export const resolveUsernames = async (usernames: string[]): Promise<string[]> => {
   if (usernames.length === 0) return [];
 
+  // The account behind each handle — blocks key on accounts, not profiles.
   const { data, error } = await supabase
     .from('profiles')
-    .select('id')
+    .select('user_id')
     .in('username', usernames);
 
   if (error) throw error;
-  return (data || []).map((row: { id: string }) => row.id);
+  return Array.from(new Set((data || []).map((row: { user_id: string }) => row.user_id)));
 };
 
 /**
@@ -109,7 +123,7 @@ export const resolveUsernames = async (usernames: string[]): Promise<string[]> =
  * someone last week must not silently un-block them by updating the app.
  */
 export const importLocalBlocks = async (
-  blockerId: string,
+  blockerId: AuthUserId,
   usernames: string[],
 ): Promise<number> => {
   const ids = (await resolveUsernames(usernames)).filter((id) => id !== blockerId);

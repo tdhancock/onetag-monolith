@@ -12,6 +12,7 @@ import {
 } from './api';
 import { storyKeys } from './keys';
 import type { Story, StoryViewer } from './types';
+import type { ProfileId } from '../../types';
 
 /**
  * How long a list of stories counts as fresh: 10 seconds.
@@ -24,16 +25,16 @@ import type { Story, StoryViewer } from './types';
 export const STORY_STALE_TIME_MS = 10_000;
 
 /** The reel: live stories from everyone the viewer follows, and their own. */
-export const useStoriesQuery = (viewerId: string | undefined) =>
+export const useStoriesQuery = (viewerId: ProfileId | undefined) =>
   useQuery<Story[]>({
     queryKey: storyKeys.reel(viewerId ?? ''),
-    queryFn: getStories,
+    queryFn: () => getStories(viewerId!),
     enabled: Boolean(viewerId),
     staleTime: STORY_STALE_TIME_MS,
   });
 
 /** One user's own live stories — "Your story". */
-export const useMyStoriesQuery = (userId: string | undefined) =>
+export const useMyStoriesQuery = (userId: ProfileId | undefined) =>
   useQuery<Story[]>({
     queryKey: storyKeys.mine(userId ?? ''),
     queryFn: () => getMyStories(userId!),
@@ -42,11 +43,11 @@ export const useMyStoriesQuery = (userId: string | undefined) =>
   });
 
 /** One story, if the viewer may see it. */
-export const useStoryQuery = (storyId: string | undefined) =>
+export const useStoryQuery = (storyId: string | undefined, viewerId: ProfileId | undefined) =>
   useQuery<Story | null>({
     queryKey: storyKeys.detail(storyId ?? ''),
-    queryFn: () => getStoryById(storyId!),
-    enabled: Boolean(storyId),
+    queryFn: () => getStoryById(storyId!, viewerId!),
+    enabled: Boolean(storyId && viewerId),
     staleTime: STORY_STALE_TIME_MS,
   });
 
@@ -67,7 +68,7 @@ export const useStoryViewCountQuery = (storyId: string | undefined, enabled = tr
   });
 
 /** The ids of the stories this user has liked. */
-export const useLikedStoryIdsQuery = (userId: string | undefined) =>
+export const useLikedStoryIdsQuery = (userId: ProfileId | undefined) =>
   useQuery<string[]>({
     queryKey: storyKeys.liked(userId ?? ''),
     queryFn: () => fetchLikedStoryIds(userId!),
@@ -75,7 +76,7 @@ export const useLikedStoryIdsQuery = (userId: string | undefined) =>
   });
 
 /** `isStoryLiked(storyId)`, read from the liked-ids query. */
-export const useIsStoryLiked = (userId: string | undefined) => {
+export const useIsStoryLiked = (userId: ProfileId | undefined) => {
   const { data } = useLikedStoryIdsQuery(userId);
   return useCallback((storyId: string) => Boolean(data?.includes(storyId)), [data]);
 };

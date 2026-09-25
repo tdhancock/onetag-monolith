@@ -22,6 +22,7 @@ import {
 import { reconcileSentMessage } from './cache';
 import { messageKeys } from './keys';
 import type { Conversation, Message, SendMessageInput } from './types';
+import type { ProfileId } from '../../types';
 
 // ─── Send ─────────────────────────────────────────────────────────────
 
@@ -111,7 +112,7 @@ export const sendMessageOptions = (queryClient: QueryClient, userId: string | un
 });
 
 /** Send a message from the signed-in user. */
-export const useSendMessage = (userId: string | undefined) => {
+export const useSendMessage = (userId: ProfileId | undefined) => {
   const queryClient = useQueryClient();
   return useMutation(sendMessageOptions(queryClient, userId));
 };
@@ -175,13 +176,13 @@ export const markAllMessagesReadOptions = (queryClient: QueryClient, userId: str
 });
 
 /** Mark one conversation read. */
-export const useMarkChatRead = (userId: string | undefined) => {
+export const useMarkChatRead = (userId: ProfileId | undefined) => {
   const queryClient = useQueryClient();
   return useMutation(markChatReadOptions(queryClient, userId));
 };
 
 /** Mark every conversation read. */
-export const useMarkAllMessagesRead = (userId: string | undefined) => {
+export const useMarkAllMessagesRead = (userId: ProfileId | undefined) => {
   const queryClient = useQueryClient();
   return useMutation(markAllMessagesReadOptions(queryClient, userId));
 };
@@ -227,7 +228,7 @@ export const deleteConversationOptions = (queryClient: QueryClient, userId: stri
 });
 
 /** Delete a conversation for both participants. */
-export const useDeleteConversation = (userId: string | undefined) => {
+export const useDeleteConversation = (userId: ProfileId | undefined) => {
   const queryClient = useQueryClient();
   return useMutation(deleteConversationOptions(queryClient, userId));
 };

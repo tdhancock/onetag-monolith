@@ -12,10 +12,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { blockUser, unblockUser } from './api';
 import { blockKeys } from './keys';
 import type { BlockedUser } from './types';
+import type { AuthUserId } from '../../types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
 
 /** Enough of an account to block it and render the row. */
 export interface BlockTarget {
+  /** The account's auth user id — `profiles.user_id` — not a profile id. */
   userId: string;
   username: string;
   name?: string | null;
@@ -51,7 +53,7 @@ export const shouldBlockAfterFlip = (
  * the block list is right immediately; the invalidation in `onSettled` then
  * replaces it with the stored row.
  */
-export const useBlockToggle = (blockerId: string | undefined): BlockToggle => {
+export const useBlockToggle = (blockerId: AuthUserId | undefined): BlockToggle => {
   const queryClient = useQueryClient();
   const listKey = blockKeys.list(blockerId ?? '');
 
@@ -77,6 +79,7 @@ export const useBlockToggle = (blockerId: string | undefined): BlockToggle => {
         {
           userId,
           username: target?.username ?? 'unknown_user',
+          usernames: target?.username ? [target.username] : [],
           name: target?.name ?? null,
           avatarUrl: target?.avatarUrl ?? null,
           blockedAt: new Date().toISOString(),

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getCommentsForPost, getCommentLikesCount, isCommentLikedByUser } from './api';
 import { commentKeys } from './keys';
 import type { Comment } from './types';
+import type { ProfileId } from '../../types';
 
 /**
  * Every comment on a post.
@@ -33,16 +34,16 @@ export interface CommentLikes {
  * Disabled for an optimistic comment that has no server id yet — there is
  * nothing to count, and the id it is holding will be replaced.
  */
-export const useCommentLikesQuery = (commentId: string | undefined) =>
+export const useCommentLikesQuery = (commentId: string | undefined, viewerId: ProfileId | undefined) =>
   useQuery<CommentLikes>({
     queryKey: commentKeys.likes(commentId ?? ''),
     queryFn: async () => {
       const [count, isLiked] = await Promise.all([
         getCommentLikesCount(commentId!),
-        isCommentLikedByUser(commentId!),
+        isCommentLikedByUser(commentId!, viewerId!),
       ]);
 
       return { count, isLiked };
     },
-    enabled: Boolean(commentId) && !commentId!.startsWith('temp-'),
+    enabled: Boolean(commentId && viewerId) && !commentId!.startsWith('temp-'),
   });

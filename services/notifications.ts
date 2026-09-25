@@ -1,6 +1,7 @@
 
 
 import * as Notifications from 'expo-notifications';
+import type { AuthUserId } from '../types';
 import * as Device from 'expo-device';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
@@ -83,7 +84,12 @@ export async function registerForPushNotifications(): Promise<string | null> {
   }
 }
 
-export async function savePushToken(userId: string, token: string): Promise<void> {
+/**
+ * Register this device's push token for the account. Account-scoped: push
+ * registration is per device per account, never per profile (ONE-21), and
+ * `push_tokens.user_id` references auth.users.
+ */
+export async function savePushToken(userId: AuthUserId, token: string): Promise<void> {
   try {
     await supabase
       .from('push_tokens')

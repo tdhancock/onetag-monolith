@@ -53,8 +53,8 @@ jest.mock('../services/supabase.native', () => ({
   },
 }), { virtual: true });
 
-// Load the mocked supabase handle so the apiService module resolves
-// against the same mock instance.
+// Load the mocked supabase handle so features/moderation resolves against
+// the same mock instance.
 const { supabase } = require('../services/supabase.native');
 
 // We require these AFTER the mock is installed so they bind to it.
@@ -65,7 +65,7 @@ const {
   REPORT_NOT_LOADED_TOAST,
   buildReportRow,
 } = require('../services/reportReasons');
-const { reportUser, reportPost } = require('../services/apiService');
+const { reportUser, reportPost } = require('../features/moderation');
 
 // ---------------------------------------------------------------------------
 // 1. Selecting a reason
@@ -120,7 +120,7 @@ describe('Report user flow — submitting a report', () => {
       error: null,
     });
 
-    const success = await reportUser('user-xyz', 'Harassment or bullying');
+    const success = await reportUser('reporter-abc', 'user-xyz', 'Harassment or bullying');
 
     expect(success).toBe(true);
     expect(mockFrom).toHaveBeenCalledWith('reports');
@@ -142,7 +142,7 @@ describe('Report user flow — submitting a report', () => {
       error: null,
     });
 
-    const success = await reportPost('post-42', "It's spam");
+    const success = await reportPost('reporter-abc', 'post-42', "It's spam");
 
     expect(success).toBe(true);
     const insertCall = mockFrom.mock.results[0].value.insert.mock.calls[0][0];
@@ -156,13 +156,17 @@ describe('Report user flow — submitting a report', () => {
     ]);
   });
 
-  test('reportUser returns false and does not insert when there is no signed-in user', async () => {
-    mockAuthGetUser.mockResolvedValue({ data: { user: null }, error: null });
+  test('files the report as the reporting profile, never the session auth id (ONE-22)', async () => {
+    // reports.reporter_id references profiles. Since ONE-21 an account's
+    // profile id differs from its auth id, so the reporter is whichever
+    // profile the screen is acting as — the session is not consulted.
+    mockAuthGetUser.mockResolvedValue({ data: { user: { id: 'auth-account-1' } }, error: null });
 
-    const success = await reportUser('user-xyz', 'Spam');
+    await reportUser('reporter-profile-1', 'user-xyz', 'Spam');
 
-    expect(success).toBe(false);
-    expect(mockFrom).not.toHaveBeenCalled();
+    const insertCall = mockFrom.mock.results[0].value.insert.mock.calls[0][0];
+    expect(insertCall[0].reporter_id).toBe('reporter-profile-1');
+    expect(mockAuthGetUser).not.toHaveBeenCalled();
   });
 
   test('reportUser surfaces the supabase error as a failed submission', async () => {
@@ -176,7 +180,7 @@ describe('Report user flow — submitting a report', () => {
     // Silence the console.error that reportUser emits on failure —
     // we are deliberately exercising that branch.
     const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    const success = await reportUser('user-xyz', 'Spam');
+    const success = await reportUser('reporter-abc', 'user-xyz', 'Spam');
     errSpy.mockRestore();
 
     expect(success).toBe(false);

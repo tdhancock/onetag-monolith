@@ -1,5 +1,5 @@
 //
-// target: __tests__/services/apiService.profile.test.ts
+// target: __tests__/services/profile-save.test.ts
 //
 // The profile save path. Both defects this suite covers were invisible to the
 // existing suites because they only asserted that Supabase was *called* — so
@@ -32,9 +32,12 @@ jest.mock('../../services/supabase.native', () => ({
   },
 }), { virtual: true });
 
-import { updateUserProfileData, uploadAvatar, mapProfileUpdatesToRow } from '../../services/apiService';
+import { updateUserProfileData, uploadAvatar, mapProfileUpdatesToRow, asProfileId } from '../../features/profiles';
 
 const USER_ID = '11111111-1111-1111-1111-111111111111';
+// The profile being edited. Deliberately not the auth id: since ONE-21 the
+// two differ, and the update must target the profile row by its own id.
+const PROFILE_ID = asProfileId('profile-ada');
 const PUBLIC_URL = `https://example.supabase.co/storage/v1/object/public/avatars/${USER_ID}/1.jpg`;
 
 /** The payload handed to `.update()` on the most recent call. */
@@ -64,13 +67,13 @@ describe('profile save path', () => {
   // --- 1. Column mapping --------------------------------------------------
 
   it('updates full_name and never sends the client-side name field', async () => {
-    const ok = await updateUserProfileData({ name: 'Ada Lovelace' });
+    const ok = await updateUserProfileData(PROFILE_ID, { name: 'Ada Lovelace' });
 
     expect(ok).toBe(true);
     const payload = lastUpdatePayload();
     expect(payload).toEqual({ full_name: 'Ada Lovelace' });
     expect(payload).not.toHaveProperty('name');
-    expect(mockEq).toHaveBeenCalledWith('id', USER_ID);
+    expect(mockEq).toHaveBeenCalledWith('id', PROFILE_ID);
   });
 
   it('maps profilePicture onto avatar_url', () => {
@@ -93,7 +96,7 @@ describe('profile save path', () => {
   it('reports failure when the update errors', async () => {
     mockEq.mockResolvedValue({ error: { message: 'column "name" does not exist' } });
 
-    await expect(updateUserProfileData({ name: 'Ada' })).resolves.toBe(false);
+    await expect(updateUserProfileData(PROFILE_ID, { name: 'Ada' })).resolves.toBe(false);
   });
 
   // --- 2. Avatar upload ---------------------------------------------------
@@ -112,7 +115,7 @@ describe('profile save path', () => {
   it('writes the returned https URL to avatar_url, not the local file:// URI', async () => {
     const localUri = 'file:///tmp/avatar.jpg';
     const uploaded = await uploadAvatar(localUri);
-    await updateUserProfileData({ profilePicture: uploaded ?? undefined });
+    await updateUserProfileData(PROFILE_ID, { profilePicture: uploaded ?? undefined });
 
     const payload = lastUpdatePayload();
     expect(payload.avatar_url).toBe(PUBLIC_URL);

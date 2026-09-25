@@ -78,6 +78,7 @@ jest.mock('../../services/supabase.native', () => ({
 // ---------------------------------------------------------------------------
 // Imports (modules resolved after mocks are wired)
 // ---------------------------------------------------------------------------
+import { asAuthUserId } from '../../types';
 import {
   registerForPushNotifications,
   savePushToken,
@@ -359,7 +360,7 @@ describe('savePushToken', () => {
   // Test 5a — happy path upsert
   // -----------------------------------------------------------------------
   it('upserts push token into Supabase push_tokens table', async () => {
-    await savePushToken('user-1', 'ExpoPushToken[save-1]');
+    await savePushToken(asAuthUserId('user-1'), 'ExpoPushToken[save-1]');
 
     expect(supabase.from).toHaveBeenCalledWith('push_tokens');
     expect(upsertMock).toHaveBeenCalledWith(
@@ -383,7 +384,7 @@ describe('savePushToken', () => {
     upsertMock.mockRejectedValue(new Error('DB connection failed'));
 
     await expect(
-      savePushToken('user-2', 'ExpoPushToken[fail]'),
+      savePushToken(asAuthUserId('user-2'), 'ExpoPushToken[fail]'),
     ).resolves.not.toThrow();
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -401,7 +402,7 @@ describe('savePushToken', () => {
     mockPlatformOS = 'android';
     (supabase.from as jest.Mock).mockReturnValue({ upsert: upsertMock });
 
-    await savePushToken('user-3', 'ExpoPushToken[android-save]');
+    await savePushToken(asAuthUserId('user-3'), 'ExpoPushToken[android-save]');
 
     expect(upsertMock).toHaveBeenCalledWith(
       expect.objectContaining({ platform: 'android' }),

@@ -8,9 +8,10 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchThread, fetchUnreadSenderIds, getChatListUsers } from './api';
 import { messageKeys } from './keys';
 import type { Conversation, Message } from './types';
+import type { ProfileId } from '../../types';
 
 /** Everyone the user has a conversation with, most recent first. */
-export const useConversationsQuery = (userId: string | undefined) =>
+export const useConversationsQuery = (userId: ProfileId | undefined) =>
   useQuery<Conversation[]>({
     queryKey: messageKeys.conversations(userId ?? ''),
     queryFn: () => getChatListUsers(userId!),
@@ -18,7 +19,7 @@ export const useConversationsQuery = (userId: string | undefined) =>
   });
 
 /** One conversation, oldest message first. */
-export const useThreadQuery = (userId: string | undefined, otherUserId: string | undefined) =>
+export const useThreadQuery = (userId: ProfileId | undefined, otherUserId: string | undefined) =>
   useQuery<Message[]>({
     queryKey: messageKeys.thread(userId ?? '', otherUserId ?? ''),
     queryFn: () => fetchThread(userId!, otherUserId!),
@@ -42,7 +43,7 @@ const toSet = (senders: string[]): Set<string> => new Set(senders);
  * `select` narrows the subscription to the count, as the notifications badge
  * does, so a component reading it re-renders only when the count moves.
  */
-export const useUnreadMessageCount = (userId: string | undefined): number => {
+export const useUnreadMessageCount = (userId: ProfileId | undefined): number => {
   const { data } = useQuery<string[], Error, number>({
     ...unreadQuery(userId),
     select: unreadMessageCountOf,
@@ -51,7 +52,7 @@ export const useUnreadMessageCount = (userId: string | undefined): number => {
 };
 
 /** Which conversations carry an unread dot. */
-export const useUnreadChats = (userId: string | undefined): Set<string> => {
+export const useUnreadChats = (userId: ProfileId | undefined): Set<string> => {
   const { data } = useQuery<string[], Error, Set<string>>({
     ...unreadQuery(userId),
     select: toSet,

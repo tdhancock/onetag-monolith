@@ -19,7 +19,8 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '../store/AppContext.native';
-import { cleanHtml } from '../services/apiService';
+import { useCurrentProfile } from '../features/profiles';
+import { cleanHtml } from '../lib/cleanHtml';
 import { useUploadStory } from '../features/stories';
 import {
   CameraIcon,
@@ -44,15 +45,15 @@ const GRADIENT_PRESETS = [
 export default function StoryCreateScreen() {
   const router = useRouter();
   const {
-    userProfile,
     addToast,
     triggerHapticFeedback,
   } = useApp();
+  const { profile: userProfile, profileId } = useCurrentProfile();
   // The optimistic entry, its replacement by the server copy and its removal
   // on failure all happen inside the mutation (ONE-19).
   const uploadStory = useUploadStory(
-    userProfile?.id
-      ? { id: userProfile.id, username: userProfile.username, avatar: userProfile.profilePicture || null }
+    profileId
+      ? { id: profileId, username: userProfile.username, avatar: userProfile.profilePicture || null }
       : undefined,
   );
   const cameraRef = useRef<CameraView>(null);
@@ -73,7 +74,7 @@ export default function StoryCreateScreen() {
 
   const handleUpload = useCallback(
     async (options: { imageUri?: string; text?: string }) => {
-      if (!userProfile?.id) return;
+      if (!profileId) return;
       setIsUploading(true);
 
       addToast('Uploading story...', 'info');
@@ -97,7 +98,7 @@ export default function StoryCreateScreen() {
         setTimeout(() => router.back(), 1200);
       }
     },
-    [userProfile?.id, uploadStory, addToast, caption, router],
+    [profileId, uploadStory, addToast, caption, router],
   );
 
   const takePhoto = useCallback(async () => {

@@ -23,11 +23,9 @@
 // will fail loudly here rather than silently in production.
 
 import type { Post, UserProfile } from '../types';
-import {
-  ensureCurrentUserProfile,
-  getUserProfile,
-  FEED_PAGE_SIZE,
-} from '../services/apiService';
+import { ensureCurrentUserProfile } from '../services/profileBootstrap';
+import { getUserProfile } from '../features/profiles';
+import { FEED_PAGE_SIZE } from '../features/posts';
 // ONE-12 moved the feed read into features/posts and made the user id an
 // explicit argument instead of something the function reads from auth. The
 // "no user id → no request at all" guarantee now belongs to the hook, and is

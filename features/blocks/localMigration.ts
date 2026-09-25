@@ -10,6 +10,7 @@
 // pass a fake one — what runs in the app is what is under test.
 
 import { importLocalBlocks } from './api';
+import type { AuthUserId } from '../../types';
 
 /** Where the device-local list lived. */
 export const LOCAL_BLOCKS_KEY = 'onetag-blocked-users';
@@ -41,8 +42,8 @@ const parseStoredUsernames = (stored: string): string[] => {
  */
 export const migrateLocalBlocks = async (
   store: BlockListStore,
-  blockerId: string,
-  importBlocks: (blockerId: string, usernames: string[]) => Promise<number> = importLocalBlocks,
+  blockerId: AuthUserId,
+  importBlocks: (blockerId: AuthUserId, usernames: string[]) => Promise<number> = importLocalBlocks,
 ): Promise<number | null> => {
   try {
     const stored = await store.getItem(LOCAL_BLOCKS_KEY);

@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchBlocks } from './api';
 import { blockKeys } from './keys';
 import type { BlockedUser } from './types';
+import type { AuthUserId } from '../../types';
 
 /**
  * Everyone the signed-in user has blocked.
@@ -12,7 +13,7 @@ import type { BlockedUser } from './types';
  * Disabled without a user id: signed out there is nobody whose blocks these
  * would be, and firing it anyway would cache an answer under an empty key.
  */
-export const useBlocksQuery = (blockerId: string | undefined) =>
+export const useBlocksQuery = (blockerId: AuthUserId | undefined) =>
   useQuery<BlockedUser[]>({
     queryKey: blockKeys.list(blockerId ?? ''),
     queryFn: () => fetchBlocks(blockerId!),
@@ -30,12 +31,12 @@ export const useBlocksQuery = (blockerId: string | undefined) =>
  * content for a moment rather than hiding it forever — the block still holds
  * on the server either way, which is the point of this ticket.
  */
-export const useBlockedUsers = (blockerId: string | undefined) => {
+export const useBlockedUsers = (blockerId: AuthUserId | undefined) => {
   const query = useBlocksQuery(blockerId);
   const blocked = query.data;
 
   const isUserBlocked = useCallback(
-    (username: string) => Boolean(blocked?.some((user) => user.username === username)),
+    (username: string) => Boolean(blocked?.some((user) => user.usernames.includes(username) || user.username === username)),
     [blocked],
   );
 

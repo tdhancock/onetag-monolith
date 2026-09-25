@@ -82,16 +82,25 @@ export const postKeys = {
 ## Server state belongs here, not in AppContext
 
 `store/AppContext.native.tsx` holds only UI state no server owns — `theme`,
-`toasts`, `tooltip`, `isViewingStory`. Anything fetched from Supabase belongs
+`toasts`, `tooltip`, `topNotification`, `isViewingStory`, and the per-device
+`viewedStoryTimestamps`. Even the auth session is a query (`features/auth`).
+Anything fetched from Supabase belongs
 in a feature folder behind a query hook. If a ticket asks you to put server
 data back into `AppContext`, the ticket is wrong — say so on the ticket rather
 than working around it.
 
-## Migration is a strangler
+## Shared ground: `services/`
 
-`services/apiService.ts` is still the old home of roughly seventy functions.
-A domain moves out one ticket at a time, and the app must run correctly after
-every one of them. When a function moves, leave a re-export behind in
-`apiService.ts` pointing at the new location so nothing else breaks — see
-`getAllHashtags`. The re-exports are removed in the final M2 cleanup, once
-nothing imports them.
+M2 finished in ONE-20: every function that used to live in one shared service
+module now lives in a feature, and that module is gone. What a feature's
+`api.ts` shares with another feature sits in `services/` instead, where rule 1
+lets every feature reach it:
+
+- `services/postRows.ts` — the post select and row mapper, for anything that
+  embeds a post (messages, profiles)
+- `services/notificationWrites.ts` — inserting a notification
+- `services/profileBootstrap.ts` — making sure a profile row exists
+- `services/mediaUpload.ts`, `services/storyUpload.ts` — storage uploads
+
+If a new feature needs something another feature's `api.ts` has, move it to
+`services/` rather than importing across.

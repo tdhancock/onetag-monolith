@@ -1,7 +1,7 @@
 // Uploading post media to Supabase Storage.
 //
-// Moved out of services/apiService.ts so features/posts can publish without
-// importing apiService, which re-exports features/posts — a cycle Metro
+// Moved out of the old shared service module so features/posts can publish
+// without importing it: that module re-exported features/posts, a cycle Metro
 // cannot evaluate, and one that crashed the app on boot. This module imports
 // nothing but the client and the local-file reader, so anything may use it.
 
