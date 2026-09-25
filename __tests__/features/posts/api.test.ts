@@ -51,6 +51,7 @@ supabase.from.mockImplementation((table: string) => {
 
 import {
   fetchFeedPage,
+  fetchTrendingPosts,
   nextFeedCursor,
   FEED_PAGE_SIZE,
   mapPostData,
@@ -134,6 +135,25 @@ describe('fetchFeedPage — errors', () => {
   it('returns an empty page for no rows without throwing', async () => {
     postsResult = { data: [], error: null };
     await expect(fetchFeedPage({ userId: 'me', pageParam: null })).resolves.toEqual([]);
+  });
+});
+
+describe('fetchTrendingPosts — errors', () => {
+  it('throws rather than returning an empty grid, so Explore can offer Retry', async () => {
+    postsResult = { data: null, error: { message: 'boom' } };
+    await expect(fetchTrendingPosts()).rejects.toBeDefined();
+  });
+
+  it('returns the mapped posts when the query succeeds', async () => {
+    postsResult = { data: [row('p-1', new Date(BASE_MS).toISOString())], error: null };
+    const posts = await fetchTrendingPosts();
+    expect(posts.map((p) => p.id)).toEqual(['p-1']);
+    expect(calls[0]!.limit).toBe(FEED_PAGE_SIZE + 1);
+  });
+
+  it('returns an empty grid for no rows without throwing', async () => {
+    postsResult = { data: [], error: null };
+    await expect(fetchTrendingPosts()).resolves.toEqual([]);
   });
 });
 
