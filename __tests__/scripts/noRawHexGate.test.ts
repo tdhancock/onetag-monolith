@@ -3,8 +3,8 @@
 //
 // The raw-hex gate (scripts/check-no-raw-hex.sh), since M1c closed (ONE-77):
 // it covers every screen and component, it passes on the repo as it stands,
-// and it fails when a raw hex colour or an old-skin class is planted in a
-// screen — unless the line says `allow-hex`.
+// and it fails when a raw colour (hex, rgb()/hsl(), or a named colour) or an
+// old-skin class is planted in a screen — unless the line says `allow-hex`.
 //
 // The directory list is pinned here so the gate cannot be narrowed quietly;
 // narrowing it should mean changing this test too, in a reviewed diff.
@@ -38,7 +38,7 @@ describe('the raw-hex gate covers the whole app', () => {
 
   it('passes on the repo as it stands', () => {
     const { status, output } = runGate();
-    expect(output).toContain('No raw hex');
+    expect(output).toContain('No raw colours');
     expect(status).toBe(0);
   });
 });
@@ -78,6 +78,41 @@ describe('the raw-hex gate fails on a leak', () => {
       expect(output).toContain('Old-skin classes');
     },
   );
+
+  it.each([
+    ['rgba()', "const scrim = { backgroundColor: 'rgba(0, 0, 0, 0.5)' };"],
+    ['rgb()', 'const ink = { color: "rgb(10,10,10)" };'],
+    ['hsl()', 'const tint = { color: `hsl(120, 50%, 50%)` };'],
+  ])('on a raw %s colour', (kind, line) => {
+    const file = screen(`Fn-${kind.replace(/\W/g, '')}.tsx`, `${line}\n`);
+    const { status, output } = runGate(file);
+    expect(status).toBe(1);
+    expect(output).toContain('Raw rgb()/hsl() colours');
+  });
+
+  it.each([
+    ['a JSX prop', '<XIcon color="white" size={24} />'],
+    ['a style value', "const s = { backgroundColor: 'black' };"],
+    ['any case', "const s = { color: 'Grey' };"],
+  ])('on a named colour in %s', (kind, line) => {
+    const file = screen(`Named-${kind.replace(/\W/g, '')}.tsx`, `${line}\n`);
+    const { status, output } = runGate(file);
+    expect(status).toBe(1);
+    expect(output).toContain('Named colours');
+  });
+
+  it('not on transparent, withAlpha, or a colour word inside copy', () => {
+    const file = screen(
+      'NotColours.tsx',
+      [
+        "const outline = { fill: 'transparent' };",
+        'const scrim = { backgroundColor: withAlpha(color.text, 0.4) };',
+        "const copy = 'Black Friday';",
+        "const variant = 'inverse';",
+      ].join('\n') + '\n',
+    );
+    expect(runGate(file).status).toBe(0);
+  });
 
   it('not on the token classes that replaced them', () => {
     const file = screen('Tokens.tsx', '<Text className="bg-bg text-text border-border text-textMid" />\n');

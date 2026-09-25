@@ -119,11 +119,13 @@ folder. When a feature's `api.ts` needs something another feature has, move it t
 
 `theme/tokens.ts` is the single source of truth, and NativeWind classes and inline styles both
 resolve to it. The whole app is on the tokens (M1c closed in ONE-77), and it is gated: **no raw
-hex and no old-skin classes anywhere.** `npm run verify` and CI run `scripts/check-no-raw-hex.sh`
-over `theme/`, `lib/`, `features/`, `app/` and `components/`, failing on a hex literal or on the
-old dark skin's NativeWind classes (`bg-black`, `bg-gray-*`, `text-white`, `text-gray-*`,
-`text-blue-*`, `border-gray-*`, …). `__tests__/scripts/noRawHexGate.test.ts` pins that directory
-list, so narrowing the gate means changing the test too. Add `// allow-hex` only when a literal
+colours and no old-skin classes anywhere.** `npm run verify` and CI run
+`scripts/check-no-raw-hex.sh` over `theme/`, `lib/`, `features/`, `app/` and `components/`,
+failing on a hex literal, a hand-written `rgb()`/`rgba()`/`hsl()`, a quoted named colour
+(`"white"`, `'black'`; `'transparent'` is fine), or the old dark skin's NativeWind classes
+(`bg-black`, `bg-gray-*`, `text-white`, `text-gray-*`, `text-blue-*`, `border-gray-*`, …).
+`__tests__/scripts/noRawHexGate.test.ts` pins that directory list, so narrowing the gate means
+changing the test too. Add `// allow-hex` only when a literal
 colour is genuinely required, and say why on the line. Full-bleed media stays black through the
 `color.text` token, with `withAlpha` for scrims — never a literal.
 

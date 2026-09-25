@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
-# Fails if a raw hex colour, or a class from the old dark skin, appears
-# outside the token layer.
+# Fails if a raw colour — a hex literal, an rgb()/hsl() literal or a quoted
+# named colour — or a class from the old dark skin appears outside the token
+# layer.
 #
 # Roughly fifteen OneTag tickets carry an acceptance criterion of the form
 # "grep for raw hex returns no matches". This turns that from a request into
@@ -30,6 +31,14 @@ HEX_PATTERN='#[0-9a-f]{3}([0-9a-f]{3})?([0-9a-f]{2})?([^0-9a-z]|$)'
 # grey text, the blue accent, the red error tints. The token classes
 # (bg-bg, text-text, border-border, …) take their place.
 CLASS_PATTERN='(^|[^A-Za-z0-9_-])(bg-(black|gray-[0-9]+|blue-[0-9]+|red-[0-9]+)|text-(white|gray-[0-9]+|blue-[0-9]+|red-[0-9]+)|border-(gray|blue|red)-[0-9]+)([^A-Za-z0-9_-]|$)'
+
+# rgb(), rgba(), hsl() and hsla() written out by hand. A translucent token is
+# withAlpha(color.x, a), which builds its rgba() inside theme/tokens.ts.
+FUNCTION_PATTERN='(^|[^A-Za-z0-9_])(rgba?|hsla?)[(]'
+
+# A CSS colour keyword as a whole string literal: color="white",
+# backgroundColor: 'black'. 'transparent' is not a colour and stays allowed.
+NAMED_PATTERN="[\"'\`](white|black|red|green|blue|yellow|orange|purple|pink|brown|gold|gray|grey|silver|maroon|navy|teal|olive|lime|aqua|cyan|magenta|fuchsia)[\"'\`]"
 
 if [ "$#" -gt 0 ]; then
   PATHS="$*"
@@ -67,6 +76,8 @@ for path in $PATHS; do
 
   scan "$path" "$HEX_PATTERN" "-i" "Raw hex colours"
   scan "$path" "$CLASS_PATTERN" "" "Old-skin classes"
+  scan "$path" "$FUNCTION_PATTERN" "-i" "Raw rgb()/hsl() colours"
+  scan "$path" "$NAMED_PATTERN" "-i" "Named colours"
 done
 
 if [ "$status" -ne 0 ]; then
@@ -74,4 +85,4 @@ if [ "$status" -ne 0 ]; then
   exit 1
 fi
 
-echo "No raw hex or old-skin classes outside the token layer."
+echo "No raw colours or old-skin classes outside the token layer."
