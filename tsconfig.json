@@ -21,7 +21,6 @@
     "index.html",
     "vite.config.ts",
     "node_modules",
-    "src",
-    "scripts/test_batches"
+    "src"
   ]
 }
