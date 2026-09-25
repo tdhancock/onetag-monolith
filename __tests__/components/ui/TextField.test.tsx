@@ -19,7 +19,10 @@ jest.mock('react-native', () => require('../../support/reactNativeDom'), { virtu
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react';
-import TextField, { TEXT_FIELD_MIN_HEIGHT } from '../../../components/native/ui/TextField';
+import TextField, {
+  TEXT_FIELD_COLORS,
+  TEXT_FIELD_MIN_HEIGHT,
+} from '../../../components/native/ui/TextField';
 import type { TextFieldProps } from '../../../components/native/ui/TextField';
 import { color } from '../../../theme/tokens';
 
@@ -121,7 +124,37 @@ describe('TextField — focus', () => {
   });
 });
 
-// ─── 6. Label, error and ref ────────────────────────────────────────────
+// ─── 6. The overlay variant ─────────────────────────────────────────────
+
+describe('TextField — overlay variant', () => {
+  it('is translucent white with inverse text, for dark media', () => {
+    withField({ variant: 'overlay', placeholder: 'Reply' }, (handle) => {
+      const input = inputOf(handle);
+      const overlay = TEXT_FIELD_COLORS.overlay;
+      expect(overlay.fill).toMatch(/^rgba\(255, 255, 255, 0\.\d+\)$/);
+      expect(input.style.backgroundColor).toBe(overlay.fill);
+      expect(rgb(input.style.color)).toBe(rgb(color.inverse));
+      expect(input.getAttribute('data-placeholder-color')).toBe(overlay.placeholder);
+    });
+  });
+
+  it('brightens its border to inverse while focused', () => {
+    withField({ variant: 'overlay' }, (handle) => {
+      const input = inputOf(handle);
+      act(() => input.focus());
+      expect(rgb(input.style.borderColor)).toBe(rgb(color.inverse));
+    });
+  });
+
+  it('defaults to the panel variant', () => {
+    expect(TEXT_FIELD_COLORS.panel.fill).toBe(color.bgPanel);
+    withField({}, (handle) => {
+      expect(inputOf(handle).style.backgroundColor).toBe(rgb(color.bgPanel));
+    });
+  });
+});
+
+// ─── 7. Label, error and ref ────────────────────────────────────────────
 
 describe('TextField — label, error and ref', () => {
   it('renders a label above the field', () => {

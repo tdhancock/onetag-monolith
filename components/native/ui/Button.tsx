@@ -4,7 +4,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import { color, radius, space } from '../../../theme/tokens';
 import MonoLabel from './MonoLabel';
 
-export type ButtonVariant = 'primary' | 'outline';
+export type ButtonVariant = 'primary' | 'outline' | 'inverse';
 export type ButtonSize = 'sm' | 'md';
 
 export interface ButtonProps {
@@ -27,9 +27,19 @@ const sizing: Record<ButtonSize, { paddingVertical: number; paddingHorizontal: n
   md: { paddingVertical: space.md, paddingHorizontal: space.lg, label: 12 },
 };
 
+/** Fill, border and label colour for each variant. */
+const palette: Record<ButtonVariant, { fill: string; border: string; label: 'inverse' | 'text' }> = {
+  primary: { fill: color.text, border: color.text, label: 'inverse' },
+  outline: { fill: 'transparent', border: color.border, label: 'text' },
+  // For full-bleed dark media (the camera, the OneSnap viewer), where an ink
+  // button would disappear into the black.
+  inverse: { fill: color.inverse, border: color.inverse, label: 'text' },
+};
+
 /**
- * A squared-off button in two weights: `primary` is filled ink with an
- * inverse label, `outline` is a hairline box with an ink label. Both wear the
+ * A squared-off button in three weights: `primary` is filled ink with an
+ * inverse label, `outline` is a hairline box with an ink label, and `inverse`
+ * is a white fill with an ink label for use over dark media. All wear the
  * uppercase DM Mono label treatment.
  */
 const Button: React.FC<ButtonProps> = ({
@@ -42,7 +52,7 @@ const Button: React.FC<ButtonProps> = ({
   style,
 }) => {
   const metrics = sizing[size];
-  const isPrimary = variant === 'primary';
+  const colors = palette[variant];
 
   // Guard here as well as on Pressable. The `disabled` prop already stops the
   // press, but this keeps the rule true regardless of what the control is
@@ -63,8 +73,8 @@ const Button: React.FC<ButtonProps> = ({
         {
           paddingVertical: metrics.paddingVertical,
           paddingHorizontal: metrics.paddingHorizontal,
-          backgroundColor: isPrimary ? color.text : 'transparent',
-          borderColor: isPrimary ? color.text : color.border,
+          backgroundColor: colors.fill,
+          borderColor: colors.border,
         },
         fullWidth && styles.fullWidth,
         disabled && { opacity: DISABLED_OPACITY },
@@ -72,7 +82,7 @@ const Button: React.FC<ButtonProps> = ({
         style,
       ]}
     >
-      <MonoLabel size={metrics.label} color={isPrimary ? 'inverse' : 'text'}>
+      <MonoLabel size={metrics.label} color={colors.label}>
         {children}
       </MonoLabel>
     </Pressable>

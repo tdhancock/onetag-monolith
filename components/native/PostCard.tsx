@@ -2,7 +2,6 @@ import React, { useState, useCallback, useRef } from 'react';
 import { View, Text, Pressable, Animated, Modal, Alert, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { differenceInMinutes, differenceInHours, differenceInDays, differenceInWeeks, differenceInMonths, differenceInYears } from 'date-fns';
 import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
 import { useLikePost, useRepostPost, useSavePost, useDeletePost } from '../../features/posts';
@@ -26,6 +25,7 @@ import { reportPost } from '../../features/moderation';
 import { useIsAdmin } from '../../features/admin';
 import { useAuthUserId } from '../../features/auth';
 import { POST_REPORT_REASONS } from '../../services/reportReasons';
+import { getTimeAgo } from '../../lib/timeAgo';
 import {
   actionLabels,
   commentsLinkLabel,
@@ -36,28 +36,7 @@ import {
 import { color, radius, space, type } from '../../theme/tokens';
 import type { Post } from '../../types';
 
-// ─── Helpers ───────────────────────────────────────
-
-const getTimeAgo = (timestamp?: string): string => {
-  if (!timestamp) return '';
-  try {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMin = differenceInMinutes(now, date);
-    if (diffMin < 1) return 'just now';
-    if (diffMin < 60) return `${diffMin}min`;
-    const diffH = differenceInHours(now, date);
-    if (diffH < 24) return `${diffH}h`;
-    const diffD = differenceInDays(now, date);
-    if (diffD < 7) return `${diffD}d`;
-    const diffM = differenceInMonths(now, date);
-    if (diffM < 1) return `${differenceInWeeks(now, date)}w`;
-    if (diffM < 12) return `${diffM}m`;
-    return `${differenceInYears(now, date)}y`;
-  } catch {
-    return '';
-  }
-};
+// ─── Layout ────────────────────────────────────────
 
 /** Header avatar diameter. PostSkeleton mirrors it. */
 const HEADER_AVATAR_SIZE = 36;

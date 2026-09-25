@@ -1,21 +1,21 @@
-
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
   Pressable,
-  TextInput,
-  ScrollView,
+  FlatList,
   Dimensions,
   Animated,
   PanResponder,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ActivityIndicator,
+  StyleSheet,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '../store/AppContext.native';
@@ -31,21 +31,24 @@ import {
   useRecordStoryView,
   useReplyToStory,
 } from '../features/stories';
-import UserAvatar from '../components/native/UserAvatar';
+import { Avatar, EmptyState, IconButton, ListRow, MonoLabel, TextField } from '../components/native/ui';
 import { HeartIcon, XIcon, TrashIcon, EyeIcon, SendIcon } from '../components/native/Icons';
+import { gradientFor } from '../lib/oneSnaps';
+import { getTimeAgo } from '../lib/timeAgo';
+import { color, radius, space, type, withAlpha } from '../theme/tokens';
 import type { Story } from '../types';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const STORY_DURATION = 15000;
 const SWIPE_THRESHOLD = 60;
 
-const GRADIENT_COLORS = [
-  ['#1e3a5f', '#0f172a'],
-  ['#4a1942', '#1a0a2e'],
-  ['#1a3c34', '#0a1628'],
-  ['#3d1f00', '#1a0e00'],
-  ['#2d1b4e', '#0e0a1a'],
-] as const;
+// The viewer stays dark for the content's sake. Its black is the ink token,
+// and everything laid over the media is inverse, at full or partial strength.
+const MEDIA_GROUND = color.text;
+const SCRIM = withAlpha(color.text, 0.7);
+const SCRIM_CLEAR = withAlpha(color.text, 0);
+const PROGRESS_PENDING = withAlpha(color.inverse, 0.4);
+const INVERSE_MUTED = withAlpha(color.inverse, 0.7);
 
 export default function StoryViewerScreen() {
   const router = useRouter();
@@ -57,7 +60,7 @@ export default function StoryViewerScreen() {
     triggerHapticFeedback,
     addToast,
   } = useApp();
-  const { profile: userProfile, profileId } = useCurrentProfile();
+  const { profileId } = useCurrentProfile();
 
   const userId = profileId;
 
@@ -78,6 +81,7 @@ export default function StoryViewerScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [replyText, setReplyText] = useState('');
   const [isPaused, setIsPaused] = useState(false);
+  const [viewersOpen, setViewersOpen] = useState(false);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
   const translateX = useRef(new Animated.Value(0)).current;
@@ -282,10 +286,10 @@ export default function StoryViewerScreen() {
     if (!currentStory) return;
     triggerHapticFeedback('heavy');
     deleteStory.mutate(currentStory.id, {
-      onSuccess: () => addToast('Story deleted.', 'info'),
+      onSuccess: () => addToast('OneSnap deleted.', 'info'),
       onError: (error) => {
         console.error('Failed to delete story:', error);
-        addToast('Could not delete story.', 'error');
+        addToast('Could not delete OneSnap.', 'error');
       },
     });
     setStories(prev => prev.filter(s => s.id !== currentStory.id));
@@ -296,209 +300,406 @@ export default function StoryViewerScreen() {
     }
   }, [currentStory, triggerHapticFeedback, deleteStory, addToast, stories.length, currentIndex, router]);
 
+  // The owner's "Seen by" sheet holds playback while it is open.
+  const openViewers = useCallback(() => {
+    if (viewers.length === 0) return;
+    setIsPaused(true);
+    setViewersOpen(true);
+  }, [viewers.length]);
+
+  const closeViewers = useCallback(() => {
+    setViewersOpen(false);
+    setIsPaused(false);
+  }, []);
+
   // Loading
   if (loading) {
     return (
-      <View className="flex-1 bg-black justify-center items-center">
+      <View style={[styles.fill, styles.centred, { backgroundColor: MEDIA_GROUND }]}>
         <Stack.Screen options={{ headerShown: false }} />
-        <ActivityIndicator color="#3b82f6" size="large" />
+        <StatusBar style="light" />
+        <ActivityIndicator color={color.inverse} size="large" />
       </View>
     );
   }
 
-  // No stories
+  // Nothing to play: not content, so it sits on the light ground.
   if (!currentStory || stories.length === 0) {
     return (
-      <SafeAreaView className="flex-1 bg-black justify-center items-center">
+      <SafeAreaView style={[styles.fill, styles.centred, { backgroundColor: color.bg }]}>
         <Stack.Screen options={{ headerShown: false }} />
-        <Text className="text-gray-400 text-lg">No stories to show.</Text>
-        <Pressable onPress={() => router.back()} className="mt-4">
-          <Text className="text-blue-500">Go back</Text>
-        </Pressable>
+        <StatusBar style="dark" />
+        <EmptyState
+          title="No OneSnaps to show"
+          body="The OneSnaps here have expired or been removed."
+          action={{ label: 'Go back', onPress: () => router.back() }}
+        />
       </SafeAreaView>
     );
   }
 
-  const gradientPair = GRADIENT_COLORS[currentIndex % GRADIENT_COLORS.length];
   const isTextStory = !currentStory.imageUrl;
+  const seenBy = viewCount ?? viewers.length;
+  const timeAgo = getTimeAgo(currentStory.timestamp);
 
   return (
     <Animated.View
       style={{
         flex: 1,
-        backgroundColor: '#000',
+        backgroundColor: MEDIA_GROUND,
         opacity: opacityAnim,
         transform: [{ translateX }, { translateY }],
       }}
     >
       <Stack.Screen options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+      <StatusBar style="light" />
 
-      <View style={{ flex: 1 }} {...panResponder.panHandlers}>
-        {/* Story content */}
+      <View style={styles.fill} {...panResponder.panHandlers}>
+        {/* OneSnap content */}
         {isTextStory ? (
-          <LinearGradient
-            colors={[...gradientPair]}
-            style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }}
-          >
-            <Text className="text-white text-2xl font-bold text-center" style={{ lineHeight: 36 }}>
-              {currentStory.content}
-            </Text>
+          <LinearGradient colors={[...gradientFor(currentStory.id)]} style={styles.textStory}>
+            <Text style={styles.textStoryCopy}>{currentStory.content}</Text>
           </LinearGradient>
         ) : (
           <Image
             source={{ uri: currentStory.imageUrl }}
-            style={{ flex: 1 }}
+            style={styles.fill}
             contentFit="cover"
             transition={200}
           />
         )}
 
-        {/* Top gradient */}
-        <LinearGradient
-          colors={['rgba(0,0,0,0.7)', 'transparent']}
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 160 }}
-        />
-
-        {/* Bottom gradient */}
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.7)']}
-          style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 200 }}
-        />
+        {/* Scrims so the chrome reads over any image */}
+        <LinearGradient colors={[SCRIM, SCRIM_CLEAR]} style={styles.topScrim} />
+        <LinearGradient colors={[SCRIM_CLEAR, SCRIM]} style={styles.bottomScrim} />
 
         {/* Header */}
-        <SafeAreaView edges={['top']} className="absolute top-0 left-0 right-0 z-20">
-          {/* Progress bars */}
-          <View className="flex-row px-2 pt-2" style={{ gap: 3 }}>
+        <SafeAreaView edges={['top']} style={styles.header}>
+          {/* Progress: one 2pt segment per OneSnap */}
+          <View style={styles.progressRow}>
             {stories.map((_, i) => (
-              <View key={i} className="flex-1 h-0.5 bg-white/30 rounded-full overflow-hidden">
+              <View key={i} style={styles.progressTrack}>
                 {i < currentIndex ? (
-                  <View className="flex-1 bg-white" />
+                  <View style={[styles.fill, styles.progressFill]} />
                 ) : i === currentIndex ? (
                   <Animated.View
-                    style={{
-                      height: '100%',
-                      backgroundColor: 'white',
-                      width: progressAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ['0%', '100%'],
-                      }),
-                    }}
+                    style={[
+                      styles.progressFill,
+                      {
+                        height: '100%',
+                        width: progressAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0%', '100%'],
+                        }),
+                      },
+                    ]}
                   />
                 ) : null}
               </View>
             ))}
           </View>
 
-          {/* User info row */}
-          <View className="flex-row items-center px-4 mt-3" style={{ gap: 10 }}>
+          {/* Author */}
+          <View style={styles.authorRow}>
             <Pressable
+              style={styles.author}
+              accessibilityRole="button"
+              accessibilityLabel={`View ${currentStory.username}'s profile`}
               onPress={() => {
                 router.back();
                 setTimeout(() => router.push(`/user/${currentStory.username}`), 100);
               }}
             >
-              <UserAvatar
-                username={currentStory.username}
-                avatarUrl={currentStory.avatar || undefined}
-                size={36}
-              />
+              <Avatar uri={currentStory.avatar} name={currentStory.username} size={32} />
+              <View style={styles.authorText}>
+                <Text style={styles.authorName} numberOfLines={1}>
+                  {currentStory.username}
+                </Text>
+                {timeAgo ? <Text style={styles.authorTime}>{timeAgo}</Text> : null}
+              </View>
             </Pressable>
-            <Text className="text-white font-semibold flex-1">
-              @{currentStory.username}
-            </Text>
 
             {isPaused && (
-              <Text className="text-white/60 text-xs mr-2">PAUSED</Text>
+              <MonoLabel color="inverse" style={styles.paused}>
+                Paused
+              </MonoLabel>
             )}
 
-            <Pressable onPress={handleClose} className="p-1">
-              <XIcon color="white" size={24} />
-            </Pressable>
+            <IconButton
+              icon={<XIcon color={color.inverse} size={24} />}
+              accessibilityLabel="Close"
+              onPress={handleClose}
+            />
           </View>
         </SafeAreaView>
 
         {/* Footer */}
-        <SafeAreaView edges={['bottom']} className="absolute bottom-0 left-0 right-0 z-20">
+        <SafeAreaView edges={['bottom']} style={styles.footer}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             {isOwnStory ? (
-              <View className="px-6 pb-4">
-                <View className="flex-row items-center justify-between mb-3">
-                  <Pressable
-                    className="flex-row items-center"
-                    style={{ gap: 6 }}
-                    onPress={() => {
-                      if (viewers.length > 0) {
-                        router.push({
-                          pathname: '/user-list',
-                          params: { type: 'storyViews', storyId: currentStory.id, title: 'Story Views' },
-                        });
-                      }
-                    }}
-                  >
-                    <EyeIcon color="white" size={20} />
-                    <Text className="text-white font-semibold">
-                      {viewCount !== null ? `${viewCount} view${viewCount !== 1 ? 's' : ''}` : '...'}
-                    </Text>
-                  </Pressable>
-                  <Pressable onPress={handleDelete} className="p-2">
-                    <TrashIcon color="#ef4444" size={22} />
-                  </Pressable>
-                </View>
-
-                {/* Viewer avatars row */}
-                {viewers.length > 0 && (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} className="pb-1">
-                    {viewers.slice(0, 20).map((viewer) => (
-                      <Pressable
-                        key={viewer.user_id}
-                        onPress={() => router.push(`/user/${viewer.username}`)}
-                        className="mr-2"
-                      >
-                        <UserAvatar
-                          username={viewer.username}
-                          avatarUrl={viewer.avatar_url || undefined}
-                          size={32}
-                        />
-                      </Pressable>
-                    ))}
-                    {viewers.length > 20 && (
-                      <View className="w-8 h-8 rounded-full bg-gray-700 items-center justify-center">
-                        <Text className="text-white text-xs">
-                          +{viewers.length - 20}
-                        </Text>
-                      </View>
-                    )}
-                  </ScrollView>
-                )}
+              <View style={styles.ownerRow}>
+                <Pressable
+                  style={styles.seenBy}
+                  onPress={openViewers}
+                  disabled={viewers.length === 0}
+                  accessibilityRole="button"
+                  accessibilityLabel={viewCount !== null ? `Seen by ${seenBy}` : 'Loading views'}
+                >
+                  <EyeIcon color={color.inverse} size={20} />
+                  <Text style={styles.seenByText}>
+                    {viewCount !== null ? `Seen by ${seenBy}` : '…'}
+                  </Text>
+                </Pressable>
+                <IconButton
+                  icon={<TrashIcon color={color.inverse} size={22} />}
+                  accessibilityLabel="Delete OneSnap"
+                  onPress={handleDelete}
+                />
               </View>
             ) : (
-              <View className="flex-row items-center px-4 pb-4" style={{ gap: 12 }}>
-                <View className="flex-1 flex-row items-center bg-white/10 rounded-full px-4">
-                  <TextInput
-                    value={replyText}
-                    onChangeText={setReplyText}
-                    placeholder="Send a reply..."
-                    placeholderTextColor="rgba(255,255,255,0.5)"
-                    className="flex-1 text-white py-2.5"
-                    returnKeyType="send"
-                    onSubmitEditing={handleReply}
-                    onFocus={() => setIsPaused(true)}
-                    onBlur={() => setIsPaused(false)}
-                  />
-                  {replyText.trim() ? (
-                    <Pressable onPress={handleReply} className="ml-2">
-                      <SendIcon color="#3b82f6" size={20} />
-                    </Pressable>
-                  ) : null}
-                </View>
-                <Pressable onPress={handleLike}>
-                  <HeartIcon color={liked ? '#ef4444' : 'white'} size={26} liked={liked} />
-                </Pressable>
+              <View style={styles.replyRow}>
+                <TextField
+                  variant="overlay"
+                  value={replyText}
+                  onChangeText={setReplyText}
+                  placeholder="Send a reply…"
+                  returnKeyType="send"
+                  onSubmitEditing={handleReply}
+                  onFocus={() => setIsPaused(true)}
+                  onBlur={() => setIsPaused(false)}
+                  containerStyle={styles.replyField}
+                />
+                <IconButton
+                  icon={<SendIcon color={color.inverse} size={22} />}
+                  accessibilityLabel="Send reply"
+                  disabled={!replyText.trim()}
+                  onPress={handleReply}
+                />
+                <IconButton
+                  icon={
+                    <HeartIcon
+                      liked={liked}
+                      color={liked ? color.heart : color.inverse}
+                      size={26}
+                    />
+                  }
+                  accessibilityLabel={`Like, ${liked ? 'liked' : 'not liked'}`}
+                  onPress={handleLike}
+                />
               </View>
             )}
           </KeyboardAvoidingView>
         </SafeAreaView>
       </View>
+
+      {/* The owner's viewer list */}
+      <Modal visible={viewersOpen} transparent animationType="slide" onRequestClose={closeViewers}>
+        <View style={styles.sheetRoot}>
+          <Pressable
+            style={[StyleSheet.absoluteFill, styles.sheetScrim]}
+            onPress={closeViewers}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+          />
+          <SafeAreaView edges={['bottom']} style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Seen by {seenBy}</Text>
+              <IconButton
+                icon={<XIcon color={color.text} size={20} />}
+                accessibilityLabel="Close"
+                onPress={closeViewers}
+              />
+            </View>
+            <FlatList
+              data={viewers}
+              keyExtractor={viewer => viewer.user_id}
+              renderItem={({ item: viewer }) => (
+                <ListRow
+                  title={viewer.username}
+                  avatarUri={viewer.avatar_url}
+                  accessibilityLabel={`View ${viewer.username}'s profile`}
+                  onPress={() => {
+                    closeViewers();
+                    router.push(`/user/${viewer.username}`);
+                  }}
+                />
+              )}
+              style={styles.sheetList}
+            />
+          </SafeAreaView>
+        </View>
+      </Modal>
     </Animated.View>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: {
+    flex: 1,
+  },
+  centred: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Content
+  textStory: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.xxl,
+  },
+  textStoryCopy: {
+    fontFamily: type.bodyBold,
+    fontSize: 24,
+    lineHeight: 36,
+    color: color.inverse,
+    textAlign: 'center',
+  },
+  topScrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 160,
+  },
+  bottomScrim: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 200,
+  },
+
+  // Header
+  header: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingTop: space.sm,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 2,
+    overflow: 'hidden',
+    backgroundColor: PROGRESS_PENDING,
+  },
+  progressFill: {
+    backgroundColor: color.inverse,
+  },
+  authorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    marginTop: space.sm,
+  },
+  author: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+  },
+  authorText: {
+    flexShrink: 1,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginLeft: space.sm,
+    gap: space.sm,
+  },
+  authorName: {
+    flexShrink: 1,
+    fontFamily: type.bodyBold,
+    fontSize: 15,
+    color: color.inverse,
+  },
+  authorTime: {
+    fontFamily: type.body,
+    fontSize: 13,
+    color: INVERSE_MUTED,
+  },
+  paused: {
+    marginRight: space.sm,
+  },
+
+  // Footer
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+  },
+  ownerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    paddingBottom: space.md,
+  },
+  seenBy: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    minHeight: 44,
+  },
+  seenByText: {
+    fontFamily: type.bodyBold,
+    fontSize: 15,
+    color: color.inverse,
+  },
+  replyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    paddingBottom: space.md,
+  },
+  replyField: {
+    flex: 1,
+    marginRight: space.xs,
+  },
+
+  // Viewer sheet
+  sheetRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheetScrim: {
+    backgroundColor: color.text,
+    opacity: 0.4,
+  },
+  sheet: {
+    maxHeight: SCREEN_HEIGHT * 0.6,
+    backgroundColor: color.bg,
+    borderTopWidth: 1,
+    borderTopColor: color.border,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: color.border,
+  },
+  sheetTitle: {
+    fontFamily: type.bodyBold,
+    fontSize: 17,
+    color: color.text,
+  },
+  sheetList: {
+    flexGrow: 0,
+  },
+});

@@ -62,6 +62,34 @@ export const type = {
   },
 } as const;
 
+// Backgrounds for text OneSnaps. These are content rather than chrome — a
+// text OneSnap is drawn on one — which is why they sit apart from `color` and
+// are allowed to be colourful. Each pair runs top to bottom.
+export const oneSnapGradients = [
+  ['#1e3a5f', '#0f172a'],
+  ['#4a1942', '#1a0a2e'],
+  ['#1a3c34', '#0a1628'],
+  ['#3d1f00', '#1a0e00'],
+  ['#2d1b4e', '#0e0a1a'],
+  ['#5b2c6f', '#1a1a2e'],
+  ['#0e4d44', '#041c2c'],
+] as const;
+
+export type OneSnapGradient = (typeof oneSnapGradients)[number];
+
+/**
+ * A six-digit token colour at partial opacity, as an rgba() string — for the
+ * scrims and translucent controls laid over full-bleed media, where a solid
+ * token would hide the content underneath.
+ */
+export const withAlpha = (hex: string, alpha: number): string => {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!match) throw new Error(`withAlpha expects a six-digit hex colour, got ${hex}`);
+  const [r, g, b] = match.slice(1).map((pair) => parseInt(pair, 16));
+  const a = Math.min(1, Math.max(0, alpha));
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+};
+
 export const tokens = { color, radius, space, type } as const;
 
 export type Tokens = typeof tokens;

@@ -20,8 +20,8 @@ export type { AvatarProps } from './Avatar';
 export { default as IconButton, badgeLabel, BADGE_MAX, ICON_BUTTON_SIZE } from './IconButton';
 export type { IconButtonProps } from './IconButton';
 
-export { default as TextField, TEXT_FIELD_MIN_HEIGHT } from './TextField';
-export type { TextFieldProps } from './TextField';
+export { default as TextField, TEXT_FIELD_MIN_HEIGHT, TEXT_FIELD_COLORS } from './TextField';
+export type { TextFieldProps, TextFieldVariant } from './TextField';
 
 export { default as ListRow, LIST_ROW_MIN_HEIGHT, LIST_ROW_AVATAR_SIZE } from './ListRow';
 export type { ListRowProps } from './ListRow';
