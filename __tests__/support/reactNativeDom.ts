@@ -49,15 +49,30 @@ export const StyleSheet = {
 export const View: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props =>
   React.createElement('div', passthroughProps(props), props.children);
 
-export const Text: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props =>
-  React.createElement('span', passthroughProps(props), props.children);
+/** A Text with onPress (an inline link, a "more" control) is clickable. */
+export const Text: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props => {
+  const { onPress, accessibilityLabel, ...rest } = props;
+  return React.createElement(
+    'span',
+    {
+      ...passthroughProps(rest),
+      onClick: onPress as React.MouseEventHandler | undefined,
+      'aria-label': accessibilityLabel as string | undefined,
+    },
+    props.children,
+  );
+};
 
 export const Pressable: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props => {
-  const { onPress, accessibilityLabel, ...rest } = props;
+  const { onPress, accessibilityLabel, style, ...rest } = props;
+  // Pressable takes its style as a function of press state; render the
+  // resting state, which is what a mounted-but-untouched control shows.
+  const resolvedStyle =
+    typeof style === 'function' ? (style as (s: { pressed: boolean }) => unknown)({ pressed: false }) : style;
   return React.createElement(
     'button',
     {
-      ...passthroughProps(rest),
+      ...passthroughProps({ ...rest, style: resolvedStyle }),
       onClick: onPress as React.MouseEventHandler,
       'aria-label': accessibilityLabel as string | undefined,
     },

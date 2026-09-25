@@ -191,6 +191,12 @@ export const ThreeDotsVerticalIcon: React.FC<IconProps> = ({ color = palette.tex
   </Svg>
 );
 
+export const DotsHorizontalIcon: React.FC<IconProps> = ({ color = palette.text, size = 24 }) => (
+  <Svg width={size} height={size} fill={color} viewBox="0 0 20 20">
+    <Path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
+  </Svg>
+);
+
 export const BlockIcon: React.FC<IconProps> = ({ color = palette.text, size = 24, strokeWidth }) => (
   <Svg width={size} height={size} fill="none" stroke={color} strokeWidth={strokeWidth} viewBox="0 0 24 24">
     <Path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />

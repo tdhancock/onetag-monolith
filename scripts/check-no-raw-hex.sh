@@ -23,6 +23,7 @@ components/native/UserAvatar.tsx
 components/native/Toast.tsx
 components/native/PostSkeleton.tsx
 components/native/RenderUserContent.tsx
+components/native/PostCard.tsx
 "
 
 # theme/tokens.ts is the source of truth and must contain hex.

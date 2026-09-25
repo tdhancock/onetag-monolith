@@ -45,6 +45,8 @@ type Child = React.ReactElement<{ style: unknown; children?: React.ReactNode }> 
 
 type IconButtonElement = React.ReactElement<{
   onPress?: () => void;
+  onLongPress?: () => void;
+  accessibilityHint?: string;
   disabled?: boolean;
   accessibilityRole?: string;
   accessibilityLabel?: string;
@@ -133,6 +135,15 @@ describe('IconButton — press behaviour', () => {
     expect(onPress).not.toHaveBeenCalled();
     expect(el.props.disabled).toBe(true);
     expect(el.props.accessibilityState).toEqual({ disabled: true });
+  });
+
+  it('passes a long press and its hint through, but not when disabled', () => {
+    const onLongPress = jest.fn();
+    const el = render({ onLongPress, accessibilityHint: 'Shows who liked this' });
+    el.props.onLongPress?.();
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+    expect(el.props.accessibilityHint).toBe('Shows who liked this');
+    expect(render({ onLongPress, disabled: true }).props.onLongPress).toBeUndefined();
   });
 
   it('dims while pressed, and dims further when disabled', () => {

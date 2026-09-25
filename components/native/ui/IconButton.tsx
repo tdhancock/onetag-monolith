@@ -7,11 +7,15 @@ export interface IconButtonProps {
   /** The icon element, e.g. `<BellIcon />`. It is centred in the hit area. */
   icon: React.ReactNode;
   onPress?: () => void;
+  /** A secondary action, e.g. Like's long press opening the likers list. */
+  onLongPress?: () => void;
   /**
    * Required: an icon-only control has no text for a screen reader to fall
    * back on, so leaving it out is a type error rather than a silent gap.
    */
   accessibilityLabel: string;
+  /** Describes what a long press does, when there is one. */
+  accessibilityHint?: string;
   disabled?: boolean;
   /** An unread count drawn over the icon's top-right corner. Hidden at 0. */
   badge?: number;
@@ -46,7 +50,9 @@ export const badgeLabel = (count?: number | null): string | null => {
 const IconButton: React.FC<IconButtonProps> = ({
   icon,
   onPress,
+  onLongPress,
   accessibilityLabel,
+  accessibilityHint,
   disabled = false,
   badge,
   style,
@@ -63,9 +69,11 @@ const IconButton: React.FC<IconButtonProps> = ({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={handlePress}
+      onLongPress={disabled ? undefined : onLongPress}
       style={({ pressed }) => [
         styles.base,
         disabled && { opacity: DISABLED_OPACITY },

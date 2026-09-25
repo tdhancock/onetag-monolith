@@ -15,6 +15,20 @@ export const REPORT_REASONS: readonly string[] = [
   "I just don't like their content",
 ];
 
+/**
+ * The reasons the post card's report sheet offers. They predate the shared
+ * list above and differ from it in two lines, so they are kept exactly as the
+ * card has always shown them rather than merged (ONE-65 kept them unchanged).
+ */
+export const POST_REPORT_REASONS: readonly string[] = [
+  "It's spam",
+  'Hate speech or symbols',
+  'Harassment or bullying',
+  'False information',
+  'Nudity or sexual activity',
+  "I just don't like it",
+];
+
 export type ReportTargetType = 'post' | 'user';
 
 export interface ReportSubmission {
