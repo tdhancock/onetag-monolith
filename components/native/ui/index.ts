@@ -39,3 +39,6 @@ export { useReducedMotion } from './useReducedMotion';
 
 export { default as Sheet, SheetRow, SHEET_ROW_HEIGHT } from './Sheet';
 export type { SheetProps, SheetRowProps } from './Sheet';
+
+export { default as SettingsRow, SettingsSection, SETTINGS_ROW_MIN_HEIGHT } from './SettingsRow';
+export type { SettingsRowProps, SettingsSectionProps } from './SettingsRow';

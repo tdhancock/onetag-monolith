@@ -1,17 +1,19 @@
-
-
 import React from 'react';
-import { View, Text, Pressable, ScrollView, Switch, Alert } from 'react-native';
-import { Stack, useRouter, Link } from 'expo-router';
+import { View, ScrollView, Switch, Alert, StyleSheet } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
 import { supabase } from '../services/supabase.native';
-import { LogoutIcon, ChevronRightIcon, TrashIcon } from '../components/native/Icons';
+import { Button, MonoLabel, SettingsRow, SettingsSection } from '../components/native/ui';
 import { useUpdateProfile, useCurrentProfile } from '../features/profiles';
 import { PRIVATE_ACCOUNT_LABEL, PRIVATE_ACCOUNT_DESCRIPTION } from '../lib/screens/profile';
+import { color, space } from '../theme/tokens';
+
+/** The version line at the foot of the list. */
+const VERSION_LABEL = 'OneTag Social Mobile v1.0.0';
 
 export default function SettingsScreen() {
-  const { theme, setTheme, addToast } = useApp();
+  const { addToast } = useApp();
   const { profile: userProfile, profileId } = useCurrentProfile();
   const router = useRouter();
 
@@ -77,112 +79,75 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-black">
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Settings',
-          headerStyle: { backgroundColor: '#000' },
-          headerTintColor: '#fff',
-          headerTitleStyle: { fontWeight: 'bold' },
-        }}
-      />
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
+      <Stack.Screen options={{ headerShown: true, title: 'Settings' }} />
 
-      <ScrollView className="flex-1">
-        <View className="px-6 py-6">
-          {/* Account */}
-          <Text className="text-gray-500 font-bold mb-4 ml-1">ACCOUNT</Text>
-          <View className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden mb-8">
-            <Link href="/edit-profile" asChild>
-              <Pressable className="flex-row items-center justify-between px-4 py-4">
-                <Text className="text-white text-base">Edit Profile</Text>
-                <ChevronRightIcon color="#6b7280" />
-              </Pressable>
-            </Link>
-          </View>
+      <ScrollView contentContainerStyle={styles.content}>
+        <SettingsSection title="Account">
+          <SettingsRow title="Edit profile" onPress={() => router.push('/edit-profile')} />
+        </SettingsSection>
 
-          {/* Privacy */}
-          <Text className="text-gray-500 font-bold mb-4 ml-1">PRIVACY</Text>
-          <View className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden mb-8">
-            <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-800" style={{ gap: 12 }}>
-              <View className="flex-1">
-                <Text className="text-white text-base">{PRIVATE_ACCOUNT_LABEL}</Text>
-                <Text className="text-gray-500 text-sm mt-0.5">{PRIVATE_ACCOUNT_DESCRIPTION}</Text>
-              </View>
+        <SettingsSection title="Privacy">
+          <SettingsRow
+            title={PRIVATE_ACCOUNT_LABEL}
+            subtitle={PRIVATE_ACCOUNT_DESCRIPTION}
+            divider
+            control={
               <Switch
                 value={isPrivate}
                 onValueChange={handlePrivateChange}
                 disabled={!profileId || updateProfile.isPending}
                 accessibilityLabel={PRIVATE_ACCOUNT_LABEL}
+                trackColor={{ true: color.text, false: color.borderStrong }}
+                ios_backgroundColor={color.borderStrong}
+                thumbColor={color.inverse}
               />
-            </View>
-            <Link href="/blocked-users" asChild>
-              <Pressable className="flex-row items-center justify-between px-4 py-4">
-                <Text className="text-white text-base">Blocked Accounts</Text>
-                <ChevronRightIcon color="#6b7280" />
-              </Pressable>
-            </Link>
-          </View>
+            }
+          />
+          <SettingsRow title="Blocked accounts" onPress={() => router.push('/blocked-users')} />
+        </SettingsSection>
 
-          {/* Preferences — dark mode switch removed; app is always dark */}
-          <Text className="text-gray-500 font-bold mb-4 ml-1">PREFERENCES</Text>
-          <View className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden mb-8">
-            <View className="flex-row items-center justify-between px-4 py-4">
-              <Text className="text-white text-base">Appearance</Text>
-              <Text className="text-gray-500 text-base">Dark</Text>
-            </View>
-          </View>
+        <SettingsSection title="About">
+          <SettingsRow title="Privacy policy" onPress={() => router.push('/privacy-policy')} divider />
+          <SettingsRow title="Terms of service" onPress={() => router.push('/terms')} />
+        </SettingsSection>
 
-          {/* About */}
-          <Text className="text-gray-500 font-bold mb-4 ml-1">ABOUT</Text>
-          <View className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden mb-8">
-            <Link href="/privacy-policy" asChild>
-              <Pressable className="flex-row items-center justify-between px-4 py-4 border-b border-gray-800">
-                <Text className="text-white text-base">Privacy Policy</Text>
-                <ChevronRightIcon color="#6b7280" />
-              </Pressable>
-            </Link>
-            <Link href="/terms" asChild>
-              <Pressable className="flex-row items-center justify-between px-4 py-4">
-                <Text className="text-white text-base">Terms of Service</Text>
-                <ChevronRightIcon color="#6b7280" />
-              </Pressable>
-            </Link>
-          </View>
+        {/* Its own group, last, and set apart from the rest. */}
+        <SettingsSection>
+          <SettingsRow
+            title="Delete account"
+            subtitle="Permanently delete your account and all content"
+            destructive
+            onPress={handleDeleteAccount}
+          />
+        </SettingsSection>
 
-          {/* Danger Zone */}
-          <Text className="text-gray-500 font-bold mb-4 ml-1">DANGER ZONE</Text>
-          <View className="bg-gray-900 rounded-2xl border border-red-900/30 overflow-hidden mb-8">
-            <Pressable
-              onPress={handleDeleteAccount}
-              className="flex-row items-center px-4 py-4"
-              style={{ gap: 10 }}
-            >
-              <TrashIcon color="#ef4444" size={20} />
-              <View className="flex-1">
-                <Text className="text-red-500 font-semibold text-base">Delete Account</Text>
-                <Text className="text-gray-600 text-sm mt-0.5">
-                  Permanently delete your account and all content
-                </Text>
-              </View>
-            </Pressable>
-          </View>
-
-          {/* Logout */}
-          <Pressable
-            onPress={handleLogout}
-            className="flex-row items-center justify-center bg-red-950/20 border border-red-900/50 rounded-2xl py-4"
-            style={{ gap: 8 }}
-          >
-            <LogoutIcon color="#ef4444" size={22} />
-            <Text className="text-red-500 font-bold text-lg">Log Out</Text>
-          </Pressable>
-
-          <View className="mt-12 items-center">
-            <Text className="text-gray-700 text-xs">ONETAG SOCIAL MOBILE v1.0.0</Text>
-          </View>
+        <View style={styles.logout}>
+          <Button variant="outline" fullWidth onPress={handleLogout}>
+            Log out
+          </Button>
         </View>
+
+        <MonoLabel color="textMuted" style={styles.version}>
+          {VERSION_LABEL}
+        </MonoLabel>
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: color.bgSub,
+  },
+  content: {
+    paddingBottom: space.xxl,
+  },
+  logout: {
+    margin: space.xl,
+  },
+  version: {
+    textAlign: 'center',
+  },
+});

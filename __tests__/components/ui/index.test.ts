@@ -49,6 +49,9 @@ import {
   ListRow,
   EmptyState,
   Skeleton,
+  SettingsRow,
+  SettingsSection,
+  SETTINGS_ROW_MIN_HEIGHT,
   useReducedMotion,
   initialsFrom,
   letterSpacingFor,
@@ -95,6 +98,9 @@ describe('components/native/ui — public surface', () => {
     ['ListRow', ListRow],
     ['EmptyState', EmptyState],
     ['Skeleton', Skeleton],
+    // ONE-75
+    ['SettingsRow', SettingsRow],
+    ['SettingsSection', SettingsSection],
   ])('exports %s as a component', (_name, Component) => {
     expect(typeof Component).toBe('function');
   });
@@ -130,6 +136,7 @@ describe('components/native/ui — public surface', () => {
     expect(TEXT_FIELD_MIN_HEIGHT).toBeGreaterThanOrEqual(48);
     expect(LIST_ROW_MIN_HEIGHT).toBeGreaterThanOrEqual(56);
     expect(LIST_ROW_AVATAR_SIZE).toBe(40);
+    expect(SETTINGS_ROW_MIN_HEIGHT).toBe(52);
   });
 });
 

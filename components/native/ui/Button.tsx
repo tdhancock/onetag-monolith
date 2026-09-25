@@ -20,6 +20,11 @@ export interface ButtonProps {
    */
   loading?: boolean;
   fullWidth?: boolean;
+  /**
+   * What a screen reader announces, when the label alone is ambiguous: a
+   * list of "Unblock" buttons names each person.
+   */
+  accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -56,6 +61,7 @@ const Button: React.FC<ButtonProps> = ({
   disabled = false,
   loading = false,
   fullWidth = false,
+  accessibilityLabel,
   style,
 }) => {
   const metrics = sizing[size];
@@ -79,6 +85,7 @@ const Button: React.FC<ButtonProps> = ({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled: inert, busy: loading }}
       disabled={inert}
       onPress={handlePress}
