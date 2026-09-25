@@ -15,7 +15,10 @@
 // kept because a dozen screens call them by username. They hold no data.
 //
 // Who is signed in, and which profile they act as, is `useCurrentProfile()`
-// from features/profiles — no longer handed out here (ONE-22).
+// from features/profiles — no longer handed out here (ONE-22). Which profile
+// an account acts as is a per-device choice, but it is not held here either:
+// this provider acts through `useCurrentProfile()` itself, so the choice sits
+// in features/profiles, read from AsyncStorage into the query cache (ONE-24).
 
 import React, { createContext, useContext, useState, ReactNode, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -23,7 +26,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useAuthSessionSync } from '../features/auth';
 import { useBlockedUsers, useBlockToggle, migrateLocalBlocks, blockKeys } from '../features/blocks';
-import { useCurrentProfile } from '../features/profiles';
+import { useCurrentProfile, useProfileSwitchReset } from '../features/profiles';
 import { useNotificationsRealtime } from '../features/notifications';
 import { useMessagesRealtime } from '../features/messages';
 import { getJSON, setJSON } from '../services/storage';
@@ -129,6 +132,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
 
     const { profileId, authUserId } = useCurrentProfile();
+
+    // Switching profiles resets everything cached for the previous one — its
+    // feed, notifications, messages and follow state (ONE-24). Mounted here,
+    // the outermost consumer, so it runs after every screen has re-rendered
+    // as the new profile.
+    useProfileSwitchReset(authUserId, profileId);
 
     // Notifications (ONE-17) and direct messages (ONE-18) stay live for the
     // whole session, whichever screen is open. Both are addressed to the

@@ -56,6 +56,7 @@ const mockAuthGetUser = jest.fn(async () => ({
 // The account id the profile layer saw on the provider's last render — the
 // session features/auth recorded, which is what the current profile keys on.
 let mockCurrentUserArg: string | undefined;
+const mockProfileSwitchReset = jest.fn();
 
 // The native provider persists the block-list to AsyncStorage and reads it
 // back in a post-mount effect. A mutable store lets a test seed it before
@@ -144,6 +145,8 @@ jest.mock('../features/profiles', () => ({
       status: authUserId ? 'ready' : 'signed-out',
     };
   },
+  // The switch reset is exercised in __tests__/features/profiles/activeProfile.test.ts.
+  useProfileSwitchReset: (...args: unknown[]) => mockProfileSwitchReset(...args),
 }), { virtual: true });
 
 jest.mock('../features/notifications', () => ({
@@ -478,6 +481,16 @@ describe('useApp (AppContext) — auth session transitions', () => {
       expect(ensureCurrentUserProfile).toHaveBeenCalledTimes(1);
       expect(sessionOf(handle)).toBe('user-1');
       expect(mockCurrentUserArg).toBe('user-1');
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('watches the acting profile for switches, with the account it belongs to (ONE-24)', async () => {
+    const handle = mountWithProvider();
+    try {
+      await fire('SIGNED_IN', signedIn);
+      expect(mockProfileSwitchReset).toHaveBeenLastCalledWith('user-1', 'profile-of-user-1');
     } finally {
       unmount(handle);
     }

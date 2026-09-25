@@ -27,7 +27,17 @@ export {
   PROFILE_SELECT,
 } from './api';
 
-export { profileKeys } from './keys';
+export { profileKeys, activeProfileKeys } from './keys';
+export {
+  activeProfileStorageKey,
+  readActiveProfileId,
+  chooseActiveProfile,
+  isProfileScoped,
+  isProfileSwitch,
+  resetProfileScopedQueries,
+  useProfileSwitchReset,
+} from './activeProfile';
+export type { ActingIdentity } from './activeProfile';
 
 export type {
   UserProfile,
@@ -45,6 +55,7 @@ export { asAuthUserId, asProfileId } from './types';
 
 export {
   useMyProfilesQuery,
+  useActiveProfileIdQuery,
   useCurrentProfile,
   resolveCurrentProfile,
   useProfileQuery,
@@ -60,5 +71,12 @@ export {
 } from './queries';
 export type { FollowCounts, CurrentProfile, CurrentProfileStatus } from './queries';
 
-export { useToggleFollow, useUpdateProfile, useUpdateBusinessProfile, useUploadAvatar } from './mutations';
+export {
+  useToggleFollow,
+  useUpdateProfile,
+  useUpdateBusinessProfile,
+  useUploadAvatar,
+  useSetActiveProfile,
+  setActiveProfile,
+} from './mutations';
 export type { FollowToggle, FollowTarget } from './mutations';

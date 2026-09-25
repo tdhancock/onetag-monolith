@@ -38,3 +38,21 @@ export const profileKeys = {
   /** Suggested accounts for one viewer. */
   suggestions: (userId: string) => [...base.all, 'suggestions', userId] as const,
 };
+
+/**
+ * Which profile an account is acting as, on this device (ONE-24).
+ *
+ * A root of its own rather than a branch of `profileKeys`: the selection is a
+ * per-device preference read from AsyncStorage, not profile data, and it must
+ * survive everything that invalidates `profileKeys.all` — a refetch racing a
+ * switch would otherwise read the old selection back over the new one. It is
+ * account-scoped, so a profile switch leaves it alone (`ACCOUNT_SCOPED_ROOTS`
+ * in lib/queryClient.ts).
+ */
+const activeBase = createQueryKeys('active-profile');
+
+export const activeProfileKeys = {
+  ...activeBase,
+  /** One account's selection. Keyed by account, so a sign-in never inherits another's. */
+  forAccount: (authUserId: string) => [...activeBase.all, authUserId] as const,
+};

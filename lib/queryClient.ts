@@ -31,6 +31,30 @@ export const CACHE_TIME_MS = 1000 * 60 * 60 * 24;
  */
 export const NEVER_PERSISTED = ['auth', 'messages'] as const;
 
+/**
+ * Query-key roots that belong to the account rather than to the profile it
+ * is acting as (ONE-24).
+ *
+ * An account can hold two profiles and switch between them. What it sees
+ * while acting as one — its feed, notifications, messages, saved posts, and
+ * the like and follow state baked into every cached post and profile —
+ * belongs to that profile, and a switch resets all of it. These roots survive
+ * a switch: the session, the admin flag, blocks (a person blocks a person),
+ * and which profile is active. The account's own list of profiles survives
+ * too; `features/profiles` adds that one, since it is a branch of `profiles`.
+ *
+ * Kept as a list of what survives rather than what resets, so a new domain is
+ * reset on a switch by default — stale data under the wrong identity is the
+ * failure worth designing out.
+ */
+export const ACCOUNT_SCOPED_ROOTS = ['auth', 'admin', 'blocks', 'active-profile'] as const;
+
+/** True when a query key sits under one of the account-scoped roots. */
+export const isAccountScoped = (queryKey: readonly unknown[]): boolean => {
+  const head = queryKey[0];
+  return typeof head === 'string' && (ACCOUNT_SCOPED_ROOTS as readonly string[]).includes(head);
+};
+
 /** True when a query key is safe to persist. */
 export const isPersistable = (queryKey: readonly unknown[]): boolean => {
   const head = queryKey[0];
