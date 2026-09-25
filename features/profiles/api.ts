@@ -241,40 +241,32 @@ export const createProfileFailureFor = (error: { code?: string; message?: string
  * business profile — its `business_profiles` row, so it satisfies the type
  * guard and can be edited at once.
  *
+ * One call to the `create_profile` function (ONE-80), which writes both rows
+ * in one transaction: either both exist or neither does. It takes the account
+ * from the session — `auth.uid()` — so there is no account argument to get
+ * wrong.
+ *
  * The handle is checked by the caller first, but two submissions, or a
  * handle claimed in between, still reach the unique index; that surfaces as
  * a `CreateProfileError` saying which one, never as a raw database error.
  *
- * The business row is best-effort. The profile is already real, and already
- * renders as a business profile — that follows its type — and saving its
- * business fields upserts the row. Failing the whole flow here would leave
- * the user retrying a handle their own new profile now holds.
+ * No `PROFILE_SELECT` embed: PostgREST reads the embedded business row in the
+ * statement's snapshot, taken before the function inserted it, so it would
+ * always come back empty. A new business row has no fields yet anyway.
  */
-export const createProfile = async (authUserId: AuthUserId, input: NewProfile): Promise<UserProfile> => {
-    const { data, error } = await supabase
-        .from('profiles')
-        .insert({
-            user_id: authUserId,
-            profile_type: input.profileType,
-            username: input.username,
-            full_name: input.fullName,
-            bio: input.bio ?? null,
-        })
-        .select(PROFILE_SELECT)
-        .single();
+export const createProfile = async (input: NewProfile): Promise<UserProfile> => {
+    const { data, error } = await supabase.rpc('create_profile', {
+        p_profile_type: input.profileType,
+        p_username: input.username,
+        p_full_name: input.fullName,
+        p_bio: input.bio ?? null,
+    });
 
     if (error || !data) throw new CreateProfileError(createProfileFailureFor(error), error);
     const created = mapProfileRow(data as ProfileRow);
 
-    if (input.profileType === 'business') {
-        const { error: businessError } = await supabase
-            .from('business_profiles')
-            .insert({ profile_id: created.id });
-        if (businessError) {
-            console.error('Created a business profile without its business row:', businessError);
-        } else {
-            created.business = { category: null, website: null, location: null, logoUrl: null };
-        }
+    if (created.profileType === 'business') {
+        created.business = { category: null, website: null, location: null, logoUrl: null };
     }
 
     return created;
@@ -283,9 +275,10 @@ export const createProfile = async (authUserId: AuthUserId, input: NewProfile): 
 /**
  * Save a business profile's own fields (ONE-23).
  *
- * An upsert on the profile id: a business profile created before its row was
- * — or whose row failed to insert alongside it — becomes editable on the
- * first save rather than silently updating nothing. The migration's type
+ * An upsert on the profile id: a business profile left without its row —
+ * created before `create_profile` made the two atomic (ONE-80), or converted
+ * by the database owner — becomes editable on the first save rather than
+ * silently updating nothing. The migration's type
  * guard rejects a row for an individual profile, and RLS a profile the
  * account does not own.
  */
