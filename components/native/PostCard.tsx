@@ -65,6 +65,12 @@ interface PostCardProps {
   onViewReposters?: (postId: string) => void;
   onSharePost?: (post: Post) => void;
   isPreview?: boolean;
+  /**
+   * Post detail: the text is shown whole rather than truncated, and the card
+   * drops its own "View all N comments" line because the screen lists the
+   * comments beneath it.
+   */
+  detail?: boolean;
 }
 
 // ─── Sheet rows ────────────────────────────────────
@@ -234,6 +240,7 @@ const PostCard: React.FC<PostCardProps> = ({
   onViewReposters,
   onSharePost,
   isPreview = false,
+  detail = false,
 }) => {
   const {
     addToast,
@@ -273,7 +280,7 @@ const PostCard: React.FC<PostCardProps> = ({
   const saved = Boolean(post.isSaved);
 
   const [showHeart, setShowHeart] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(detail);
 
   const heartScale = useRef(new Animated.Value(0)).current;
 
@@ -364,7 +371,7 @@ const PostCard: React.FC<PostCardProps> = ({
   // is its content, so only a media post has a caption line here.
   const showCounts = !isStoryVersion && Boolean(likes || reposts);
   const showCaption = !isTextOnly && Boolean(post.content);
-  const showComments = !isStoryVersion && Boolean(commentsLink);
+  const showComments = !isStoryVersion && !detail && Boolean(commentsLink);
   const hasFooter = showCounts || showCaption || showComments;
 
   const moreControl = body.truncated ? (

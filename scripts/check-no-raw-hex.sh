@@ -29,6 +29,7 @@ components/native/StoryCreator.tsx
 components/native/HomeHeader.tsx
 components/native/ComposeMedia.tsx
 components/native/CharacterRing.tsx
+components/native/CommentRow.tsx
 "
 
 # theme/tokens.ts is the source of truth and must contain hex.

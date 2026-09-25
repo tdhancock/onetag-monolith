@@ -10,7 +10,7 @@ import {
   differenceInYears,
 } from 'date-fns';
 
-export const getTimeAgo = (timestamp?: string): string => {
+export const getTimeAgo = (timestamp?: string | Date | null): string => {
   if (!timestamp) return '';
   try {
     const date = new Date(timestamp);

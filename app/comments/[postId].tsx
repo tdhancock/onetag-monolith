@@ -1,155 +1,33 @@
-
-
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
   TextInput,
   Pressable,
   FlatList,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
+  StyleSheet,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Swipeable } from 'react-native-gesture-handler';
-import { formatDistanceToNow } from 'date-fns';
 import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
-import {
-  useCommentsQuery,
-  useCommentLikesQuery,
-  useAddComment,
-  useDeleteComment,
-  useToggleCommentLike,
-} from '../../features/comments';
+import { useCommentsQuery, useAddComment, useDeleteComment } from '../../features/comments';
 import { cleanHtml } from '../../lib/cleanHtml';
-import UserAvatar from '../../components/native/UserAvatar';
-import RenderUserContent from '../../components/native/RenderUserContent';
-import { HeartIcon, TrashIcon } from '../../components/native/Icons';
+import CommentRow, { CommentRowSkeleton, COMMENT_AVATAR_SIZE } from '../../components/native/CommentRow';
+import { Avatar, EmptyState, TextField } from '../../components/native/ui';
+import { color, space, type } from '../../theme/tokens';
 import type { Comment } from '../../types';
 
 const EMPTY_COMMENTS: Comment[] = [];
 
-const removeCommentById = (comments: Comment[], idToRemove: string): Comment[] => {
-  let changed = false;
-  const next: Comment[] = [];
+/** Placeholder rows while the first load is in flight. */
+const SKELETON_ROWS = 6;
 
-  for (const comment of comments) {
-    if (comment.id === idToRemove) {
-      changed = true;
-      continue;
-    }
-
-    if (comment.replies && comment.replies.length > 0) {
-      const updatedReplies = removeCommentById(comment.replies, idToRemove);
-      if (updatedReplies !== comment.replies) {
-        changed = true;
-        next.push({ ...comment, replies: updatedReplies });
-        continue;
-      }
-    }
-
-    next.push(comment);
-  }
-
-  return changed ? next : comments;
-};
-
-// ─── Comment Item ─────────────────────────────
-
-const CommentItem: React.FC<{
-  comment: Comment;
-  onDelete: (id: string) => void | Promise<void>;
-  currentUserId?: string;
-  currentUsername: string;
-  currentAvatar?: string;
-  onViewProfile: (username: string) => void;
-}> = React.memo(({ comment, onDelete, currentUserId, currentUsername, onViewProfile }) => {
-  const { triggerHapticFeedback } = useApp();
-  const { profileId } = useCurrentProfile();
-
-  // Likes are a query and an optimistic toggle (ONE-14). The double-tap
-  // protection this screen used to hand-roll is the mutation's own pending
-  // state now, so those 110 lines are gone.
-  const { data: likes } = useCommentLikesQuery(comment.id, profileId);
-  const likeHaptic = useCallback(() => triggerHapticFeedback(), [triggerHapticFeedback]);
-  const like = useToggleCommentLike(profileId, likeHaptic);
-
-  const isLiked = Boolean(likes?.isLiked);
-  const likesCount = likes?.count ?? 0;
-
-  const handleLike = () => like.toggle(comment.id);
-
-  const canDelete = comment.userId
-    ? comment.userId === currentUserId
-    : comment.username === currentUsername;
-
-  const rowContent = (
-    <View className="px-4 py-3 border-b border-gray-800">
-      <View className="flex-row" style={{ gap: 12 }}>
-        <Pressable onPress={() => onViewProfile(comment.username)}>
-          <UserAvatar username={comment.username} avatarUrl={comment.avatar} size={40} />
-        </Pressable>
-        <View className="flex-1">
-          <Pressable onPress={() => onViewProfile(comment.username)}>
-            <Text className="text-white">
-              <Text className="font-bold">@{comment.username}</Text>
-              {'  '}
-              <Text className="text-gray-500 text-sm">
-                {formatDistanceToNow(comment.timestamp, { addSuffix: true })}
-              </Text>
-            </Text>
-          </Pressable>
-          <View className="mt-1">
-            <RenderUserContent content={comment.text} className="text-white" />
-          </View>
-          <View className="flex-row items-center mt-2" style={{ gap: 16 }}>
-            <Pressable onPress={handleLike} className="flex-row items-center" style={{ gap: 4 }}>
-              <HeartIcon color={isLiked ? '#ef4444' : '#6b7280'} size={16} liked={isLiked} />
-              <Text className={`text-sm ${isLiked ? 'text-red-500' : 'text-gray-500'}`}>
-                {likesCount}
-              </Text>
-            </Pressable>
-            {canDelete && (
-              <Pressable
-                onPress={() => onDelete(comment.id)}
-                className="flex-row items-center"
-                style={{ gap: 4 }}
-                hitSlop={8}
-              >
-                <TrashIcon color="#9ca3af" size={16} />
-                <Text className="text-gray-500 text-sm">Delete</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
-      </View>
-    </View>
-  );
-
-  if (!canDelete) return rowContent;
-
-  return (
-    <Swipeable
-      overshootRight={false}
-      rightThreshold={36}
-      renderRightActions={() => (
-        <Pressable
-          onPress={() => onDelete(comment.id)}
-          className="bg-red-600 justify-center items-center px-5"
-        >
-          <Text className="text-white font-semibold">Delete</Text>
-        </Pressable>
-      )}
-    >
-      {rowContent}
-    </Swipeable>
-  );
-});
-
-// ─── Comments Screen ──────────────────────────
+/** The composer grows with its text up to about four lines, then scrolls. */
+const COMPOSER_MAX_HEIGHT = 4 * 21 + 2 * space.md;
 
 export default function CommentsScreen() {
   const { postId } = useLocalSearchParams<{ postId: string }>();
@@ -159,11 +37,13 @@ export default function CommentsScreen() {
   const inputRef = useRef<TextInput>(null);
 
   const [newCommentText, setNewCommentText] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   // One query, keyed by post. Two mounts in quick succession share a single
   // request because TanStack dedupes by key — which is what made the 209-line
   // fetch guard, its abort plumbing and its cooldown unnecessary (ONE-14).
-  const { data: comments, isPending: loading } = useCommentsQuery(postId);
+  const commentsQuery = useCommentsQuery(postId);
+  const { data: comments, isPending: loading } = commentsQuery;
   const addCommentMutation = useAddComment();
   const deleteCommentMutation = useDeleteComment();
 
@@ -177,6 +57,8 @@ export default function CommentsScreen() {
 
     return filterBlocked(comments ?? EMPTY_COMMENTS);
   }, [comments, isUserBlocked]);
+
+  const canPost = Boolean(newCommentText.trim()) && !addCommentMutation.isPending;
 
   const handleAddComment = () => {
     const text = newCommentText.trim();
@@ -212,94 +94,169 @@ export default function CommentsScreen() {
     router.push(`/user/${username}`);
   }, [router]);
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await commentsQuery.refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [commentsQuery]);
+
   const renderItem = useCallback(
-    ({ item }: { item: Comment }) => (
-      <CommentItem
-        comment={item}
-        onDelete={handleDeleteComment}
-        currentUserId={profileId}
-        currentUsername={userProfile?.username || ''}
-        currentAvatar={userProfile?.profilePicture || undefined}
-        onViewProfile={handleViewProfile}
-      />
-    ),
+    ({ item }: { item: Comment }) => {
+      // Only your own comments delete, by the account's author id where the
+      // comment carries one.
+      const mine = item.userId ? item.userId === profileId : item.username === userProfile?.username;
+      return (
+        <CommentRow
+          comment={item}
+          onViewProfile={handleViewProfile}
+          onDelete={mine ? handleDeleteComment : undefined}
+        />
+      );
+    },
     [handleDeleteComment, handleViewProfile, profileId, userProfile?.username],
   );
 
-  return (
-    <SafeAreaView className="flex-1 bg-black" edges={['bottom']}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Comments',
-          headerStyle: { backgroundColor: '#000' },
-          headerTintColor: '#fff',
-          headerTitleStyle: { fontWeight: 'bold' },
-        }}
+  const renderBody = () => {
+    if (loading) {
+      return (
+        <View style={styles.fill}>
+          {Array.from({ length: SKELETON_ROWS }, (_, i) => <CommentRowSkeleton key={i} />)}
+        </View>
+      );
+    }
+
+    if (commentsQuery.isError && !comments) {
+      return (
+        <EmptyState
+          title="Couldn't load comments"
+          body="Check your connection and try again."
+          action={{ label: 'Retry', onPress: () => void commentsQuery.refetch() }}
+        />
+      );
+    }
+
+    return (
+      <FlatList
+        data={localComments}
+        keyExtractor={item => item.id}
+        renderItem={renderItem}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={color.textMuted}
+            colors={[color.textMuted]}
+          />
+        }
+        ListEmptyComponent={
+          // Tapping the empty state is the way into the conversation.
+          <Pressable
+            onPress={() => inputRef.current?.focus()}
+            accessibilityRole="button"
+            accessibilityLabel="Add a comment"
+          >
+            <EmptyState title="No comments yet" body="Start the conversation." />
+          </Pressable>
+        }
+        contentContainerStyle={styles.list}
       />
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
+      <Stack.Screen options={{ headerShown: true, title: 'Comments' }} />
 
       <KeyboardAvoidingView
-        className="flex-1"
+        style={styles.fill}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        // The stack header sits above this view on iOS.
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        {loading ? (
-          <View className="flex-1 justify-center items-center">
-            <ActivityIndicator color="#3b82f6" size="large" />
-          </View>
-        ) : (
-          <FlatList
-            data={localComments}
-            keyExtractor={item => item.id}
-            renderItem={renderItem}
-            ListEmptyComponent={
-              <View className="py-20 items-center">
-                <Text className="text-gray-500 text-lg text-center">
-                  No comments yet. Be the first to comment!
-                </Text>
-              </View>
-            }
-            contentContainerStyle={{ flexGrow: 1 }}
-          />
-        )}
+        {renderBody()}
 
-        {/* Comment input */}
-        <View className="border-t border-gray-800 bg-black px-3 py-2">
-          <View className="flex-row items-center" style={{ gap: 12 }}>
-            <UserAvatar
-              username={userProfile?.username || ''}
-              avatarUrl={userProfile?.profilePicture}
-              size={36}
-            />
-            <View className="flex-1 flex-row items-center bg-gray-800 rounded-full px-4">
-              <TextInput
-                ref={inputRef}
-                value={newCommentText}
-                onChangeText={setNewCommentText}
-                placeholder="Add a comment..."
-                placeholderTextColor="#6b7280"
-                className="flex-1 text-white py-2"
-                returnKeyType="send"
-                onSubmitEditing={handleAddComment}
-              />
-            </View>
-            <Pressable
-              onPress={handleAddComment}
-              disabled={!newCommentText.trim() || addCommentMutation.isPending}
-            >
-              <Text
-                className={`font-semibold ${
-                  newCommentText.trim() && !addCommentMutation.isPending
-                    ? 'text-blue-500'
-                    : 'text-gray-500'
-                }`}
-              >
-                Post
-              </Text>
-            </Pressable>
-          </View>
+        {/* The composer, pinned above the keyboard and the home indicator. */}
+        <View style={styles.composer}>
+          <Avatar
+            uri={userProfile?.profilePicture}
+            name={userProfile?.name || userProfile?.username}
+            size={COMMENT_AVATAR_SIZE}
+          />
+          <TextField
+            ref={inputRef}
+            value={newCommentText}
+            onChangeText={setNewCommentText}
+            placeholder="Add a comment…"
+            multiline
+            // Return sends rather than adding a line: a comment is one thought.
+            submitBehavior="submit"
+            returnKeyType="send"
+            onSubmitEditing={handleAddComment}
+            containerStyle={styles.composerField}
+            inputStyle={styles.composerInput}
+            accessibilityLabel="Add a comment"
+          />
+          <Pressable
+            onPress={handleAddComment}
+            disabled={!canPost}
+            accessibilityRole="button"
+            accessibilityLabel="Post comment"
+            accessibilityState={{ disabled: !canPost }}
+            hitSlop={8}
+            style={styles.postButton}
+          >
+            <Text style={[styles.postLabel, !canPost && styles.postLabelDisabled]}>Post</Text>
+          </Pressable>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: color.bg,
+  },
+  fill: {
+    flex: 1,
+  },
+  list: {
+    flexGrow: 1,
+    paddingVertical: space.xs,
+  },
+  composer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    borderTopWidth: 1,
+    borderTopColor: color.border,
+    backgroundColor: color.bg,
+  },
+  composerField: {
+    flex: 1,
+  },
+  composerInput: {
+    minHeight: 40,
+    maxHeight: COMPOSER_MAX_HEIGHT,
+    paddingVertical: space.sm,
+  },
+  postButton: {
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  postLabel: {
+    fontFamily: type.bodyBold,
+    fontSize: 15,
+    color: color.text,
+  },
+  postLabelDisabled: {
+    color: color.textMuted,
+  },
+});
