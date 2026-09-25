@@ -27,6 +27,8 @@ components/native/PostCard.tsx
 components/native/StoryReel.tsx
 components/native/StoryCreator.tsx
 components/native/HomeHeader.tsx
+components/native/ComposeMedia.tsx
+components/native/CharacterRing.tsx
 "
 
 # theme/tokens.ts is the source of truth and must contain hex.

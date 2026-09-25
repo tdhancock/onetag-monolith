@@ -81,10 +81,10 @@ describe('Post', () => {
     expect(post.media_type).toBe('text');
   });
 
-  it('can represent an image post with poll', () => {
+  it('can represent an image post with every optional field', () => {
     const post: Post = {
       id: 'post-2',
-      username: 'pollster',
+      username: 'photographer',
       avatar: 'https://example.com/avatar.png',
       content: 'What do you think?',
       media: 'https://example.com/image.jpg',
@@ -94,18 +94,11 @@ describe('Post', () => {
       reposts: 10,
       replies: 25,
       isVerified: true,
-      poll: {
-        question: 'Option A or B?',
-        options: [
-          { text: 'Option A', votes: 30 },
-          { text: 'Option B', votes: 70 },
-        ],
-      },
       timestamp: '2026-01-15T10:30:00Z',
     };
     expect(post.media_aspect_ratio).toBe(1.5);
-    expect(post.poll?.options).toHaveLength(2);
-    expect(post.poll?.options[1].votes).toBe(70);
+    // Polls were removed rather than built (ONE-59): a post has no poll.
+    expect('poll' in post).toBe(false);
   });
 });
 

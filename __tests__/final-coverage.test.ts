@@ -6,8 +6,6 @@
 import {
   Hashtag,
   Toast,
-  Poll,
-  PollOption,
   Comment,
   Post,
   Notification,
@@ -113,70 +111,6 @@ describe('Toast — id, message, and optional type', () => {
   });
 });
 
-// ─── 3. Poll and PollOption interfaces ─────────────────────────────────
-
-describe('Poll and PollOption — interfaces', () => {
-  it('creates a poll option with required fields', () => {
-    const option: PollOption = {
-      text: 'Option A',
-      votes: 15,
-    };
-    expect(option.text).toBe('Option A');
-    expect(option.votes).toBe(15);
-  });
-
-  it('creates a poll with a question and options', () => {
-    const poll: Poll = {
-      question: 'What is your favorite color?',
-      options: [
-        { text: 'Red', votes: 30 },
-        { text: 'Blue', votes: 45 },
-        { text: 'Green', votes: 25 },
-      ],
-    };
-    expect(poll.question).toBe('What is your favorite color?');
-    expect(poll.options).toHaveLength(3);
-    expect(poll.options[0].text).toBe('Red');
-    expect(poll.options[1].votes).toBe(45);
-  });
-
-  it('handles poll with a single option', () => {
-    const poll: Poll = {
-      question: 'Do you agree?',
-      options: [{ text: 'Yes', votes: 100 }],
-    };
-    expect(poll.options).toHaveLength(1);
-  });
-
-  it('handles poll with zero votes across all options', () => {
-    const poll: Poll = {
-      question: 'New poll',
-      options: [
-        { text: 'Option 1', votes: 0 },
-        { text: 'Option 2', votes: 0 },
-      ],
-    };
-    const totalVotes = poll.options.reduce((sum, o) => sum + o.votes, 0);
-    expect(totalVotes).toBe(0);
-  });
-
-  it('handles poll with extreme vote counts', () => {
-    const option: PollOption = {
-      text: 'Overwhelming favorite',
-      votes: 99_999_999,
-    };
-    expect(option.votes).toBe(99_999_999);
-  });
-
-  it('handles poll with empty option text', () => {
-    const option: PollOption = {
-      text: '',
-      votes: 5,
-    };
-    expect(option.text).toBe('');
-  });
-});
-
 // ─── 4. Optional fields across all types with undefined ────────────────
 
 describe('Optional fields — undefined across all types', () => {
@@ -196,7 +130,6 @@ describe('Optional fields — undefined across all types', () => {
     expect(post.media_preview_url).toBeUndefined();
     expect(post.media_aspect_ratio).toBeUndefined();
     expect(post.isVerified).toBeUndefined();
-    expect(post.poll).toBeUndefined();
     expect(post.timestamp).toBeUndefined();
   });
 
@@ -843,85 +776,6 @@ describe('Type narrowing — string | null handles both states', () => {
       profilePicture: 'https://example.com/pic.jpg',
     };
     expect(getProfilePic(profileWithPic)).toBe('https://example.com/pic.jpg');
-  });
-});
-
-// ─── 10. Post with undefined poll field ────────────────────────────────
-
-describe('Post — undefined poll field', () => {
-  it('creates a Post without a poll (poll is undefined)', () => {
-    const post: Post = {
-      id: 'post-no-poll',
-      username: 'poll_creator',
-      avatar: null,
-      content: 'What do you think?',
-      media_type: 'text',
-      likes: 15,
-      reposts: 2,
-      replies: 5,
-    };
-    expect(post.poll).toBeUndefined();
-  });
-
-  it('creates a Post with a poll defined', () => {
-    const post: Post = {
-      id: 'post-with-poll',
-      username: 'poll_creator',
-      avatar: null,
-      content: 'Cast your vote!',
-      media_type: 'text',
-      likes: 20,
-      reposts: 3,
-      replies: 10,
-      poll: {
-        question: 'Yes or no?',
-        options: [
-          { text: 'Yes', votes: 50 },
-          { text: 'No', votes: 30 },
-        ],
-      },
-    };
-    expect(post.poll).toBeDefined();
-    expect(post.poll!.question).toBe('Yes or no?');
-    expect(post.poll!.options).toHaveLength(2);
-  });
-
-  it('checks poll presence with optional chaining', () => {
-    const postWithoutPoll: Post = {
-      id: 'post-poll-check-1',
-      username: 'user',
-      avatar: null,
-      content: 'No poll here',
-      media_type: 'text',
-      likes: 0,
-      reposts: 0,
-      replies: 0,
-    };
-
-    const postWithPoll: Post = {
-      id: 'post-poll-check-2',
-      username: 'user',
-      avatar: null,
-      content: 'Has a poll',
-      media_type: 'text',
-      likes: 0,
-      reposts: 0,
-      replies: 0,
-      poll: {
-        question: 'Q?',
-        options: [{ text: 'A', votes: 1 }],
-      },
-    };
-
-    // Use optional chaining
-    expect(postWithoutPoll.poll?.question).toBeUndefined();
-    expect(postWithPoll.poll?.question).toBe('Q?');
-
-    // Nullish coalescing for fallback
-    const pollTitle1 = postWithoutPoll.poll?.question ?? 'No poll available';
-    const pollTitle2 = postWithPoll.poll?.question ?? 'No poll available';
-    expect(pollTitle1).toBe('No poll available');
-    expect(pollTitle2).toBe('Q?');
   });
 });
 

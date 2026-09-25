@@ -63,16 +63,6 @@ export interface UserProfile {
     isPrivate?: boolean;
 }
 
-export interface PollOption {
-    text: string;
-    votes: number;
-}
-
-export interface Poll {
-    question: string;
-    options: PollOption[];
-}
-
 export interface Post {
     id:string;
     name?: string;
@@ -96,7 +86,6 @@ export interface Post {
     isReposted?: boolean;
     isSaved?: boolean;
     isVerified?: boolean;
-    poll?: Poll;
     timestamp?: string;
 }
 

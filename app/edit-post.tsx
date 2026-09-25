@@ -1,15 +1,13 @@
-
-
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   TextInput,
   Pressable,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  StyleSheet,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,15 +15,21 @@ import { useApp } from '../store/AppContext.native';
 import { useCurrentProfile } from '../features/profiles';
 import { useUpdatePost } from '../features/posts';
 import { fetchPostById as getPostById } from '../features/posts';
+import { Avatar, Button, EmptyState, Skeleton } from '../components/native/ui';
+import ComposeMedia from '../components/native/ComposeMedia';
+import CharacterRing from '../components/native/CharacterRing';
+import { POST_MAX_CHARS } from '../lib/screens/compose';
+import { color, space, type } from '../theme/tokens';
 import type { Post } from '../types';
 
-const MAX_CHARS = 280;
+/** What PostCard renders when a post carries no ratio. Kept in step with it. */
+const FALLBACK_ASPECT_RATIO = 1080 / 1350;
 
 export default function EditPostScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { addToast } = useApp();
-  const { profile: userProfile, profileId } = useCurrentProfile();
+  const { profile: userProfile } = useCurrentProfile();
   const updatePost = useUpdatePost();
 
   const [post, setPost] = useState<Post | null>(null);
@@ -52,9 +56,8 @@ export default function EditPostScreen() {
     fetchPost();
   }, [id]);
 
-  const charCount = content.length;
-  const isOverLimit = charCount > MAX_CHARS;
-  const canSave = content.trim().length > 0 && !isSaving && post && content !== post.content && !isOverLimit;
+  const isOverLimit = content.length > POST_MAX_CHARS;
+  const canSave = Boolean(post) && content.trim().length > 0 && !isSaving && content !== post?.content && !isOverLimit;
 
   const handleSave = useCallback(async () => {
     if (!post || !canSave) return;
@@ -74,19 +77,40 @@ export default function EditPostScreen() {
     }
   }, [post, content, canSave, updatePost, addToast, router]);
 
+  const header = (
+    <View style={styles.header}>
+      <Pressable
+        onPress={() => router.back()}
+        accessibilityRole="button"
+        hitSlop={12}
+        style={styles.headerSide}
+      >
+        <Text style={styles.cancel}>Cancel</Text>
+      </Pressable>
+      <Text style={styles.title} accessibilityRole="header">
+        Edit post
+      </Text>
+      <View style={[styles.headerSide, styles.headerRight]}>
+        {post ? (
+          <Button size="sm" onPress={handleSave} disabled={!canSave && !isSaving} loading={isSaving}>
+            Save
+          </Button>
+        ) : null}
+      </View>
+    </View>
+  );
+
   if (loading) {
     return (
-      <SafeAreaView className="flex-1 bg-black">
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Edit Post',
-            headerStyle: { backgroundColor: '#000' },
-            headerTintColor: '#fff',
-          }}
-        />
-        <View className="flex-1 justify-center items-center">
-          <ActivityIndicator color="#3b82f6" size="large" />
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <Stack.Screen options={{ headerShown: false }} />
+        {header}
+        <View style={styles.body}>
+          <Skeleton circle height={40} />
+          <View style={styles.skeletonLines}>
+            <Skeleton height={14} />
+            <Skeleton width="70%" height={14} style={styles.skeletonGap} />
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -94,86 +118,134 @@ export default function EditPostScreen() {
 
   if (!post) {
     return (
-      <SafeAreaView className="flex-1 bg-black">
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Edit Post',
-            headerStyle: { backgroundColor: '#000' },
-            headerTintColor: '#fff',
-          }}
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <Stack.Screen options={{ headerShown: false }} />
+        {header}
+        <EmptyState
+          title="This post isn't available"
+          body="It may have been deleted."
+          action={{ label: 'Back', onPress: () => router.back() }}
         />
-        <View className="flex-1 justify-center items-center">
-          <Text className="text-gray-400 text-lg">Post not found.</Text>
-        </View>
       </SafeAreaView>
     );
   }
 
-  const percentage = (charCount / MAX_CHARS) * 100;
-  const ringColor = isOverLimit ? '#ef4444' : percentage > 80 ? '#f59e0b' : '#3b82f6';
-  const remainingChars = MAX_CHARS - charCount;
-
   return (
-    <SafeAreaView className="flex-1 bg-black" edges={['bottom']}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Edit Post',
-          headerStyle: { backgroundColor: '#000' },
-          headerTintColor: '#fff',
-          headerRight: () => (
-            <Pressable
-              onPress={handleSave}
-              disabled={!canSave}
-              className={`px-4 py-1.5 rounded-full ${canSave ? 'bg-blue-600' : 'bg-gray-800'}`}
-            >
-              <Text className={`font-semibold text-sm ${canSave ? 'text-white' : 'text-gray-500'}`}>
-                {isSaving ? 'Saving...' : 'Save'}
-              </Text>
-            </Pressable>
-          ),
-        }}
-      />
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+      <Stack.Screen options={{ headerShown: false }} />
+      {header}
 
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <ScrollView className="flex-1 p-4">
-          <View className="bg-gray-900 rounded-xl p-4">
+      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+          <View style={styles.body}>
+            <Avatar
+              uri={userProfile?.profilePicture}
+              name={userProfile?.name || userProfile?.username}
+              size={40}
+            />
             <TextInput
               value={content}
               onChangeText={setContent}
-              placeholder="What's on your mind?"
-              placeholderTextColor="#6b7280"
-              className="text-white text-lg font-medium"
+              placeholder="What's happening?"
+              placeholderTextColor={color.textMuted}
+              selectionColor={color.text}
+              style={styles.input}
               multiline
               autoFocus
-              maxLength={MAX_CHARS + 50}
-              style={{ minHeight: 150, textAlignVertical: 'top' }}
+              maxLength={POST_MAX_CHARS + 50}
+              accessibilityLabel="Post text"
             />
           </View>
+
+          {/* The text is editable; the photo is not. */}
+          {post.media && post.media_type === 'image' ? (
+            <View style={styles.media}>
+              <ComposeMedia
+                uri={post.media}
+                aspectRatio={post.media_aspect_ratio || FALLBACK_ASPECT_RATIO}
+              />
+            </View>
+          ) : null}
         </ScrollView>
 
-        <View className="flex-shrink-0 border-t border-gray-800 bg-black p-3 flex-row items-center justify-end">
-          {charCount > 0 && (
-            <View className="flex-row items-center" style={{ gap: 6 }}>
-              <View
-                className="w-6 h-6 rounded-full items-center justify-center"
-                style={{ borderWidth: 2, borderColor: ringColor }}
-              >
-                {isOverLimit && (
-                  <Text className="text-red-500 text-xs font-bold">!</Text>
-                )}
-              </View>
-              <Text className={`font-semibold text-sm ${isOverLimit ? 'text-red-500' : percentage > 80 ? 'text-yellow-500' : 'text-blue-500'}`}>
-                {remainingChars}
-              </Text>
-            </View>
-          )}
+        <View style={styles.toolbar}>
+          {content.length > 0 && <CharacterRing length={content.length} />}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: color.bg,
+  },
+  fill: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 52,
+    paddingHorizontal: space.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: color.border,
+  },
+  headerSide: {
+    minWidth: 72,
+  },
+  headerRight: {
+    alignItems: 'flex-end',
+  },
+  cancel: {
+    fontFamily: type.body,
+    fontSize: 16,
+    color: color.text,
+  },
+  title: {
+    fontFamily: type.bodyBold,
+    fontSize: 17,
+    color: color.text,
+  },
+  scroll: {
+    paddingBottom: space.lg,
+  },
+  body: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: space.md,
+    padding: space.lg,
+  },
+  skeletonLines: {
+    flex: 1,
+    paddingTop: space.sm,
+  },
+  skeletonGap: {
+    marginTop: space.sm,
+  },
+  input: {
+    flex: 1,
+    minHeight: 120,
+    paddingTop: space.sm,
+    fontFamily: type.body,
+    fontSize: 17,
+    lineHeight: 24,
+    color: color.text,
+    textAlignVertical: 'top',
+  },
+  media: {
+    paddingHorizontal: space.lg,
+  },
+  toolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    minHeight: 44,
+    paddingHorizontal: space.lg,
+    borderTopWidth: 1,
+    borderTopColor: color.border,
+    backgroundColor: color.bg,
+  },
+});

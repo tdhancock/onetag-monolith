@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { color, radius, space } from '../../../theme/tokens';
 import MonoLabel from './MonoLabel';
@@ -13,6 +13,11 @@ export interface ButtonProps {
   size?: ButtonSize;
   onPress?: () => void;
   disabled?: boolean;
+  /**
+   * Shows a spinner in place of the label and ignores presses, at full
+   * strength rather than dimmed: the action is under way, not unavailable.
+   */
+  loading?: boolean;
   fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
 }
@@ -48,25 +53,33 @@ const Button: React.FC<ButtonProps> = ({
   size = 'md',
   onPress,
   disabled = false,
+  loading = false,
   fullWidth = false,
   style,
 }) => {
   const metrics = sizing[size];
   const colors = palette[variant];
+  const inert = disabled || loading;
 
   // Guard here as well as on Pressable. The `disabled` prop already stops the
   // press, but this keeps the rule true regardless of what the control is
   // swapped for later, and makes it assertable without a renderer.
   const handlePress = () => {
-    if (disabled) return;
+    if (inert) return;
     onPress?.();
   };
+
+  const label = (
+    <MonoLabel size={metrics.label} color={colors.label} style={loading ? styles.hidden : undefined}>
+      {children}
+    </MonoLabel>
+  );
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      disabled={disabled}
+      accessibilityState={{ disabled: inert, busy: loading }}
+      disabled={inert}
       onPress={handlePress}
       style={({ pressed }) => [
         styles.base,
@@ -78,13 +91,20 @@ const Button: React.FC<ButtonProps> = ({
         },
         fullWidth && styles.fullWidth,
         disabled && { opacity: DISABLED_OPACITY },
-        pressed && !disabled && { opacity: PRESSED_OPACITY },
+        pressed && !inert && { opacity: PRESSED_OPACITY },
         style,
       ]}
     >
-      <MonoLabel size={metrics.label} color={colors.label}>
-        {children}
-      </MonoLabel>
+      {loading ? (
+        // The label stays in the layout, invisible, so the button keeps its
+        // width while the spinner sits over it.
+        <View>
+          {label}
+          <ActivityIndicator size="small" color={color[colors.label]} style={styles.spinner} />
+        </View>
+      ) : (
+        label
+      )}
     </Pressable>
   );
 };
@@ -99,6 +119,16 @@ const styles = StyleSheet.create({
   fullWidth: {
     alignSelf: 'stretch',
     width: '100%',
+  },
+  hidden: {
+    opacity: 0,
+  },
+  spinner: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
 });
 

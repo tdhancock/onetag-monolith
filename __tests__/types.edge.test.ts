@@ -67,13 +67,6 @@ describe('Post — edge cases', () => {
     expect(post.timestamp).toBe(ts);
   });
 
-  it('handles post with poll', () => {
-    const post: Post = { id: 'p4', username: 'u4', avatar: null, content: 'Poll!', media_type: 'text', likes: 0, reposts: 0, replies: 0, poll: { question: 'Yes or no?', options: [{ text: 'Yes', votes: 5 }, { text: 'No', votes: 3 }] } };
-    expect(post.poll).toBeDefined();
-    expect(post.poll!.options).toHaveLength(2);
-    expect(post.poll!.options[0].votes).toBe(5);
-  });
-
   it('handles post with isVerified', () => {
     const post: Post = { id: 'p5', username: 'vip', avatar: null, content: 'Verified post', media_type: 'text', likes: 0, reposts: 0, replies: 0, isVerified: true };
     expect(post.isVerified).toBe(true);

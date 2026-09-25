@@ -24,8 +24,18 @@ export const flattenStyle = (style: unknown): Record<string, unknown> => {
 };
 
 const passthroughProps = (props: Record<string, unknown>) => {
-  const { style, children, testID, className, ...rest } = props;
+  // `accessible` is RN-only; dropping it keeps React's DOM warnings quiet.
+  const {
+    style,
+    children,
+    testID,
+    className,
+    accessible: _accessible,
+    accessibilityLabel,
+    ...rest
+  } = props;
   const domProps: Record<string, unknown> = { ...rest };
+  if (typeof accessibilityLabel === 'string') domProps['aria-label'] = accessibilityLabel;
   if (typeof testID === 'string') domProps['data-testid'] = testID;
   if (typeof className === 'string') domProps.className = className;
   const flat = flattenStyle(style);
@@ -109,11 +119,14 @@ export const TextInput = React.forwardRef<HTMLInputElement, Record<string, unkno
       placeholder,
       placeholderTextColor,
       multiline,
+      accessibilityLabel,
+      selectionColor: _selectionColor,
       ...rest
     } = props;
     return React.createElement('input', {
       ...passthroughProps(rest),
       ref,
+      'aria-label': accessibilityLabel as string | undefined,
       placeholder,
       'data-placeholder-color': placeholderTextColor,
       'data-multiline': multiline ? 'true' : undefined,
@@ -124,6 +137,14 @@ export const TextInput = React.forwardRef<HTMLInputElement, Record<string, unkno
     });
   },
 );
+
+/** A spinner, marked so a suite can find it. */
+export const ActivityIndicator: React.FC<Record<string, unknown>> = props =>
+  React.createElement('div', {
+    'data-spinner': 'true',
+    'data-color': props.color as string | undefined,
+    'data-size': props.size as string | undefined,
+  });
 
 export const Alert = { alert: jest.fn() };
 

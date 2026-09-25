@@ -24,6 +24,7 @@ jest.mock('react-native', () => {
     View: passthrough('div'),
     Text: passthrough('span'),
     Pressable: passthrough('button'),
+    ActivityIndicator: passthrough('progress'),
     StyleSheet: { create: (sheet: unknown) => sheet, hairlineWidth: 1 },
   };
 }, { virtual: true });
@@ -149,7 +150,7 @@ describe('Button — press behaviour', () => {
     // told, or the control stays focusable and reads as actionable.
     const el = render({ children: 'Create tag', onPress: () => {}, disabled: true });
     expect(el.props.disabled).toBe(true);
-    expect(el.props.accessibilityState).toEqual({ disabled: true });
+    expect(el.props.accessibilityState).toEqual({ disabled: true, busy: false });
   });
 
   it('survives being pressed with no handler supplied', () => {
@@ -176,7 +177,35 @@ describe('Button — state treatments', () => {
   });
 });
 
-// ─── 7. Size and width ──────────────────────────────────────────────────
+// ─── 7. Loading ─────────────────────────────────────────────────────────
+
+describe('Button — loading', () => {
+  type Wrapper = React.ReactElement<{ children: [React.ReactElement<{ style: unknown }>, React.ReactElement<{ color: string }>] }>;
+
+  it('keeps the label in place but invisible, with a spinner over it in the label colour', () => {
+    const wrapper = render({ children: 'Post', loading: true }).props.children as unknown as Wrapper;
+    const [label, spinner] = wrapper.props.children;
+    expect(label.type).toBe(MonoLabel);
+    expect(flatten(label.props.style).opacity).toBe(0);
+    expect(spinner.props.color).toBe(color.inverse);
+  });
+
+  it('ignores presses and says it is busy, without the disabled dimming', () => {
+    const onPress = jest.fn();
+    const el = render({ children: 'Post', loading: true, onPress });
+    el.props.onPress?.();
+    expect(onPress).not.toHaveBeenCalled();
+    expect(el.props.disabled).toBe(true);
+    expect(el.props.accessibilityState).toEqual({ disabled: true, busy: true });
+    expect(styleOf({ children: 'Post', loading: true }).opacity).toBeUndefined();
+  });
+
+  it('is off by default', () => {
+    expect(render({ children: 'Post' }).props.accessibilityState).toEqual({ disabled: false, busy: false });
+  });
+});
+
+// ─── 8. Size and width ──────────────────────────────────────────────────
 
 describe('Button — size and width', () => {
   it('sm is tighter than md', () => {
