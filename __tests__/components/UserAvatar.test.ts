@@ -1,12 +1,12 @@
-
 //
 // target: __tests__/components/UserAvatar.test.ts
 // UserAvatar + Icons rendering — components/native/*.
 //
-// Repointed from the deleted web fork. The fork's avatar was sized by
-// Tailwind `className` ("w-10 h-10") and rendered an <img>; the native twin
-// takes a numeric `size` and renders either an expo-image <Image> or a
-// <View>/<Text> initials badge. The assertions follow the native contract.
+// Since ONE-64 UserAvatar is an adapter: it maps the { username, avatarUrl }
+// props older screens use onto the Avatar primitive, which owns the image,
+// the initials fallback and the circle. Its own palette of fourteen hex
+// swatches is gone (and with it UserAvatar.utils.test.ts, which pinned that
+// palette); Avatar's behaviour is covered in __tests__/components/ui.
 
 import React from 'react';
 
@@ -17,6 +17,7 @@ jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: tr
 jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
 
 import UserAvatar from '../../components/native/UserAvatar';
+import { Avatar, DEFAULT_AVATAR_SIZE } from '../../components/native/ui';
 import {
   HomeIcon, SearchIcon, HeartIcon, CommentIcon, RepostIcon,
   BookmarkIcon, TrashIcon, BellIcon, UserIcon, CameraIcon,
@@ -26,110 +27,54 @@ import {
 
 // ─── 2. Helpers ─────────────────────────────────────────────────────────
 
-type AvatarProps = {
+type UserAvatarProps = {
   username: string | null | undefined;
   avatarUrl: string | null | undefined;
   size?: number;
   className?: string;
 };
 
-type AvatarElement = React.ReactElement<{
-  style: Record<string, unknown>;
-  source?: { uri: string };
-  contentFit?: string;
-  transition?: number;
-  children?: React.ReactElement<{ children?: unknown; style?: Record<string, unknown> }>;
+type AdapterElement = React.ReactElement<{
+  uri?: string | null;
+  name?: string | null;
+  size?: number;
 }>;
 
-const render = (props: AvatarProps): AvatarElement =>
-  (UserAvatar as unknown as (p: AvatarProps) => AvatarElement)(props);
+const render = (props: UserAvatarProps): AdapterElement =>
+  (UserAvatar as unknown as (p: UserAvatarProps) => AdapterElement)(props);
 
-// ─── 3. UserAvatar — image branch ───────────────────────────────────────
+// ─── 3. UserAvatar delegates to Avatar ──────────────────────────────────
 
-describe('native UserAvatar — with an avatarUrl', () => {
-  it('renders the remote image with the url as its source', () => {
-    const el = render({
-      username: 'johndoe',
-      avatarUrl: 'https://example.com/avatar.jpg',
-    });
-    expect(el.props.source).toEqual({ uri: 'https://example.com/avatar.jpg' });
+describe('native UserAvatar — an adapter over Avatar', () => {
+  it('renders the Avatar primitive, not an avatar of its own', () => {
+    expect(render({ username: 'johndoe', avatarUrl: null }).type).toBe(Avatar);
   });
 
-  it('sizes the image as a circle at the default 40px', () => {
-    const el = render({ username: 'johndoe', avatarUrl: 'https://x/a.jpg' });
-    expect(el.props.style).toMatchObject({
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-    });
+  it('maps avatarUrl to uri and username to name', () => {
+    const el = render({ username: 'johndoe', avatarUrl: 'https://example.com/avatar.jpg' });
+    expect(el.props.uri).toBe('https://example.com/avatar.jpg');
+    expect(el.props.name).toBe('johndoe');
   });
 
-  it('keeps the circle at any explicit size', () => {
+  it('passes an explicit size through, and defaults to the primitive default', () => {
     [24, 32, 48, 64, 96].forEach(size => {
-      const el = render({ username: 'johndoe', avatarUrl: 'https://x/a.jpg', size });
-      expect(el.props.style).toMatchObject({
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-      });
+      expect(render({ username: 'johndoe', avatarUrl: null, size }).props.size).toBe(size);
+    });
+    expect(render({ username: 'johndoe', avatarUrl: null }).props.size).toBe(DEFAULT_AVATAR_SIZE);
+    expect(DEFAULT_AVATAR_SIZE).toBe(40);
+  });
+
+  it('passes missing usernames and urls through for Avatar to handle', () => {
+    ([null, undefined] as const).forEach(value => {
+      const el = render({ username: value, avatarUrl: value });
+      expect(el.props.name).toBe(value);
+      expect(el.props.uri).toBe(value);
     });
   });
 
-  it('covers the frame rather than letterboxing, and fades in', () => {
-    // A stretched or letterboxed avatar is the visible failure here, so
-    // the contentFit is part of the contract, not an incidental prop.
-    const el = render({ username: 'johndoe', avatarUrl: 'https://x/a.jpg' });
-    expect(el.props.contentFit).toBe('cover');
-    expect(el.props.transition).toBe(200);
-  });
-
-  it('prefers the image over the initials badge even with no username', () => {
-    const el = render({ username: null, avatarUrl: 'https://x/a.jpg' });
-    expect(el.props.source).toEqual({ uri: 'https://x/a.jpg' });
-    expect(el.props.children).toBeUndefined();
-  });
-});
-
-// ─── 4. UserAvatar — initials branch ────────────────────────────────────
-
-describe('native UserAvatar — without an avatarUrl', () => {
-  it('renders an initials badge instead of an image', () => {
-    const el = render({ username: 'alice', avatarUrl: null });
-    expect(el.props.source).toBeUndefined();
-    expect(el.props.children?.props.children).toBe('A');
-  });
-
-  it('centers the initial in a coloured circle', () => {
-    const el = render({ username: 'alice', avatarUrl: null, size: 60 });
-    expect(el.props.style).toMatchObject({
-      width: 60,
-      height: 60,
-      borderRadius: 30,
-      alignItems: 'center',
-      justifyContent: 'center',
-    });
-    expect(typeof el.props.style.backgroundColor).toBe('string');
-  });
-
-  it('scales the glyph to 40% of the avatar size', () => {
-    [20, 40, 80].forEach(size => {
-      const el = render({ username: 'alice', avatarUrl: null, size });
-      expect(el.props.children?.props.style).toMatchObject({ fontSize: size * 0.4 });
-    });
-  });
-
-  it('handles null, undefined and empty usernames without throwing', () => {
-    ([null, undefined, ''] as const).forEach(username => {
-      expect(() => render({ username, avatarUrl: null })).not.toThrow();
-      const el = render({ username, avatarUrl: null });
-      expect(el.props.children?.props.children).toBe('?');
-    });
-  });
-
-  it('is stable across repeated renders of the same username', () => {
-    const a = render({ username: 'size-test', avatarUrl: null });
-    const b = render({ username: 'size-test', avatarUrl: null });
-    expect(a.props.style.backgroundColor).toBe(b.props.style.backgroundColor);
+  it('ignores className, which the primitive does not take', () => {
+    const el = render({ username: 'johndoe', avatarUrl: null, className: 'w-10 h-10' });
+    expect(Object.keys(el.props).sort()).toEqual(['name', 'size', 'uri']);
   });
 });
 

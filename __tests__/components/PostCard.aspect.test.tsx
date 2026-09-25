@@ -113,7 +113,7 @@ const imagePost = (media_aspect_ratio: number | null): Post => ({
 
 /**
  * The aspectRatio the image's own box was laid out with. PostCard puts it on
- * the `View` that wraps the image, alongside the black backdrop it letterboxes
+ * the `View` that wraps the image, alongside the bgPanel fill it letterboxes
  * against — so this is the value the feed frames the photo with.
  */
 function renderedAspectRatio(post: Post): number | undefined {

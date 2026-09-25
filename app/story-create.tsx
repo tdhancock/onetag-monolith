@@ -1,5 +1,3 @@
-
-
 import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
@@ -8,12 +6,12 @@ import {
   TextInput,
   Alert,
   StyleSheet,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -22,25 +20,38 @@ import { useApp } from '../store/AppContext.native';
 import { useCurrentProfile } from '../features/profiles';
 import { cleanHtml } from '../lib/cleanHtml';
 import { useUploadStory } from '../features/stories';
+import { Button, IconButton, ListRow, TextField } from '../components/native/ui';
 import {
   CameraIcon,
   FlipCameraIcon,
   ImageIcon,
+  TypeIcon,
   XIcon,
   ArrowLeftIcon,
 } from '../components/native/Icons';
+import {
+  color,
+  oneSnapGradientKeys,
+  oneSnapGradients,
+  radius,
+  space,
+  type,
+  withAlpha,
+  type OneSnapGradientKey,
+} from '../theme/tokens';
 
 type ViewState = 'options' | 'camera' | 'preview-image' | 'preview-text';
 
-const GRADIENT_PRESETS = [
-  ['#1e3a5f', '#0f172a'],
-  ['#4a1942', '#1a0a2e'],
-  ['#1a3c34', '#0a1628'],
-  ['#3d1f00', '#1a0e00'],
-  ['#2d1b4e', '#0e0a1a'],
-  ['#5b2c6f', '#1a1a2e'],
-  ['#0e4d44', '#041c2c'],
-] as const;
+// Capture and preview stay full-bleed dark for the content's sake: the black
+// is the ink token and the controls over it are inverse.
+const MEDIA_GROUND = color.text;
+const CONTROL_FILL = withAlpha(color.text, 0.4);
+const TEXT_PLACEHOLDER = withAlpha(color.inverse, 0.5);
+
+/** The square tile an option row leads with. */
+const OptionIcon: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <View style={styles.optionIcon}>{children}</View>
+);
 
 export default function StoryCreateScreen() {
   const router = useRouter();
@@ -70,14 +81,15 @@ export default function StoryCreateScreen() {
 
   // Text story
   const [textContent, setTextContent] = useState('');
-  const [gradientIndex, setGradientIndex] = useState(0);
+  // Stored with the OneSnap as `background`, so readers see what was picked.
+  const [gradientKey, setGradientKey] = useState<OneSnapGradientKey>(oneSnapGradientKeys[0]);
 
   const handleUpload = useCallback(
-    async (options: { imageUri?: string; text?: string }) => {
+    async (options: { imageUri?: string; text?: string; background?: OneSnapGradientKey }) => {
       if (!profileId) return;
       setIsUploading(true);
 
-      addToast('Uploading story...', 'info');
+      addToast('Uploading OneSnap…', 'info');
 
       try {
         if (options.imageUri) {
@@ -86,12 +98,12 @@ export default function StoryCreateScreen() {
             caption: caption.trim() || null,
           });
         } else if (options.text) {
-          // Text-only story — skip storage upload and save only caption.
-          await uploadStory.mutateAsync({ caption: options.text });
+          // Text-only story: no media, just the words and their gradient.
+          await uploadStory.mutateAsync({ caption: options.text, background: options.background });
         }
       } catch (error) {
         console.error('Story upload failed', error);
-        addToast('Failed to upload story.', 'error');
+        addToast('Failed to upload OneSnap.', 'error');
       } finally {
         setIsUploading(false);
         // Brief delay so success/error toast is visible before navigating away
@@ -151,41 +163,43 @@ export default function StoryCreateScreen() {
   // ─── Options View ──────────────────────────────
   if (view === 'options') {
     return (
-      <SafeAreaView className="flex-1 bg-black">
+      <SafeAreaView style={[styles.fill, { backgroundColor: color.bg }]}>
         <Stack.Screen options={{ headerShown: false, presentation: 'modal' }} />
+        <StatusBar style="dark" />
 
-        <View className="px-4 py-4 flex-row justify-between items-center">
-          <Text className="text-white font-bold text-xl">Create Story</Text>
-          <Pressable onPress={() => router.back()} className="bg-gray-800 p-2 rounded-full">
-            <XIcon color="white" size={20} />
-          </Pressable>
+        <View style={styles.optionsHeader}>
+          <Text style={styles.optionsTitle} accessibilityRole="header">New OneSnap</Text>
+          <IconButton
+            icon={<XIcon color={color.text} size={22} />}
+            accessibilityLabel="Close"
+            onPress={() => router.back()}
+          />
         </View>
 
-        <View className="flex-1 justify-center items-center px-8" style={{ gap: 16 }}>
-          <Pressable
+        <View style={styles.options}>
+          <ListRow
+            title="Camera"
+            subtitle="Take a photo now"
+            leading={<OptionIcon><CameraIcon color={color.text} size={22} /></OptionIcon>}
             onPress={openCamera}
-            className="bg-blue-500 w-full py-4 rounded-2xl items-center flex-row justify-center"
-            style={{ gap: 10 }}
-          >
-            <CameraIcon color="white" size={24} />
-            <Text className="text-white font-bold text-lg">Take a Photo</Text>
-          </Pressable>
-
-          <Pressable
+            accessibilityLabel="Camera, take a photo now"
+            divider
+          />
+          <ListRow
+            title="Library"
+            subtitle="Choose a photo you already have"
+            leading={<OptionIcon><ImageIcon color={color.text} size={22} /></OptionIcon>}
             onPress={pickFromGallery}
-            className="bg-gray-800 border border-gray-700 w-full py-4 rounded-2xl items-center flex-row justify-center"
-            style={{ gap: 10 }}
-          >
-            <ImageIcon color="white" size={24} />
-            <Text className="text-white font-bold text-lg">Pick from Gallery</Text>
-          </Pressable>
-
-          <Pressable
+            accessibilityLabel="Library, choose a photo you already have"
+            divider
+          />
+          <ListRow
+            title="Text"
+            subtitle="Write something on a colour"
+            leading={<OptionIcon><TypeIcon color={color.text} size={22} /></OptionIcon>}
             onPress={() => setView('preview-text')}
-            className="bg-gray-800 border border-gray-700 w-full py-4 rounded-2xl items-center"
-          >
-            <Text className="text-white font-bold text-lg">Create Text Story</Text>
-          </Pressable>
+            accessibilityLabel="Text, write something on a colour"
+          />
         </View>
       </SafeAreaView>
     );
@@ -194,54 +208,53 @@ export default function StoryCreateScreen() {
   // ─── Camera View ──────────────────────────────
   if (view === 'camera') {
     return (
-      <View className="flex-1 bg-black">
+      <View style={[styles.fill, { backgroundColor: MEDIA_GROUND }]}>
         <Stack.Screen options={{ headerShown: false }} />
+        <StatusBar style="light" />
 
         <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} />
 
         {/* Top */}
-        <SafeAreaView edges={['top']} className="absolute top-0 left-0 right-0 z-10">
-          <View className="flex-row justify-between items-center px-4 py-2">
-            <Pressable
+        <SafeAreaView edges={['top']} style={styles.cameraTop}>
+          <View style={styles.cameraTopRow}>
+            <IconButton
+              icon={<XIcon color={color.inverse} size={24} />}
+              accessibilityLabel="Back to options"
               onPress={() => setView('options')}
-              className="bg-black/40 p-2 rounded-full"
-            >
-              <XIcon color="white" size={24} />
-            </Pressable>
-            <Pressable
+              style={styles.cameraControl}
+            />
+            <IconButton
+              icon={<FlipCameraIcon color={color.inverse} size={24} />}
+              accessibilityLabel="Flip camera"
               onPress={() => {
                 triggerHapticFeedback('light');
                 setFacing(prev => (prev === 'back' ? 'front' : 'back'));
               }}
-              className="bg-black/40 p-2 rounded-full"
-            >
-              <FlipCameraIcon color="white" size={24} />
-            </Pressable>
+              style={styles.cameraControl}
+            />
           </View>
         </SafeAreaView>
 
         {/* Bottom */}
-        <SafeAreaView edges={['bottom']} className="absolute bottom-0 left-0 right-0 z-10">
-          <View className="flex-row justify-around items-center pb-6 pt-4">
-            <Pressable
+        <SafeAreaView edges={['bottom']} style={styles.cameraBottom}>
+          <View style={styles.cameraBottomRow}>
+            <IconButton
+              icon={<ImageIcon color={color.inverse} size={26} />}
+              accessibilityLabel="Choose from library"
               onPress={pickFromGallery}
-              className="bg-black/40 p-3 rounded-full"
-            >
-              <ImageIcon color="white" size={28} />
-            </Pressable>
+              style={styles.cameraControl}
+            />
             <Pressable
               onPress={takePhoto}
               disabled={capturing}
-              className="items-center justify-center"
+              accessibilityRole="button"
+              accessibilityLabel="Take photo"
+              style={[styles.shutter, capturing && styles.shutterBusy]}
             >
-              <View
-                className="w-20 h-20 rounded-full border-4 border-white items-center justify-center"
-                style={{ opacity: capturing ? 0.5 : 1 }}
-              >
-                <View className="w-16 h-16 rounded-full bg-white" />
-              </View>
+              <View style={styles.shutterFace} />
             </Pressable>
-            <View className="w-14" />
+            {/* Balances the row so the shutter stays centred. */}
+            <View style={styles.cameraControlSpacer} />
           </View>
         </SafeAreaView>
       </View>
@@ -251,56 +264,45 @@ export default function StoryCreateScreen() {
   // ─── Image Preview ─────────────────────────────
   if (view === 'preview-image' && imageSrc) {
     return (
-      <SafeAreaView className="flex-1 bg-black">
+      <SafeAreaView style={[styles.fill, { backgroundColor: MEDIA_GROUND }]}>
         <Stack.Screen options={{ headerShown: false }} />
+        <StatusBar style="light" />
 
-        {/* Header */}
-        <View className="px-4 py-3 flex-row justify-between items-center">
-          <Pressable
+        <View style={styles.previewHeader}>
+          <IconButton
+            icon={<ArrowLeftIcon color={color.inverse} size={24} />}
+            accessibilityLabel="Back"
             onPress={() => {
               setImageSrc(null);
               setCaption('');
               setView('options');
             }}
-            className="p-2 -ml-2"
-            hitSlop={8}
-          >
-            <ArrowLeftIcon color="white" size={24} />
-          </Pressable>
-          <Pressable
-            onPress={() => handleUpload({ imageUri: imageSrc })}
-            disabled={isUploading}
-            className={`px-6 py-1.5 rounded-full ${isUploading ? 'bg-blue-500/40' : 'bg-blue-500'}`}
-          >
-            {isUploading ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <Text className="text-white font-bold">Share</Text>
-            )}
-          </Pressable>
-        </View>
-
-        {/* Preview */}
-        <View className="flex-1 mx-4 rounded-2xl overflow-hidden">
-          <Image
-            source={{ uri: imageSrc }}
-            style={{ flex: 1 }}
-            contentFit="cover"
           />
         </View>
 
-        {/* Caption input */}
+        <View style={styles.previewFrame}>
+          <Image source={{ uri: imageSrc }} style={styles.fill} contentFit="cover" />
+        </View>
+
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View className="px-4 py-3">
-            <TextInput
+          <View style={styles.previewFooter}>
+            <TextField
+              variant="overlay"
               value={caption}
               onChangeText={setCaption}
-              placeholder="Add a caption..."
-              placeholderTextColor="#6b7280"
-              className="text-white text-base bg-gray-800 rounded-xl px-4 py-3"
+              placeholder="Add a caption…"
               multiline
               maxLength={200}
             />
+            <Button
+              variant="inverse"
+              fullWidth
+              disabled={isUploading}
+              onPress={() => handleUpload({ imageUri: imageSrc })}
+              style={styles.shareButton}
+            >
+              {isUploading ? 'Sharing…' : 'Share OneSnap'}
+            </Button>
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -309,81 +311,77 @@ export default function StoryCreateScreen() {
 
   // ─── Text Story Preview ────────────────────────
   if (view === 'preview-text') {
-    const currentGradient = GRADIENT_PRESETS[gradientIndex % GRADIENT_PRESETS.length];
+    const currentGradient = oneSnapGradients[gradientKey];
+    const canShare = !isUploading && Boolean(textContent.trim());
 
     return (
-      <SafeAreaView className="flex-1 bg-black">
+      <SafeAreaView style={[styles.fill, { backgroundColor: MEDIA_GROUND }]}>
         <Stack.Screen options={{ headerShown: false }} />
+        <StatusBar style="light" />
 
-        {/* Header */}
-        <View className="px-4 py-3 flex-row justify-between items-center">
-          <Pressable onPress={() => setView('options')} className="p-2 -ml-2" hitSlop={8}>
-            <ArrowLeftIcon color="white" size={24} />
-          </Pressable>
-          <Pressable
-            onPress={() => {
-              if (!textContent.trim()) {
-                addToast('Write something first!', 'error');
-                return;
-              }
-              handleUpload({ text: cleanHtml(textContent.trim()) });
-            }}
-            disabled={isUploading || !textContent.trim()}
-            className={`px-6 py-1.5 rounded-full ${
-              isUploading || !textContent.trim() ? 'bg-blue-500/40' : 'bg-blue-500'
-            }`}
-          >
-            {isUploading ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <Text className="text-white font-bold">Share</Text>
-            )}
-          </Pressable>
+        <View style={styles.previewHeader}>
+          <IconButton
+            icon={<ArrowLeftIcon color={color.inverse} size={24} />}
+            accessibilityLabel="Back"
+            onPress={() => setView('options')}
+          />
         </View>
 
-        {/* Text story preview */}
         <KeyboardAvoidingView
-          className="flex-1"
+          style={styles.fill}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View className="flex-1 mx-4 rounded-2xl overflow-hidden">
-            <LinearGradient
-              colors={[...currentGradient]}
-              style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}
-            >
+          <View style={styles.previewFrame}>
+            <LinearGradient colors={[...currentGradient]} style={styles.textCanvas}>
               <TextInput
                 value={textContent}
                 onChangeText={setTextContent}
-                placeholder="Type your story..."
-                placeholderTextColor="rgba(255,255,255,0.5)"
-                className="text-white text-2xl font-bold text-center"
+                placeholder="Say something…"
+                placeholderTextColor={TEXT_PLACEHOLDER}
+                selectionColor={color.inverse}
+                style={styles.textCanvasInput}
                 multiline
                 maxLength={300}
                 autoFocus
-                style={{ textAlignVertical: 'center', lineHeight: 36 }}
               />
             </LinearGradient>
           </View>
 
           {/* Gradient picker */}
-          <View className="flex-row justify-center py-4" style={{ gap: 12 }}>
-            {GRADIENT_PRESETS.map((colors, i) => (
+          <View style={styles.swatches}>
+            {oneSnapGradientKeys.map((key, i) => (
               <Pressable
-                key={i}
+                key={key}
                 onPress={() => {
                   triggerHapticFeedback('light');
-                  setGradientIndex(i);
+                  setGradientKey(key);
                 }}
-                className={`w-8 h-8 rounded-full overflow-hidden ${
-                  i === gradientIndex ? 'border-2 border-white' : ''
-                }`}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={`Background ${i + 1}`}
+                accessibilityState={{ selected: key === gradientKey }}
+                style={[styles.swatch, key === gradientKey && styles.swatchSelected]}
               >
-                <LinearGradient
-                  colors={[...colors]}
-                  style={{ flex: 1 }}
-                />
+                <LinearGradient colors={[...oneSnapGradients[key]]} style={styles.fill} />
               </Pressable>
             ))}
+          </View>
+
+          <View style={styles.previewFooter}>
+            <Button
+              variant="inverse"
+              fullWidth
+              disabled={!canShare}
+              onPress={() => {
+                if (!textContent.trim()) {
+                  addToast('Write something first!', 'error');
+                  return;
+                }
+                handleUpload({ text: cleanHtml(textContent.trim()), background: gradientKey });
+              }}
+            >
+              {isUploading ? 'Sharing…' : 'Share OneSnap'}
+            </Button>
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -393,3 +391,145 @@ export default function StoryCreateScreen() {
   // Fallback
   return null;
 }
+
+/** The shutter's outer ring. Round, as a camera shutter reads. */
+const SHUTTER_SIZE = 76;
+
+const styles = StyleSheet.create({
+  fill: {
+    flex: 1,
+  },
+
+  // Options
+  optionsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 52,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+  },
+  optionsTitle: {
+    fontFamily: type.bodyBold,
+    fontSize: 17,
+    color: color.text,
+  },
+  options: {
+    marginTop: space.sm,
+  },
+  optionIcon: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: color.bgPanel,
+    borderRadius: radius.none,
+  },
+
+  // Camera
+  cameraTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  cameraTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: space.sm,
+    paddingVertical: space.sm,
+  },
+  cameraBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  cameraBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingTop: space.lg,
+    paddingBottom: space.xl,
+  },
+  cameraControl: {
+    backgroundColor: CONTROL_FILL,
+  },
+  cameraControlSpacer: {
+    width: 44,
+  },
+  shutter: {
+    width: SHUTTER_SIZE,
+    height: SHUTTER_SIZE,
+    borderRadius: SHUTTER_SIZE / 2,
+    borderWidth: 4,
+    borderColor: color.inverse,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shutterBusy: {
+    opacity: 0.5,
+  },
+  shutterFace: {
+    width: SHUTTER_SIZE - 16,
+    height: SHUTTER_SIZE - 16,
+    borderRadius: (SHUTTER_SIZE - 16) / 2,
+    backgroundColor: color.inverse,
+  },
+
+  // Previews
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: space.xs,
+    minHeight: 52,
+  },
+  previewFrame: {
+    flex: 1,
+    marginHorizontal: space.lg,
+    overflow: 'hidden',
+    borderRadius: radius.none,
+  },
+  previewFooter: {
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+  },
+  shareButton: {
+    marginTop: space.md,
+  },
+  textCanvas: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: space.xxl,
+  },
+  textCanvasInput: {
+    alignSelf: 'stretch',
+    fontFamily: type.bodyBold,
+    fontSize: 24,
+    lineHeight: 36,
+    color: color.inverse,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+  },
+  swatches: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: space.md,
+    paddingTop: space.lg,
+  },
+  swatch: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.none,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    overflow: 'hidden',
+  },
+  swatchSelected: {
+    borderColor: color.inverse,
+  },
+});

@@ -120,7 +120,8 @@ export interface NotificationComment {
 
 export interface NotificationStory {
     id: string;
-    media_url: string;
+    /** Null for a text OneSnap, which has no media (ONE-78). */
+    media_url: string | null;
 }
 
 export interface Notification {
@@ -179,6 +180,12 @@ export interface Story {
     timestamp: string;
     imageUrl?: string;
     content?: string;
+    /**
+     * The gradient a text OneSnap is drawn on: a key into `oneSnapGradients`
+     * (theme/tokens.ts). Null for image OneSnaps and for text ones posted
+     * before ONE-78.
+     */
+    background?: string | null;
 }
 
 export interface Hashtag {

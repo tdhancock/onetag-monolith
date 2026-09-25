@@ -5,14 +5,29 @@
 # "grep for raw hex returns no matches". This turns that from a request into
 # a gate.
 #
-# Deliberately scoped to directories that are clean from birth. The pre-existing
-# screens under app/ and components/native/ are full of inline hex and get
-# cleaned up progressively by the M1c re-skin tickets — pointing this at them
-# today would just fail every build. Widen DIRS as those tickets land.
+# Deliberately scoped to paths that are clean. The pre-existing screens under
+# app/ and components/native/ are full of inline hex and get cleaned up
+# progressively by the M1c re-skin tickets — pointing this at them today would
+# just fail every build. Widen the lists below as those tickets land.
 
 set -eu
 
+# Directories that are clean from birth, searched recursively.
 DIRS="theme lib features components/native/ui"
+
+# Shared components re-skinned onto the tokens (ONE-64 onward). Screens join
+# in the M1c close-out ticket.
+FILES="
+components/native/Icons.tsx
+components/native/UserAvatar.tsx
+components/native/Toast.tsx
+components/native/PostSkeleton.tsx
+components/native/RenderUserContent.tsx
+components/native/PostCard.tsx
+components/native/StoryReel.tsx
+components/native/StoryCreator.tsx
+components/native/HomeHeader.tsx
+"
 
 # theme/tokens.ts is the source of truth and must contain hex.
 # An explicit "allow-hex" comment on the line opts out (e.g. the QR code, which
@@ -21,19 +36,25 @@ EXCLUDE_FILE="theme/tokens.ts"
 
 status=0
 
-for dir in $DIRS; do
-  [ -d "$dir" ] || continue
+for path in $DIRS $FILES; do
+  # A listed path that has gone missing is a stale list, not a clean one.
+  if [ ! -e "$path" ]; then
+    echo "check-no-raw-hex: $path is listed but does not exist."
+    status=1
+    continue
+  fi
 
+  # -H so a single file reports its name the same way a directory does.
   matches=$(
-    grep -rniE --include='*.ts' --include='*.tsx' \
-      '#[0-9a-f]{3}([0-9a-f]{3})?([0-9a-f]{2})?([^0-9a-z]|$)' "$dir" 2>/dev/null \
+    grep -rniHE --include='*.ts' --include='*.tsx' \
+      '#[0-9a-f]{3}([0-9a-f]{3})?([0-9a-f]{2})?([^0-9a-z]|$)' "$path" 2>/dev/null \
       | grep -v "^${EXCLUDE_FILE}:" \
       | grep -v 'allow-hex' \
       || true
   )
 
   if [ -n "$matches" ]; then
-    echo "Raw hex colours found in $dir — use theme/tokens.ts instead:"
+    echo "Raw hex colours found in $path — use theme/tokens.ts instead:"
     echo "$matches"
     echo ""
     status=1

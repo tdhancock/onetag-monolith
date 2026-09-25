@@ -29,4 +29,6 @@ export interface UploadStoryInput {
   imageUri?: string;
   /** The caption on an image story, or the whole of a text story. */
   caption?: string | null;
+  /** A text story's gradient: a key into `oneSnapGradients`. Ignored with an image. */
+  background?: string | null;
 }

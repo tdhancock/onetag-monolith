@@ -1,10 +1,8 @@
-
-
 import React from 'react';
-import { View, Text, Pressable, Image } from 'react-native';
-import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
 import { useMyStoriesQuery } from '../../features/stories';
+import { latestOneSnap } from '../../lib/oneSnaps';
+import { OneSnapCard } from './StoryReel';
 import type { Story } from '../../types';
 
 interface StoryCreatorProps {
@@ -13,10 +11,12 @@ interface StoryCreatorProps {
 }
 
 /**
- * "Your story" button — OneTag logo inside a story ring, Instagram-style.
+ * The "Your OneSnap" tile at the start of the reel: an empty card with a `+`
+ * when you have nothing live, or your latest OneSnap with a small `+` badge
+ * when you do. Tapping views what you have, or creates one if you have none.
  */
 const StoryCreator: React.FC<StoryCreatorProps> = ({ onAddStory, onViewStories }) => {
-  const { profile: userProfile, profileId } = useCurrentProfile();
+  const { profileId } = useCurrentProfile();
   // "Your story" is a query now (ONE-19); an upload in flight shows here as
   // its optimistic local entry until the server copy replaces it.
   const { data: myStories = [] } = useMyStoriesQuery(profileId);
@@ -31,37 +31,14 @@ const StoryCreator: React.FC<StoryCreatorProps> = ({ onAddStory, onViewStories }
   };
 
   return (
-    <View className="items-center mr-3">
-      <Pressable
-        onPress={handlePress}
-        style={{
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          borderWidth: 2,
-          borderColor: hasAnyStory ? '#3b82f6' : '#4b5563',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#000',
-          overflow: 'hidden',
-        }}
-        accessibilityLabel={hasAnyStory ? 'View your story' : 'Add to your story'}
-      >
-        <Image
-          source={require('../../assets/onetag-logo.png')}
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 28,
-            position: 'absolute',
-          }}
-          resizeMode="cover"
-        />
-      </Pressable>
-      <Text className="text-xs text-white w-14 text-center mt-1" numberOfLines={1}>
-        Your story
-      </Text>
-    </View>
+    <OneSnapCard
+      story={hasAnyStory ? latestOneSnap(myStories) : undefined}
+      own
+      label="Your OneSnap"
+      addBadge={hasAnyStory}
+      onPress={handlePress}
+      accessibilityLabel={hasAnyStory ? 'View your OneSnap' : 'Add a OneSnap'}
+    />
   );
 };
 

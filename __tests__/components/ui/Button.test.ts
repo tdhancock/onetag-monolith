@@ -102,6 +102,13 @@ describe('Button — variants', () => {
     expect(labelOf({ children: 'Create tag', variant: 'outline' }).props.color).toBe('text');
   });
 
+  it('inverse is a white fill with an ink label, for dark media', () => {
+    const style = styleOf({ children: 'Share OneSnap', variant: 'inverse' });
+    expect(style.backgroundColor).toBe(color.inverse);
+    expect(style.borderColor).toBe(color.inverse);
+    expect(labelOf({ children: 'Share OneSnap', variant: 'inverse' }).props.color).toBe('text');
+  });
+
   it('defaults to primary', () => {
     expect(styleOf({ children: 'Create tag' }).backgroundColor).toBe(color.text);
   });

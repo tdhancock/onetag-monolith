@@ -5,36 +5,43 @@
  *
  * Loading-state UI, covering components/native/PostSkeleton.
  *
- * Repointed from the deleted web fork. The two skeletons are not the same
- * component in different clothes:
- *
- *   - the fork rendered <div>s and switched a Tailwind `animate-pulse`
- *     class for `filter blur-sm` on a 750ms timer;
- *   - the native twin renders react-native <Animated.View> shimmer bars
- *     driven by a looped opacity animation, with no phase transition.
- *
- * So the pulse/blur assertions are gone and the animation lifecycle takes
- * their place. The fork's LoginScreen spinner harness went with the fork —
- * that screen has no native twin.
+ * Since ONE-64 the skeleton is built from the `Skeleton` primitive in the
+ * shape of the re-skinned post: an avatar row, a full-bleed 4:5 media block
+ * and two text lines, each block a `bgPanel` fill with a looped opacity
+ * pulse. The primitive's own contract (reduce motion included) is covered in
+ * __tests__/components/ui/Skeleton.test.tsx; this suite covers the post's
+ * shape and the lifecycle of its pulses.
  */
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // ─── 1. Mock react-native ────────────────────────────────────────────────
-// PostSkeleton needs View plus the Animated API (Value / loop / sequence /
-// timing / View). The shared DOM-passthrough shim renders to DOM nodes so
-// react-dom can mount the real component, and exposes the loop handle so
-// the test can assert that the animation is started on mount and stopped
-// on unmount.
+// PostSkeleton needs View, StyleSheet, AccessibilityInfo and the Animated API
+// (Value / loop / sequence / timing / View). The shared DOM-passthrough shim
+// renders to DOM nodes so react-dom can mount the real component, and
+// exposes the loop handle so the test can assert that the animation is
+// started on mount and stopped on unmount.
 
 jest.mock('react-native', () => require('../support/reactNativeDom'), { virtual: true });
+// Skeleton comes through the components/native/ui barrel, which also carries
+// Avatar and so expo-image.
+jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
 
 // ─── 2. Imports ─────────────────────────────────────────────────────────
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react';
 import { Animated } from 'react-native';
-import PostSkeleton from '../../components/native/PostSkeleton';
+import PostSkeleton, {
+  SKELETON_AVATAR_SIZE,
+  SKELETON_MEDIA_ASPECT_RATIO,
+} from '../../components/native/PostSkeleton';
+import {
+  PULSE_MIN_OPACITY,
+  PULSE_MAX_OPACITY,
+  PULSE_DURATION_MS,
+} from '../../components/native/ui/Skeleton';
+import { color } from '../../theme/tokens';
 
 const animationHandles = (Animated as unknown as {
   __handles: { start: jest.Mock; stop: jest.Mock };
@@ -57,6 +64,13 @@ function mount(element: React.ReactElement): MountHandle {
   return { root, container };
 }
 
+/** jsdom normalises hex colours to rgb(); compare in that form. */
+const rgb = (hex: string) => {
+  const probe = document.createElement('div');
+  probe.style.color = hex;
+  return probe.style.color;
+};
+
 function unmount(handle: MountHandle): void {
   act(() => {
     handle.root.unmount();
@@ -67,10 +81,9 @@ function unmount(handle: MountHandle): void {
 const shimmerBars = (container: HTMLElement) =>
   Array.from(container.querySelectorAll('div[data-animated="true"]'));
 
-// The bar geometry PostSkeleton lays out, in document order: avatar, the
-// two header lines, two body lines, the media block, then three action
-// placeholders.
-const EXPECTED_BAR_COUNT = 9;
+// The blocks PostSkeleton lays out, in document order: avatar, the two
+// header lines, the media block, then the likes and caption lines.
+const EXPECTED_BAR_COUNT = 6;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -88,14 +101,13 @@ describe('Loading states — skeleton shimmer structure', () => {
     }
   });
 
-  it('paints every bar with the shared shimmer background and radius', () => {
+  it('paints every block on the bgPanel surface', () => {
     const handle = mount(React.createElement(PostSkeleton));
     try {
       const bars = shimmerBars(handle.container);
       expect(bars.length).toBeGreaterThan(0);
       bars.forEach(bar => {
-        // #374151 — jsdom normalises the hex to rgb().
-        expect((bar as HTMLElement).style.backgroundColor).toBe('rgb(55, 65, 81)');
+        expect((bar as HTMLElement).style.backgroundColor).toBe(rgb(color.bgPanel));
       });
     } finally {
       unmount(handle);
@@ -114,19 +126,54 @@ describe('Loading states — skeleton shimmer structure', () => {
     }
   });
 
-  it('lays out a circular avatar bar and a tall media bar', () => {
+  it('leads with a circular 36pt avatar, like the post header', () => {
+    const handle = mount(React.createElement(PostSkeleton));
+    try {
+      const avatar = (shimmerBars(handle.container) as HTMLElement[])[0];
+      expect(avatar.style.width).toBe(`${SKELETON_AVATAR_SIZE}px`);
+      expect(avatar.style.height).toBe(`${SKELETON_AVATAR_SIZE}px`);
+      expect(avatar.style.borderRadius).toBe(`${SKELETON_AVATAR_SIZE / 2}px`);
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('holds a full-bleed, square-cornered media block', () => {
+    const handle = mount(React.createElement(PostSkeleton));
+    try {
+      // The only block with no fixed height: it takes its height from the
+      // aspect ratio instead.
+      const media = (shimmerBars(handle.container) as HTMLElement[]).filter(
+        b => b.style.height === '',
+      );
+      expect(media).toHaveLength(1);
+      expect(media[0].style.width).toBe('100%');
+      expect(parseFloat(media[0].style.borderRadius)).toBe(0);
+    } finally {
+      unmount(handle);
+    }
+  });
+
+  it('sizes the media block 4:5, the post card default', () => {
+    // jsdom drops aspect-ratio from inline styles, so this reads the element
+    // tree PostSkeleton builds (it has no hooks of its own) rather than the DOM.
+    type Node = React.ReactElement<{ style?: unknown; children?: React.ReactNode }>;
+    const tree = (PostSkeleton as unknown as () => Node)();
+    const blocks = React.Children.toArray(tree.props.children) as Node[];
+    const media = blocks.find(b => (b.props.style as { aspectRatio?: number })?.aspectRatio);
+    expect(media).toBeDefined();
+    expect((media!.props.style as { aspectRatio: number }).aspectRatio).toBe(
+      SKELETON_MEDIA_ASPECT_RATIO,
+    );
+    expect(SKELETON_MEDIA_ASPECT_RATIO).toBe(0.8);
+  });
+
+  it('ends with two text lines under the media', () => {
     const handle = mount(React.createElement(PostSkeleton));
     try {
       const bars = shimmerBars(handle.container) as HTMLElement[];
-      // Avatar: 40x40 fully rounded.
-      const avatar = bars[0];
-      expect(avatar.style.width).toBe('40px');
-      expect(avatar.style.height).toBe('40px');
-      expect(avatar.style.borderRadius).toBe('20px');
-      // Media block: full width, 200px tall.
-      const media = bars.find(b => b.style.height === '200px');
-      expect(media).toBeDefined();
-      expect(media!.style.width).toBe('100%');
+      const mediaIndex = bars.findIndex(b => b.style.height === '');
+      expect(bars.slice(mediaIndex + 1)).toHaveLength(2);
     } finally {
       unmount(handle);
     }
@@ -147,7 +194,7 @@ describe('Loading states — shimmer animation lifecycle', () => {
     }
   });
 
-  it('loops a two-step opacity sequence between 0.3 and 0.7', () => {
+  it('loops a two-step opacity sequence between the pulse bounds', () => {
     const handle = mount(React.createElement(PostSkeleton));
     try {
       // Each bar sequences two timings; assert the pair of targets rather
@@ -155,11 +202,11 @@ describe('Loading states — shimmer animation lifecycle', () => {
       const targets = (Animated.timing as unknown as jest.Mock).mock.calls.map(
         ([, config]) => (config as { toValue: number }).toValue,
       );
-      expect(new Set(targets)).toEqual(new Set([0.3, 0.7]));
+      expect(new Set(targets)).toEqual(new Set([PULSE_MIN_OPACITY, PULSE_MAX_OPACITY]));
       const durations = (Animated.timing as unknown as jest.Mock).mock.calls.map(
         ([, config]) => (config as { duration: number }).duration,
       );
-      expect(new Set(durations)).toEqual(new Set([800]));
+      expect(new Set(durations)).toEqual(new Set([PULSE_DURATION_MS]));
     } finally {
       unmount(handle);
     }

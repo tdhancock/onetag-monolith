@@ -1,14 +1,11 @@
-
-
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, Pressable, Animated, Modal, Alert } from 'react-native';
+import React, { useState, useCallback, useRef } from 'react';
+import { View, Text, Pressable, Animated, Modal, Alert, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { differenceInMinutes, differenceInHours, differenceInDays, differenceInWeeks, differenceInMonths, differenceInYears } from 'date-fns';
 import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
 import { useLikePost, useRepostPost, useSavePost, useDeletePost } from '../../features/posts';
-import UserAvatar from './UserAvatar';
+import { Avatar, Button, IconButton, ICON_BUTTON_SIZE } from './ui';
 import RenderUserContent from './RenderUserContent';
 import {
   HeartIcon,
@@ -17,41 +14,43 @@ import {
   BookmarkIcon,
   TrashIcon,
   VerifiedIcon,
-  ThreeDotsVerticalIcon,
+  DotsHorizontalIcon,
   SendIcon,
   ReportIcon,
   ArrowLeftIcon,
   PencilAltIcon,
+  ChevronRightIcon,
 } from './Icons';
 import { reportPost } from '../../features/moderation';
 import { useIsAdmin } from '../../features/admin';
 import { useAuthUserId } from '../../features/auth';
+import { POST_REPORT_REASONS } from '../../services/reportReasons';
+import { getTimeAgo } from '../../lib/timeAgo';
+import {
+  actionLabels,
+  commentsLinkLabel,
+  likesLabel,
+  repostsLabel,
+  truncateForCard,
+} from '../../lib/screens/postCard';
+import { color, radius, space, type } from '../../theme/tokens';
 import type { Post } from '../../types';
 
-// ─── Helpers ───────────────────────────────────────
+// ─── Layout ────────────────────────────────────────
 
-const getTimeAgo = (timestamp?: string): string => {
-  if (!timestamp) return '';
-  try {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMin = differenceInMinutes(now, date);
-    if (diffMin < 1) return 'just now';
-    if (diffMin < 60) return `${diffMin}min`;
-    const diffH = differenceInHours(now, date);
-    if (diffH < 24) return `${diffH}h`;
-    const diffD = differenceInDays(now, date);
-    if (diffD < 7) return `${diffD}d`;
-    const diffM = differenceInMonths(now, date);
-    if (diffM < 1) return `${differenceInWeeks(now, date)}w`;
-    if (diffM < 12) return `${diffM}m`;
-    return `${differenceInYears(now, date)}y`;
-  } catch {
-    return '';
-  }
-};
-
-const MAX_CHARS = 280;
+/** Header avatar diameter. PostSkeleton mirrors it. */
+const HEADER_AVATAR_SIZE = 36;
+/** Action icons: 24pt glyphs at a 1.8 stroke. */
+const ACTION_ICON_SIZE = 24;
+const ACTION_STROKE = 1.8;
+/** A reposted post keeps the ink colour and reads heavier instead. */
+const ACTION_STROKE_ACTIVE = 2.6;
+/**
+ * An IconButton centres its 24pt glyph in a 44pt target, which insets the
+ * glyph 10pt from the button's edge. Pulling the action row in by that much
+ * lines the first icon up with the `space.lg` text edge below it.
+ */
+const ACTION_ROW_INSET = space.lg - (ICON_BUTTON_SIZE - ACTION_ICON_SIZE) / 2;
 
 // ─── Props ─────────────────────────────────────────
 
@@ -68,34 +67,45 @@ interface PostCardProps {
   isPreview?: boolean;
 }
 
+// ─── Sheet rows ────────────────────────────────────
+
+const SheetRow: React.FC<{
+  label: string;
+  icon?: React.ReactNode;
+  destructive?: boolean;
+  chevron?: boolean;
+  onPress: () => void;
+}> = ({ label, icon, destructive = false, chevron = false, onPress }) => (
+  <Pressable
+    accessibilityRole="button"
+    accessibilityLabel={label}
+    onPress={onPress}
+    style={({ pressed }) => [styles.sheetRow, pressed && styles.sheetRowPressed]}
+  >
+    {icon ? <View style={styles.sheetRowIcon}>{icon}</View> : null}
+    <Text style={[styles.sheetRowLabel, destructive && styles.destructive]}>{label}</Text>
+    {chevron ? <ChevronRightIcon color={color.textMuted} size={18} /> : null}
+  </Pressable>
+);
+
 // ─── PostHeader ────────────────────────────────────
 
 const PostHeader: React.FC<{
   post: Post;
   isMyPost: boolean;
-  isTextOnly: boolean;
-  isImage: boolean;
+  timeAgo: string;
   onViewProfile: () => void;
   onDelete: () => void;
   onEditPost?: () => void;
   isPreview?: boolean;
-}> = React.memo(({ post, isMyPost, isTextOnly, isImage, onViewProfile, onDelete, onEditPost, isPreview }) => {
+}> = React.memo(({ post, isMyPost, timeAgo, onViewProfile, onDelete, onEditPost, isPreview }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const { addToast } = useApp();
   const { profileId, authUserId } = useCurrentProfile();
   const isAdmin = useIsAdmin(authUserId);
 
-  const reportReasons = [
-    "It's spam",
-    'Hate speech or symbols',
-    'Harassment or bullying',
-    'False information',
-    'Nudity or sexual activity',
-    "I just don't like it",
-  ];
-
-  const textColor = isTextOnly || isImage ? 'text-white' : 'text-white';
+  const closeMenu = () => setMenuVisible(false);
 
   const handleReport = async (reason: string) => {
     setMenuVisible(false);
@@ -109,113 +119,103 @@ const PostHeader: React.FC<{
     }
   };
 
+  const displayName = post.name || post.username;
+  const meta = [`@${post.username}`, timeAgo].filter(Boolean).join(' · ');
+
   return (
-    <View className="flex-row" style={{ gap: 12 }}>
-      <Pressable onPress={onViewProfile} className="rounded-full">
-        <UserAvatar
-          username={post.username}
-          avatarUrl={post.avatar}
-          size={44}
-        />
+    <View style={styles.header}>
+      <Pressable
+        onPress={onViewProfile}
+        accessibilityRole="button"
+        accessibilityLabel={`View ${displayName}'s profile`}
+        hitSlop={4}
+      >
+        <Avatar uri={post.avatar} name={displayName} size={HEADER_AVATAR_SIZE} />
       </Pressable>
 
-      <View className="flex-1">
-        <View className="flex-row items-center justify-between">
-          <View>
-            <View className="flex-row items-center" style={{ gap: 4 }}>
-              <Pressable onPress={onViewProfile}>
-                <Text className={`font-bold ${textColor}`}>@{post.username}</Text>
-              </Pressable>
-              {post.isVerified && <VerifiedIcon color="#3b82f6" size={16} />}
+      <Pressable onPress={onViewProfile} style={styles.headerText} accessibilityRole="button">
+        <View style={styles.nameRow}>
+          <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
+          {post.isVerified && (
+            <View style={styles.verified} accessible accessibilityLabel="Verified">
+              <VerifiedIcon color={color.text} size={14} />
             </View>
-            <Text className="text-gray-400 text-sm">{post.name || post.username}</Text>
-          </View>
-
-          {!isPreview && (
-            <Pressable
-              onPress={() => { setMenuVisible(true); setShowReport(false); }}
-              className="p-2 rounded-full"
-              hitSlop={8}
-            >
-              <ThreeDotsVerticalIcon color={isImage ? '#e5e7eb' : '#9ca3af'} size={18} />
-            </Pressable>
           )}
         </View>
-      </View>
+        <Text style={styles.meta} numberOfLines={1}>{meta}</Text>
+      </Pressable>
 
-      {/* Options Menu Modal */}
+      {!isPreview && (
+        <IconButton
+          icon={<DotsHorizontalIcon color={color.text} size={20} />}
+          accessibilityLabel="Post options"
+          onPress={() => { setMenuVisible(true); setShowReport(false); }}
+        />
+      )}
+
+      {/* Options menu and report sheet */}
       <Modal
         visible={menuVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setMenuVisible(false)}
+        onRequestClose={closeMenu}
       >
-        <Pressable
-          className="flex-1 bg-black/50 justify-end"
-          onPress={() => setMenuVisible(false)}
-        >
+        <View style={styles.sheetRoot}>
           <Pressable
-            className="bg-gray-900 rounded-t-2xl pb-8"
-            onPress={(e) => e.stopPropagation()}
-          >
+            style={[StyleSheet.absoluteFill, styles.scrim]}
+            onPress={closeMenu}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+          />
+          <View style={styles.sheet}>
             {!showReport ? (
-              <View className="pt-4">
-                <View className="w-10 h-1 bg-gray-700 rounded-full self-center mb-4" />
+              <>
                 {(isMyPost || isAdmin) ? (
                   <>
                     {isMyPost && post.media_type === 'text' && onEditPost && (
-                      <Pressable
+                      <SheetRow
+                        label="Edit Post"
+                        icon={<PencilAltIcon color={color.text} size={20} />}
                         onPress={() => { setMenuVisible(false); onEditPost(); }}
-                        className="flex-row items-center px-6 py-4"
-                      >
-                        <PencilAltIcon color="#3b82f6" size={20} />
-                        <Text className="text-blue-400 text-base ml-3">Edit Post</Text>
-                      </Pressable>
+                      />
                     )}
-                    <Pressable
+                    <SheetRow
+                      label="Delete Post"
+                      destructive
+                      icon={<TrashIcon color={color.heart} size={20} />}
                       onPress={() => { setMenuVisible(false); onDelete(); }}
-                      className="flex-row items-center px-6 py-4"
-                    >
-                      <TrashIcon color="#ef4444" size={20} />
-                      <Text className="text-red-500 text-base ml-3">Delete Post</Text>
-                    </Pressable>
+                    />
                   </>
                 ) : (
-                  <Pressable
+                  <SheetRow
+                    label="Report Post"
+                    destructive
+                    chevron
+                    icon={<ReportIcon color={color.heart} size={20} />}
                     onPress={() => setShowReport(true)}
-                    className="flex-row items-center justify-between px-6 py-4"
-                  >
-                    <View className="flex-row items-center">
-                      <ReportIcon color="#ef4444" size={20} />
-                      <Text className="text-red-500 text-base ml-3">Report Post</Text>
-                    </View>
-                    <Text className="text-gray-500 text-lg">&rsaquo;</Text>
-                  </Pressable>
+                  />
                 )}
-              </View>
+              </>
             ) : (
-              <View className="pt-4">
-                <View className="flex-row items-center px-4 pb-3 border-b border-gray-800">
-                  <Pressable onPress={() => setShowReport(false)} className="p-2">
-                    <ArrowLeftIcon color="#fff" size={18} />
-                  </Pressable>
-                  <Text className="text-white font-bold text-base ml-2">
-                    Why are you reporting this?
-                  </Text>
+              <>
+                <View style={styles.sheetTitleRow}>
+                  <IconButton
+                    icon={<ArrowLeftIcon color={color.text} size={20} />}
+                    accessibilityLabel="Back"
+                    onPress={() => setShowReport(false)}
+                  />
+                  <Text style={styles.sheetTitle}>Why are you reporting this?</Text>
                 </View>
-                {reportReasons.map(reason => (
-                  <Pressable
-                    key={reason}
-                    onPress={() => handleReport(reason)}
-                    className="px-6 py-3"
-                  >
-                    <Text className="text-white text-base">{reason}</Text>
-                  </Pressable>
+                {POST_REPORT_REASONS.map(reason => (
+                  <SheetRow key={reason} label={reason} onPress={() => handleReport(reason)} />
                 ))}
-              </View>
+              </>
             )}
-          </Pressable>
-        </Pressable>
+            <Button variant="outline" onPress={closeMenu} style={styles.sheetCancel}>
+              Cancel
+            </Button>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -271,8 +271,6 @@ const PostCard: React.FC<PostCardProps> = ({
   const liked = Boolean(post.isLiked);
   const reposted = Boolean(post.isReposted);
   const saved = Boolean(post.isSaved);
-  const likesCount = post.likes;
-  const repostsCount = post.reposts;
 
   const [showHeart, setShowHeart] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -287,12 +285,14 @@ const PostCard: React.FC<PostCardProps> = ({
   // of a locally cached comment list when one had been loaded, which is the
   // same number by a longer route — and the comment mutations now move
   // `replies` on the cached post as they go (ONE-14).
-  const commentCount = post.replies;
+  const likes = likesLabel(post.likes);
+  const reposts = repostsLabel(post.reposts);
+  const commentsLink = commentsLinkLabel(post.replies);
+  const labels = actionLabels({ liked, reposted, saved });
   const isMyPost = post.username === userProfile?.username;
 
-  const needsTruncation = isTextOnly && post.content.length > MAX_CHARS;
+  const body = truncateForCard(post.content || '', isExpanded);
 
-  // Sync counts from parent
   // ─── Handlers ──────────────────────────────────
 
   // The mutation's own pending flag replaces the `isLiking` / `isReposting`
@@ -360,137 +360,328 @@ const PostCard: React.FC<PostCardProps> = ({
   // a decision of its own rather than a side effect of this change.
   const aspectRatio = post.media_aspect_ratio || 1080 / 1350;
 
-  return (
-    <View className="mx-2 mb-2">
-      <Pressable
-        onPress={handleTap}
-        className={`relative rounded-xl overflow-hidden ${isTextOnly ? 'bg-gray-700' : 'bg-[#15181d]'}`}
-      >
-        {/* Header */}
-        <View
-          className={`p-4 ${isImage ? 'absolute top-0 left-0 right-0 z-10' : ''}`}
-          style={isImage ? { backgroundColor: 'rgba(0,0,0,0.4)' } : undefined}
-        >
-          <PostHeader
-            post={post}
-            isMyPost={isMyPost}
-            isTextOnly={isTextOnly}
-            isImage={isImage}
-            onViewProfile={handleViewProfile}
-            onDelete={handleDelete}
-            onEditPost={onEditPost ? () => onEditPost(post) : undefined}
-            isPreview={isPreview}
-          />
-        </View>
+  // Zero counts are hidden rather than shown as "0". A text-only post's text
+  // is its content, so only a media post has a caption line here.
+  const showCounts = !isStoryVersion && Boolean(likes || reposts);
+  const showCaption = !isTextOnly && Boolean(post.content);
+  const showComments = !isStoryVersion && Boolean(commentsLink);
+  const hasFooter = showCounts || showCaption || showComments;
 
-        {/* Content */}
+  const moreControl = body.truncated ? (
+    <Text
+      style={styles.more}
+      onPress={() => setIsExpanded(true)}
+      accessibilityRole="button"
+      accessibilityLabel="Show more"
+    >
+      {' '}more
+    </Text>
+  ) : null;
+
+  return (
+    <View style={styles.card}>
+      <PostHeader
+        post={post}
+        isMyPost={isMyPost}
+        timeAgo={timeAgo}
+        onViewProfile={handleViewProfile}
+        onDelete={handleDelete}
+        onEditPost={onEditPost ? () => onEditPost(post) : undefined}
+        isPreview={isPreview}
+      />
+
+      {/* Content: the double-tap target */}
+      <Pressable onPress={handleTap} accessibilityHint="Double tap to like">
         {isTextOnly ? (
-          <View className="px-6 pb-4" style={{ minHeight: 200, justifyContent: 'center' }}>
-            <RenderUserContent
-              content={
-                needsTruncation && !isExpanded
-                  ? `${post.content.substring(0, MAX_CHARS)}...`
-                  : post.content
-              }
-              className="text-white text-lg font-medium"
-            />
-            {needsTruncation && !isExpanded && (
-              <Pressable onPress={() => setIsExpanded(true)} className="mt-2">
-                <Text className="text-blue-400 font-semibold">Read more</Text>
-              </Pressable>
-            )}
+          <View style={styles.textPost}>
+            <Text style={styles.textPostBody}>
+              <RenderUserContent content={body.text} />
+              {moreControl}
+            </Text>
           </View>
         ) : (
-          <>
-            {post.media && (
-              <View style={{ aspectRatio, backgroundColor: '#000' }}>
-                <Image
-                  source={{ uri: post.media }}
-                  placeholder={post.media_preview_url ? { uri: post.media_preview_url } : undefined}
-                  style={{ width: '100%', height: '100%' }}
-                  contentFit="contain"
-                  transition={300}
-                />
-              </View>
-            )}
-            {post.content && (
-              <View className="p-4 pt-2">
-                {post.content && (
-                  <RenderUserContent
-                    content={post.content}
-                    className="text-white mb-3"
-                  />
-                )}
-              </View>
-            )}
-          </>
+          post.media && (
+            <View style={[styles.media, { aspectRatio }]}>
+              <Image
+                source={{ uri: post.media }}
+                placeholder={post.media_preview_url ? { uri: post.media_preview_url } : undefined}
+                style={styles.mediaImage}
+                contentFit="contain"
+                transition={300}
+              />
+            </View>
+          )
         )}
 
-        {/* Action Buttons */}
-        {!isStoryVersion && (
-          <View className="flex-row justify-between items-center px-4 pb-3 pt-1">
-            <View className="flex-row items-center" style={{ gap: 12 }}>
-              {/* Like */}
-              <Pressable
-                onPress={handleLike}
-                onLongPress={() => onViewLikers?.(post.id)}
-                disabled={like.isPending}
-                className="flex-row items-center"
-                hitSlop={6}
-              >
-                <HeartIcon liked={liked} color={liked ? '#ef4444' : '#9ca3af'} size={20} />
-                <Text className="text-sm text-gray-400 ml-1">{likesCount}</Text>
-              </Pressable>
-
-              {/* Comment */}
-              <Pressable
-                onPress={() => onViewComments?.(post.id)}
-                className="flex-row items-center"
-                hitSlop={6}
-              >
-                <CommentIcon color="#9ca3af" size={20} />
-                <Text className="text-sm text-gray-400 ml-1">{commentCount}</Text>
-              </Pressable>
-
-              {/* Repost */}
-              <Pressable
-                onPress={handleRepost}
-                onLongPress={() => onViewReposters?.(post.id)}
-                disabled={repost.isPending}
-                className="flex-row items-center"
-                hitSlop={6}
-              >
-                <RepostIcon color={reposted ? '#3b82f6' : '#9ca3af'} size={20} />
-                <Text className="text-sm text-gray-400 ml-1">{repostsCount}</Text>
-              </Pressable>
-            </View>
-
-            <View className="flex-row items-center" style={{ gap: 8 }}>
-              <Text className="text-xs text-gray-500">{timeAgo}</Text>
-              <Pressable onPress={() => save.toggle(post.id)} hitSlop={6}>
-                <BookmarkIcon saved={saved} color={saved ? '#3b82f6' : '#9ca3af'} size={20} />
-              </Pressable>
-              <Pressable onPress={() => onSharePost?.(post)} hitSlop={6}>
-                <SendIcon color="#9ca3af" size={20} />
-              </Pressable>
-            </View>
-          </View>
-        )}
-
-        {/* Double-tap heart overlay */}
+        {/* Double-tap heart burst. Inverse over photos; on a white text post
+            an inverse heart would vanish, so it takes the heart colour. */}
         {showHeart && (
-          <View
-            className="absolute inset-0 justify-center items-center"
-            pointerEvents="none"
-          >
+          <View style={styles.burst} pointerEvents="none">
             <Animated.View style={{ transform: [{ scale: heartScale }], opacity: heartScale }}>
-              <HeartIcon liked color="rgba(255,255,255,0.8)" size={100} />
+              <HeartIcon liked color={isTextOnly ? color.heart : color.inverse} size={96} />
             </Animated.View>
           </View>
         )}
       </Pressable>
+
+      {/* Actions */}
+      {!isStoryVersion && (
+        <View style={styles.actions}>
+          <View style={styles.actionGroup}>
+            <IconButton
+              icon={<HeartIcon liked={liked} size={ACTION_ICON_SIZE} strokeWidth={ACTION_STROKE} />}
+              accessibilityLabel={labels.like}
+              accessibilityHint="Long press to see who liked this"
+              onPress={handleLike}
+              onLongPress={() => onViewLikers?.(post.id)}
+            />
+            <IconButton
+              icon={<CommentIcon color={color.text} size={ACTION_ICON_SIZE} strokeWidth={ACTION_STROKE} />}
+              accessibilityLabel={labels.comment}
+              onPress={() => onViewComments?.(post.id)}
+            />
+            <IconButton
+              icon={
+                <RepostIcon
+                  color={color.text}
+                  size={ACTION_ICON_SIZE}
+                  strokeWidth={reposted ? ACTION_STROKE_ACTIVE : ACTION_STROKE}
+                />
+              }
+              accessibilityLabel={labels.repost}
+              accessibilityHint="Long press to see who reposted this"
+              onPress={handleRepost}
+              onLongPress={() => onViewReposters?.(post.id)}
+            />
+            <IconButton
+              icon={<SendIcon color={color.text} size={ACTION_ICON_SIZE} strokeWidth={ACTION_STROKE} />}
+              accessibilityLabel={labels.share}
+              onPress={() => onSharePost?.(post)}
+            />
+          </View>
+          <IconButton
+            icon={
+              <BookmarkIcon
+                saved={saved}
+                color={color.text}
+                size={ACTION_ICON_SIZE}
+                strokeWidth={ACTION_STROKE}
+              />
+            }
+            accessibilityLabel={labels.save}
+            onPress={() => save.toggle(post.id)}
+          />
+        </View>
+      )}
+
+      {/* Counts, caption, comments */}
+      {hasFooter && (
+        <View style={styles.footer}>
+          {showCounts ? (
+            <Text style={styles.counts}>
+              {likes ? <Text style={styles.likes}>{likes}</Text> : null}
+              {likes && reposts ? ' · ' : null}
+              {reposts}
+            </Text>
+          ) : null}
+          {showCaption ? (
+            <Text style={styles.caption}>
+              <Text style={styles.captionName} onPress={handleViewProfile}>
+                {post.name || post.username}
+              </Text>
+              {' '}
+              <RenderUserContent content={body.text} />
+              {moreControl}
+            </Text>
+          ) : null}
+          {showComments ? (
+            <Pressable
+              onPress={() => onViewComments?.(post.id)}
+              accessibilityRole="button"
+              hitSlop={{ top: 12, bottom: 12 }}
+            >
+              <Text style={styles.commentsLink}>{commentsLink}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      )}
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: color.bg,
+    borderBottomWidth: 1,
+    borderBottomColor: color.border,
+    paddingBottom: space.sm,
+  },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 56,
+    paddingLeft: space.lg,
+    // The ⋯ IconButton brings its own 10pt of inset around the glyph.
+    paddingRight: space.lg - (ICON_BUTTON_SIZE - 20) / 2,
+  },
+  headerText: {
+    flex: 1,
+    marginLeft: space.md,
+    justifyContent: 'center',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  name: {
+    flexShrink: 1,
+    fontFamily: type.bodyBold,
+    fontSize: 15,
+    color: color.text,
+  },
+  verified: {
+    marginLeft: space.xs,
+  },
+  meta: {
+    marginTop: 1,
+    fontFamily: type.body,
+    fontSize: 13,
+    color: color.textMid,
+  },
+
+  // Content
+  textPost: {
+    paddingHorizontal: space.lg,
+    paddingBottom: space.sm,
+  },
+  textPostBody: {
+    fontFamily: type.body,
+    fontSize: 17,
+    lineHeight: 26,
+    color: color.text,
+  },
+  media: {
+    width: '100%',
+    backgroundColor: color.bgPanel,
+  },
+  mediaImage: {
+    width: '100%',
+    height: '100%',
+  },
+  more: {
+    fontFamily: type.bodyMedium,
+    color: color.textMuted,
+  },
+  burst: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Actions
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: ICON_BUTTON_SIZE,
+    paddingHorizontal: ACTION_ROW_INSET,
+  },
+  actionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  // Counts and caption
+  footer: {
+    paddingHorizontal: space.lg,
+    gap: space.xs,
+  },
+  counts: {
+    fontFamily: type.body,
+    fontSize: 14,
+    color: color.textMid,
+  },
+  likes: {
+    fontFamily: type.bodyBold,
+    color: color.text,
+  },
+  caption: {
+    fontFamily: type.body,
+    fontSize: 15,
+    lineHeight: 22,
+    color: color.text,
+  },
+  captionName: {
+    fontFamily: type.bodyBold,
+  },
+  commentsLink: {
+    fontFamily: type.body,
+    fontSize: 14,
+    color: color.textMuted,
+  },
+
+  // Options sheet
+  sheetRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  scrim: {
+    backgroundColor: color.text,
+    opacity: 0.4,
+  },
+  sheet: {
+    backgroundColor: color.bg,
+    borderTopWidth: 1,
+    borderTopColor: color.border,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    paddingTop: space.sm,
+    paddingBottom: space.xxl,
+  },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 56,
+    paddingHorizontal: space.xl,
+  },
+  sheetRowPressed: {
+    backgroundColor: color.bgSub,
+  },
+  sheetRowIcon: {
+    marginRight: space.md,
+  },
+  sheetRowLabel: {
+    flex: 1,
+    fontFamily: type.body,
+    fontSize: 16,
+    color: color.text,
+  },
+  destructive: {
+    color: color.heart,
+  },
+  sheetTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: color.border,
+  },
+  sheetTitle: {
+    marginLeft: space.xs,
+    fontFamily: type.bodyBold,
+    fontSize: 16,
+    color: color.text,
+  },
+  sheetCancel: {
+    marginTop: space.md,
+    marginHorizontal: space.xl,
+  },
+});
 
 export default React.memo(PostCard);
