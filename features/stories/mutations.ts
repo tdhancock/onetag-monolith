@@ -40,7 +40,7 @@ export const uploadStoryOptions = (queryClient: QueryClient, author: StoryAuthor
     if (!author?.id) throw new Error('You must be signed in.');
 
     const file = input.imageUri ? await uriToUploadBlob(input.imageUri) : null;
-    return uploadStory(file, input.caption ?? null, author.id);
+    return uploadStory(file, input.caption ?? null, author.id, file ? null : input.background ?? null);
   },
 
   onMutate: async (input: UploadStoryInput): Promise<UploadContext> => {
@@ -58,6 +58,7 @@ export const uploadStoryOptions = (queryClient: QueryClient, author: StoryAuthor
       timestamp: new Date().toISOString(),
       imageUrl: input.imageUri,
       content: input.caption ?? undefined,
+      background: input.imageUri ? null : input.background ?? null,
     };
 
     // Never creates the list — writing one would mark it fresh and stop the

@@ -65,17 +65,25 @@ export const type = {
 // Backgrounds for text OneSnaps. These are content rather than chrome — a
 // text OneSnap is drawn on one — which is why they sit apart from `color` and
 // are allowed to be colourful. Each pair runs top to bottom.
-export const oneSnapGradients = [
-  ['#1e3a5f', '#0f172a'],
-  ['#4a1942', '#1a0a2e'],
-  ['#1a3c34', '#0a1628'],
-  ['#3d1f00', '#1a0e00'],
-  ['#2d1b4e', '#0e0a1a'],
-  ['#5b2c6f', '#1a1a2e'],
-  ['#0e4d44', '#041c2c'],
-] as const;
+//
+// The keys are stored with every text OneSnap (`stories.background`, ONE-78),
+// so they are permanent: add new ones freely, but never rename or reuse a key.
+// Order is only the picker's order, and is free to change.
+export const oneSnapGradients = {
+  navy: ['#1e3a5f', '#0f172a'],
+  plum: ['#4a1942', '#1a0a2e'],
+  pine: ['#1a3c34', '#0a1628'],
+  ember: ['#3d1f00', '#1a0e00'],
+  violet: ['#2d1b4e', '#0e0a1a'],
+  orchid: ['#5b2c6f', '#1a1a2e'],
+  teal: ['#0e4d44', '#041c2c'],
+} as const;
 
-export type OneSnapGradient = (typeof oneSnapGradients)[number];
+export type OneSnapGradientKey = keyof typeof oneSnapGradients;
+export type OneSnapGradient = (typeof oneSnapGradients)[OneSnapGradientKey];
+
+/** The gradients in picker order. */
+export const oneSnapGradientKeys = Object.keys(oneSnapGradients) as OneSnapGradientKey[];
 
 /**
  * A six-digit token colour at partial opacity, as an rgba() string — for the

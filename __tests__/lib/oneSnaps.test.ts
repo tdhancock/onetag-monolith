@@ -3,27 +3,67 @@
 // OneSnap drawing rules — lib/oneSnaps, plus the withAlpha token helper the
 // OneSnap screens lean on for their overlays.
 
-import { gradientFor, latestOneSnap } from '../../lib/oneSnaps';
-import { color, oneSnapGradients, withAlpha } from '../../theme/tokens';
+import { gradientFor, isOneSnapGradientKey, latestOneSnap } from '../../lib/oneSnaps';
+import { color, oneSnapGradientKeys, oneSnapGradients, withAlpha } from '../../theme/tokens';
 
-describe('gradientFor', () => {
+const allGradients = Object.values(oneSnapGradients);
+const unset = (id: string) => ({ id, background: null });
+
+describe('gradientFor — the stored choice (ONE-78)', () => {
+  it('draws the gradient the author picked', () => {
+    // The third gradient, as in the acceptance criterion.
+    const third = oneSnapGradientKeys[2];
+    expect(gradientFor({ id: 'any', background: third })).toBe(oneSnapGradients[third]);
+    expect(gradientFor({ id: 'other', background: 'plum' })).toBe(oneSnapGradients.plum);
+  });
+
+  it('falls back to the id for a key this build does not know', () => {
+    expect(gradientFor({ id: 'story-abc', background: 'sunset' })).toBe(gradientFor(unset('story-abc')));
+  });
+
+  it('recognises only its own keys', () => {
+    expect(isOneSnapGradientKey('navy')).toBe(true);
+    expect(isOneSnapGradientKey('sunset')).toBe(false);
+    expect(isOneSnapGradientKey('toString')).toBe(false);
+    expect(isOneSnapGradientKey(null)).toBe(false);
+  });
+});
+
+describe('gradientFor — OneSnaps posted before a choice was stored', () => {
   it('always gives the same OneSnap the same gradient', () => {
-    expect(gradientFor('story-abc')).toBe(gradientFor('story-abc'));
+    expect(gradientFor(unset('story-abc'))).toBe(gradientFor(unset('story-abc')));
+    expect(gradientFor({ id: 'story-abc' })).toBe(gradientFor(unset('story-abc')));
   });
 
   it('only ever picks from the token gradients', () => {
     for (let i = 0; i < 200; i++) {
-      expect(oneSnapGradients).toContain(gradientFor(`story-${i}`));
+      expect(allGradients).toContain(gradientFor(unset(`story-${i}`)));
     }
   });
 
   it('spreads OneSnaps across the gradients rather than piling onto one', () => {
-    const used = new Set(Array.from({ length: 200 }, (_, i) => gradientFor(`id-${i}`)));
-    expect(used.size).toBe(oneSnapGradients.length);
+    const used = new Set(Array.from({ length: 200 }, (_, i) => gradientFor(unset(`id-${i}`))));
+    expect(used.size).toBe(oneSnapGradientKeys.length);
   });
 
   it('copes with an empty id', () => {
-    expect(oneSnapGradients).toContain(gradientFor(''));
+    expect(allGradients).toContain(gradientFor(unset('')));
+  });
+});
+
+describe('oneSnapGradients', () => {
+  it('keys are key-shaped, as the stories.background check requires', () => {
+    for (const key of oneSnapGradientKeys) {
+      expect(key).toMatch(/^[a-z][a-z0-9-]{0,31}$/);
+    }
+  });
+
+  it('keeps every key the app has ever stored', () => {
+    // Keys are written to the database with each text OneSnap. Removing or
+    // renaming one would repaint those OneSnaps with the fallback.
+    expect(oneSnapGradientKeys).toEqual(
+      expect.arrayContaining(['navy', 'plum', 'pine', 'ember', 'violet', 'orchid', 'teal']),
+    );
   });
 });
 

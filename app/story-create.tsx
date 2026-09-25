@@ -29,7 +29,16 @@ import {
   XIcon,
   ArrowLeftIcon,
 } from '../components/native/Icons';
-import { color, oneSnapGradients, radius, space, type, withAlpha } from '../theme/tokens';
+import {
+  color,
+  oneSnapGradientKeys,
+  oneSnapGradients,
+  radius,
+  space,
+  type,
+  withAlpha,
+  type OneSnapGradientKey,
+} from '../theme/tokens';
 
 type ViewState = 'options' | 'camera' | 'preview-image' | 'preview-text';
 
@@ -72,10 +81,11 @@ export default function StoryCreateScreen() {
 
   // Text story
   const [textContent, setTextContent] = useState('');
-  const [gradientIndex, setGradientIndex] = useState(0);
+  // Stored with the OneSnap as `background`, so readers see what was picked.
+  const [gradientKey, setGradientKey] = useState<OneSnapGradientKey>(oneSnapGradientKeys[0]);
 
   const handleUpload = useCallback(
-    async (options: { imageUri?: string; text?: string }) => {
+    async (options: { imageUri?: string; text?: string; background?: OneSnapGradientKey }) => {
       if (!profileId) return;
       setIsUploading(true);
 
@@ -88,8 +98,8 @@ export default function StoryCreateScreen() {
             caption: caption.trim() || null,
           });
         } else if (options.text) {
-          // Text-only story — skip storage upload and save only caption.
-          await uploadStory.mutateAsync({ caption: options.text });
+          // Text-only story: no media, just the words and their gradient.
+          await uploadStory.mutateAsync({ caption: options.text, background: options.background });
         }
       } catch (error) {
         console.error('Story upload failed', error);
@@ -301,7 +311,7 @@ export default function StoryCreateScreen() {
 
   // ─── Text Story Preview ────────────────────────
   if (view === 'preview-text') {
-    const currentGradient = oneSnapGradients[gradientIndex % oneSnapGradients.length];
+    const currentGradient = oneSnapGradients[gradientKey];
     const canShare = !isUploading && Boolean(textContent.trim());
 
     return (
@@ -339,20 +349,20 @@ export default function StoryCreateScreen() {
 
           {/* Gradient picker */}
           <View style={styles.swatches}>
-            {oneSnapGradients.map((colors, i) => (
+            {oneSnapGradientKeys.map((key, i) => (
               <Pressable
-                key={i}
+                key={key}
                 onPress={() => {
                   triggerHapticFeedback('light');
-                  setGradientIndex(i);
+                  setGradientKey(key);
                 }}
                 hitSlop={6}
                 accessibilityRole="button"
                 accessibilityLabel={`Background ${i + 1}`}
-                accessibilityState={{ selected: i === gradientIndex }}
-                style={[styles.swatch, i === gradientIndex && styles.swatchSelected]}
+                accessibilityState={{ selected: key === gradientKey }}
+                style={[styles.swatch, key === gradientKey && styles.swatchSelected]}
               >
-                <LinearGradient colors={[...colors]} style={styles.fill} />
+                <LinearGradient colors={[...oneSnapGradients[key]]} style={styles.fill} />
               </Pressable>
             ))}
           </View>
@@ -367,7 +377,7 @@ export default function StoryCreateScreen() {
                   addToast('Write something first!', 'error');
                   return;
                 }
-                handleUpload({ text: cleanHtml(textContent.trim()) });
+                handleUpload({ text: cleanHtml(textContent.trim()), background: gradientKey });
               }}
             >
               {isUploading ? 'Sharing…' : 'Share OneSnap'}

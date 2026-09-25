@@ -83,7 +83,7 @@ const CardFace: React.FC<{ story?: Story; dimmed: boolean }> = ({ story, dimmed 
   }
 
   return (
-    <LinearGradient colors={[...gradientFor(story.id)]} style={[styles.textFace, { opacity }]}>
+    <LinearGradient colors={[...gradientFor(story)]} style={[styles.textFace, { opacity }]}>
       <Text style={styles.textFaceCopy} numberOfLines={4}>
         {story.content}
       </Text>

@@ -71,7 +71,7 @@ import StoryReel, { REEL_CARD_WIDTH, REEL_CARD_HEIGHT, VIEWED_OPACITY } from '..
 import type { StoryGroup } from '../../components/native/StoryReel';
 import StoryCreator from '../../components/native/StoryCreator';
 import { gradientFor } from '../../lib/oneSnaps';
-import { color } from '../../theme/tokens';
+import { color, oneSnapGradientKeys, oneSnapGradients } from '../../theme/tokens';
 import type { Story } from '../../types';
 
 // ─── 2. Helpers ─────────────────────────────────────────────────────────
@@ -172,8 +172,19 @@ describe('StoryReel — cards', () => {
       <StoryReel storyGroups={[{ username: 'cy', avatar: null, stories: [text] }]} allStories={[text]} onViewStories={jest.fn()} />,
     );
     const face = el.querySelector('[data-gradient]') as HTMLElement;
-    expect(face.getAttribute('data-gradient')).toBe(gradientFor('t1').join(','));
+    expect(face.getAttribute('data-gradient')).toBe(gradientFor(text).join(','));
     expect(face.textContent).toBe('hello');
+  });
+
+  it('draws a text OneSnap on the gradient its author picked', () => {
+    mockIsStoryViewed.mockReturnValue(false);
+    const third = oneSnapGradientKeys[2];
+    const text = story('t2', 'dee', { imageUrl: undefined, content: 'picked', background: third });
+    const el = mount(
+      <StoryReel storyGroups={[{ username: 'dee', avatar: null, stories: [text] }]} allStories={[text]} onViewStories={jest.fn()} />,
+    );
+    const face = el.querySelector('[data-gradient]') as HTMLElement;
+    expect(face.getAttribute('data-gradient')).toBe(oneSnapGradients[third].join(','));
   });
 
   it('opens the viewer at that person\'s first OneSnap', () => {

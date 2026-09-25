@@ -3,24 +3,35 @@
 // Kept apart from the components so the rules — which OneSnap a reel card
 // shows, which gradient a text OneSnap gets — are tested without a renderer.
 
-import { oneSnapGradients, type OneSnapGradient } from '../theme/tokens';
+import {
+  oneSnapGradientKeys,
+  oneSnapGradients,
+  type OneSnapGradient,
+  type OneSnapGradientKey,
+} from '../theme/tokens';
 import type { Story } from '../types';
 
+/** Whether a stored background is one this build knows how to draw. */
+export const isOneSnapGradientKey = (key: unknown): key is OneSnapGradientKey =>
+  typeof key === 'string' && Object.prototype.hasOwnProperty.call(oneSnapGradients, key);
+
 /**
- * The gradient a text OneSnap is drawn on.
+ * The gradient a text OneSnap is drawn on: the one its author picked, stored
+ * as `background` since ONE-78.
  *
- * The gradient picked at creation is not stored (only the text is), so the
- * choice is derived from the OneSnap's id. That keeps it stable: the reel card
- * and the viewer agree, and a OneSnap keeps its colour however the reel is
- * ordered. The viewer used to pick by position, which changed a OneSnap's
- * colour whenever one before it expired.
+ * A OneSnap posted before then carries none, and one from a newer build may
+ * carry a key this build does not know. Either way the gradient is derived
+ * from the OneSnap's id instead, so it is stable — the reel card and the
+ * viewer agree, whatever order the reel is in.
  */
-export const gradientFor = (storyId: string): OneSnapGradient => {
+export const gradientFor = (story: Pick<Story, 'id' | 'background'>): OneSnapGradient => {
+  if (isOneSnapGradientKey(story.background)) return oneSnapGradients[story.background];
+
   let hash = 0;
-  for (let i = 0; i < storyId.length; i++) {
-    hash = (hash * 31 + storyId.charCodeAt(i)) | 0;
+  for (let i = 0; i < story.id.length; i++) {
+    hash = (hash * 31 + story.id.charCodeAt(i)) | 0;
   }
-  return oneSnapGradients[Math.abs(hash) % oneSnapGradients.length];
+  return oneSnapGradients[oneSnapGradientKeys[Math.abs(hash) % oneSnapGradientKeys.length]];
 };
 
 /** The most recent OneSnap in a group — the one its reel card shows. */

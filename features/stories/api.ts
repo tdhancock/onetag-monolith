@@ -28,6 +28,15 @@ export const isLive = (story: Pick<Story, 'timestamp'>, now: number = Date.now()
 
 const STORY_SELECT = '*, profiles!user_id(username, avatar_url)';
 
+/**
+ * Before ONE-78 a text story could not be stored without media, so it was
+ * stored as an SVG picture of itself. Those rows are text stories: the words
+ * are in `caption`, and the picture is not drawable on native anyway (its text
+ * sits in a <foreignObject>). They age out within 24 hours of the migration.
+ */
+const isTextStandIn = (mediaUrl: unknown): boolean =>
+  typeof mediaUrl === 'string' && mediaUrl.startsWith('data:image/svg+xml');
+
 /** Map a joined story row onto the `Story` shape the UI renders. */
 export const mapStoryRow = (s: any): Story => ({
   id: s.id,
@@ -35,8 +44,9 @@ export const mapStoryRow = (s: any): Story => ({
   username: s.profiles?.username,
   avatar: s.profiles?.avatar_url ?? null,
   timestamp: s.created_at,
-  imageUrl: s.media_url,
-  content: s.caption,
+  imageUrl: s.media_url && !isTextStandIn(s.media_url) ? s.media_url : undefined,
+  content: s.caption ?? undefined,
+  background: s.background ?? null,
 });
 
 /**
@@ -115,7 +125,7 @@ export const getStoryById = async (storyId: string, viewerId: ProfileId): Promis
 
 /**
  * Upload a story as `authorId`: an image with an optional caption, or text on
- * its own.
+ * its own on the gradient `background`.
  *
  * The media path is built from the auth user — storage RLS keys on
  * auth.uid() — and the row is attributed to the author profile. It used to
@@ -126,6 +136,7 @@ export const uploadStory = async (
   file: File | Blob | null,
   caption: string | null,
   authorId: ProfileId,
+  background: string | null = null,
 ): Promise<Story> => {
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
@@ -160,20 +171,19 @@ export const uploadStory = async (
     }
   }
 
-  const insertStory = async (url: string | null) =>
-    supabase
-      .from('stories')
-      .insert({ user_id: authorId, media_url: url, caption })
-      .select(STORY_SELECT)
-      .single();
-
-  let { data: storyData, error: insertError } = await insertStory(mediaUrl);
-
-  if (insertError && !file && insertError.code === '23502') {
-    const retry = await insertStory(buildTextStoryDataUri(caption || ''));
-    storyData = retry.data;
-    insertError = retry.error;
-  }
+  // A text story is a row with no media: its words and its gradient (ONE-78).
+  // It used to fail on media_url's old NOT NULL and retry as an SVG picture of
+  // itself; the column is nullable now, so it goes in as what it is.
+  const { data: storyData, error: insertError } = await supabase
+    .from('stories')
+    .insert({
+      user_id: authorId,
+      media_url: mediaUrl,
+      caption,
+      background: file ? null : background,
+    })
+    .select(STORY_SELECT)
+    .single();
 
   if (insertError) throw insertError;
   return mapStoryRow(storyData);

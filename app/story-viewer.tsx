@@ -357,7 +357,7 @@ export default function StoryViewerScreen() {
       <View style={styles.fill} {...panResponder.panHandlers}>
         {/* OneSnap content */}
         {isTextStory ? (
-          <LinearGradient colors={[...gradientFor(currentStory.id)]} style={styles.textStory}>
+          <LinearGradient colors={[...gradientFor(currentStory)]} style={styles.textStory}>
             <Text style={styles.textStoryCopy}>{currentStory.content}</Text>
           </LinearGradient>
         ) : (

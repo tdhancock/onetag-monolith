@@ -133,13 +133,40 @@ describe('uploading a story', () => {
     expect(idsOf(client, MINE)).toEqual(['old']);
   });
 
-  it('sends a text story without a file', async () => {
+  it('sends a text story without a file, with its background', async () => {
     const client = newClient();
     mockUploadStory.mockResolvedValue(story('s'));
 
-    await run(client, uploadStoryOptions(client, ME), { caption: 'hello' });
+    await run(client, uploadStoryOptions(client, ME), { caption: 'hello', background: 'plum' });
 
-    expect(mockUploadStory).toHaveBeenCalledWith(null, 'hello', ME.id);
+    expect(mockUploadStory).toHaveBeenCalledWith(null, 'hello', ME.id, 'plum');
+  });
+
+  it('sends no background with an image, even if one is given', async () => {
+    const client = newClient();
+    mockUploadStory.mockResolvedValue(story('s'));
+
+    await run(client, uploadStoryOptions(client, ME), { imageUri: 'file:///photo.jpg', background: 'plum' });
+
+    expect(mockUploadStory).toHaveBeenCalledWith({ type: 'image/jpeg' }, null, ME.id, null);
+  });
+
+  it('shows the optimistic text story on its chosen background', async () => {
+    const client = newClient();
+    client.setQueryData(MINE, []);
+    const server = deferred<Story>();
+    mockUploadStory.mockReturnValue(server.promise);
+
+    const observer = new MutationObserver(client, uploadStoryOptions(client, ME) as never);
+    const uploading = observer.mutate({ caption: 'hello', background: 'teal' } as never);
+    await flush();
+
+    const optimistic = client.getQueryData<Story[]>(MINE)![0];
+    expect(optimistic.background).toBe('teal');
+    expect(optimistic.imageUrl).toBeUndefined();
+
+    server.resolve(story('server-1', { userId: ME.id }));
+    await uploading;
   });
 
   it('does not create "Your story" before it has loaded', async () => {
