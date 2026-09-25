@@ -33,3 +33,6 @@ export { default as Skeleton } from './Skeleton';
 export type { SkeletonProps } from './Skeleton';
 
 export { useReducedMotion } from './useReducedMotion';
+
+export { default as Sheet, SheetRow, SHEET_ROW_HEIGHT } from './Sheet';
+export type { SheetProps, SheetRowProps } from './Sheet';

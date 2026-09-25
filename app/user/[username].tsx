@@ -1,87 +1,30 @@
-
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  FlatList,
-  RefreshControl,
-  ActivityIndicator,
-  Alert,
-  Modal,
-  Dimensions,
-} from 'react-native';
-import { Image } from 'expo-image';
+import { FlatList, RefreshControl, Alert, StyleSheet } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../store/AppContext.native';
 import { useFollowState, useToggleFollow, useFollowCountsQuery, profileKeys, useCurrentProfile } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
-import {
-  getUserProfile,
-  getUserPosts,
-  getUserReposts,
-  getFollowerCount,
-  getFollowingCount,
-} from '../../features/profiles';
+import { getUserProfile, getUserPosts, getUserReposts } from '../../features/profiles';
 import { setUserVerified, useIsAdmin } from '../../features/admin';
 import { useAuthUserId } from '../../features/auth';
 import { reportUser } from '../../features/moderation';
-import { supabase } from '../../services/supabase.native';
-import UserAvatar from '../../components/native/UserAvatar';
-import RenderUserContent from '../../components/native/RenderUserContent';
-import { VerifiedIcon, BlockIcon, LockClosedIcon } from '../../components/native/Icons';
-import { isProfileLocked } from '../../lib/screens/profile';
-import { color as tokenColor } from '../../theme/tokens';
-import PostSkeleton from '../../components/native/PostSkeleton';
+import { REPORT_REASONS } from '../../services/reportReasons';
+import ProfileHeader, { ProfileHeaderSkeleton } from '../../components/native/ProfileHeader';
+import ProfileTabs from '../../components/native/ProfileTabs';
+import { GridTile, ProfileGridSkeleton } from '../../components/native/ProfileGrid';
+import { Button, EmptyState, IconButton, Sheet, SheetRow } from '../../components/native/ui';
+import { BlockIcon, LockClosedIcon, DotsHorizontalIcon, ReportIcon, VerifiedIcon } from '../../components/native/Icons';
+import {
+  isProfileLocked,
+  profileEmptyState,
+  profileTabsFor,
+  PROFILE_GRID_COLUMNS,
+  type ProfileTab,
+} from '../../lib/screens/profile';
+import { color } from '../../theme/tokens';
 import type { Post, UserProfile as UserProfileType } from '../../types';
-
-const GRID_GAP = 2;
-const NUM_COLUMNS = 3;
-const screenWidth = Dimensions.get('window').width;
-const tileSize = (screenWidth - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
-
-type TabType = 'posts' | 'reposts';
-
-const GridTile: React.FC<{ post: Post; onPress: () => void }> = React.memo(({ post, onPress }) => {
-  const isTextPost = post.media_type === 'text' || !post.media;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{ width: tileSize, height: tileSize, marginRight: GRID_GAP, marginBottom: GRID_GAP }}
-    >
-      {isTextPost ? (
-        <View className="flex-1 p-2 justify-center bg-gray-800">
-          <Text className="text-white text-xs" numberOfLines={6}>
-            {post.content}
-          </Text>
-        </View>
-      ) : (
-        <Image
-          source={{ uri: post.media_preview_url || post.media }}
-          style={{ width: '100%', height: '100%' }}
-          contentFit="cover"
-          transition={200}
-        />
-      )}
-    </Pressable>
-  );
-});
-
-// Report-reason list is shared with the report-flow test suite.
-// See `services/reportReasons.ts` for the full contract.
-const REPORT_REASONS = [
-  "It's spam",
-  'Hate speech or symbols',
-  'Harassment or bullying',
-  'Pretending to be someone else',
-  'False information',
-  'Nudity or sexual activity',
-  "I just don't like their content",
-];
 
 export default function UserProfileScreen() {
   const { username } = useLocalSearchParams<{ username: string }>();
@@ -107,9 +50,10 @@ export default function UserProfileScreen() {
   const [reposts, setReposts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('posts');
+  const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [menuVisible, setMenuVisible] = useState(false);
-  const [reportMenuVisible, setReportMenuVisible] = useState(false);
+  // The report reasons are the menu's second step, in the same sheet.
+  const [showReport, setShowReport] = useState(false);
 
   const { data: followCounts } = useFollowCountsQuery(profile?.id || undefined);
   const isFollowing = isUserFollowing(username || '');
@@ -212,7 +156,7 @@ export default function UserProfileScreen() {
   };
 
   const handleReport = async (reason: string) => {
-    setReportMenuVisible(false);
+    setShowReport(false);
     setMenuVisible(false);
     if (!profile?.id) {
       addToast('Unable to report — user not loaded.', 'error');
@@ -228,6 +172,7 @@ export default function UserProfileScreen() {
   };
 
   const handleToggleVerify = async () => {
+    setMenuVisible(false);
     if (!profile) return;
     try {
       setProfile(prev => prev ? { ...prev, isVerified: !prev.isVerified } : null);
@@ -244,276 +189,188 @@ export default function UserProfileScreen() {
   }, [router]);
 
   const currentData = activeTab === 'posts' ? posts : reposts;
-  const renderItem = ({ item }: { item: Post }) => (
-    <GridTile post={item} onPress={() => handlePostPress(item)} />
-  );
-  const emptyMessage = activeTab === 'posts' ? 'No posts yet.' : 'No reposts yet.';
+  const renderItem = useCallback(({ item, index }: { item: Post; index: number }) => (
+    <GridTile post={item} index={index} onPress={() => handlePostPress(item)} />
+  ), [handlePostPress]);
 
-  // Loading state
+  const refreshControl = (
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      tintColor={color.textMuted}
+      colors={[color.textMuted]}
+    />
+  );
+
+  const closeMenu = () => {
+    setMenuVisible(false);
+    setShowReport(false);
+  };
+
+  // Loading: the header's and the grid's shapes, under the handle.
   if (loading && !profile) {
     return (
-      <SafeAreaView className="flex-1 bg-black">
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: `@${username}`,
-            headerStyle: { backgroundColor: '#000' },
-            headerTintColor: '#fff',
-            headerTitleStyle: { fontWeight: 'bold' },
-          }}
-        />
-        <View className="flex-1 justify-center items-center">
-          <ActivityIndicator color="#3b82f6" size="large" />
-        </View>
+      <SafeAreaView style={styles.screen} edges={['bottom']}>
+        <Stack.Screen options={{ headerShown: true, title: `@${username}` }} />
+        <ProfileHeaderSkeleton />
+        <ProfileGridSkeleton />
       </SafeAreaView>
     );
   }
 
-  // Not found
   if (!profile) {
     return (
-      <SafeAreaView className="flex-1 bg-black">
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Profile not found',
-            headerStyle: { backgroundColor: '#000' },
-            headerTintColor: '#fff',
-            headerTitleStyle: { fontWeight: 'bold' },
-          }}
+      <SafeAreaView style={styles.screen} edges={['bottom']}>
+        <Stack.Screen options={{ headerShown: true, title: 'Profile' }} />
+        <EmptyState
+          title="This profile doesn't exist"
+          body={`There's no one called @${username}.`}
+          action={{ label: 'Back', onPress: () => router.back() }}
         />
-        <View className="flex-1 justify-center items-center">
-          <Text className="text-gray-400 text-lg">This user does not exist.</Text>
-        </View>
       </SafeAreaView>
     );
   }
 
-  const ProfileHeader = () => (
-    <View>
-      {/* Stats */}
-      <View className="p-4">
-        <View className="flex-row items-center">
-          <UserAvatar username={profile.username} avatarUrl={profile.profilePicture} size={80} />
-          <View className="flex-1 flex-row justify-around ml-4">
-            <View className="items-center">
-              <Text className="text-white font-bold text-lg">{posts.length}</Text>
-              <Text className="text-gray-500 text-sm">Posts</Text>
-            </View>
-            <Pressable
-              onPress={() => profile?.id && router.push({ pathname: '/user-list', params: { type: 'followers', userId: profile.id, title: 'Followers' } })}
-              className="items-center"
-            >
-              <Text className="text-white font-bold text-lg">{followCounts?.followers ?? 0}</Text>
-              <Text className="text-gray-500 text-sm">Followers</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => profile?.id && router.push({ pathname: '/user-list', params: { type: 'following', userId: profile.id, title: 'Following' } })}
-              className="items-center"
-            >
-              <Text className="text-white font-bold text-lg">{followCounts?.following ?? 0}</Text>
-              <Text className="text-gray-500 text-sm">Following</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        {/* Bio */}
-        <View className="mt-4">
-          <View className="flex-row items-center" style={{ gap: 4 }}>
-            <Text className="text-white text-xl font-bold">@{profile.username}</Text>
-            {profile.isVerified && <VerifiedIcon color="#3b82f6" size={18} />}
-          </View>
-          <Text className="text-gray-400">{profile.name}</Text>
-          {profile.bio ? (
-            <View className="mt-2">
-              <RenderUserContent content={profile.bio} className="text-white" />
-            </View>
-          ) : null}
-        </View>
-
-        {/* Admin verify */}
-        {isAdmin && !isMyProfile && (
-          <Pressable
-            onPress={handleToggleVerify}
-            className={`mt-3 px-4 py-1.5 rounded self-start ${profile.isVerified ? 'bg-red-600' : 'bg-blue-600'}`}
-          >
-            <Text className="text-white text-sm font-semibold">
-              {profile.isVerified ? 'Unverify Account' : 'Verify Account'}
-            </Text>
-          </Pressable>
-        )}
-
-        {/* Action buttons */}
-        {!isMyProfile && (
-          <View className="mt-4 flex-row" style={{ gap: 8 }}>
-            {isBlocked ? (
-              <Pressable
-                onPress={handleBlockToggle}
-                className="flex-1 bg-white py-2 rounded-full items-center"
-              >
-                <Text className="text-black font-semibold">Unblock</Text>
-              </Pressable>
-            ) : (
-              <>
-                <Pressable
-                  onPress={() => { void handleToggleFollow(); }}
-                  disabled={follow.isPending}
-                  className={`flex-1 py-2 rounded-full items-center ${isFollowing ? 'border border-gray-700' : 'bg-blue-600'} ${follow.isPending ? 'opacity-60' : ''}`}
-                >
-                  <Text className="text-white font-semibold">
-                    {follow.isPending ? '...' : (isFollowing ? 'Unfollow' : 'Follow')}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => router.push(`/messages?chatWith=${username}`)}
-                  className="flex-1 bg-gray-800 py-2 rounded-full items-center"
-                >
-                  <Text className="text-white font-semibold">Message</Text>
-                </Pressable>
-              </>
-            )}
-          </View>
-        )}
-      </View>
-
-      {/* Blocked state */}
-      {isBlocked ? (
-        <View className="py-10 items-center">
-          <BlockIcon color="#4b5563" size={64} />
-          <Text className="mt-4 text-lg font-bold text-gray-400">
-            You have blocked @{username}
-          </Text>
-          <Text className="mt-1 text-sm text-gray-600">
-            They can't see your posts or find your profile.
-          </Text>
-        </View>
-      ) : isLocked ? (
-        <View className="py-10 items-center px-8 border-t border-gray-800">
-          <LockClosedIcon color={tokenColor.textMuted} size={48} />
-          <Text className="mt-4 text-lg font-bold text-gray-300">This account is private</Text>
-          <Text className="mt-1 text-sm text-gray-500 text-center">
-            Follow @{username} to see their posts.
-          </Text>
-        </View>
-      ) : (
-        /* Tabs */
-        <View className="flex-row border-b border-gray-800">
-          {(['posts', 'reposts'] as TabType[]).map(tab => (
-            <Pressable
-              key={tab}
-              onPress={() => setActiveTab(tab)}
-              className={`flex-1 py-3 items-center ${activeTab === tab ? 'border-b-2 border-white' : ''}`}
-            >
-              <Text className={`font-semibold capitalize ${activeTab === tab ? 'text-white' : 'text-gray-500'}`}>
-                {tab}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
-    </View>
+  const actions = isMyProfile ? null : isBlocked ? (
+    <Button variant="outline" size="sm" fullWidth onPress={handleBlockToggle}>
+      Unblock
+    </Button>
+  ) : (
+    <>
+      <Button
+        variant={isFollowing ? 'outline' : 'primary'}
+        size="sm"
+        onPress={handleToggleFollow}
+        disabled={follow.isPending}
+        style={styles.action}
+      >
+        {isFollowing ? 'Following' : 'Follow'}
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onPress={() => router.push(`/messages?chatWith=${username}`)}
+        style={styles.action}
+      >
+        Message
+      </Button>
+    </>
   );
 
+  const header = (
+    <>
+      <ProfileHeader
+        profile={profile}
+        stats={{ posts: posts.length, followers: followCounts?.followers, following: followCounts?.following }}
+        onPressFollowers={() => router.push({ pathname: '/user-list', params: { type: 'followers', userId: profile.id, title: 'Followers' } })}
+        onPressFollowing={() => router.push({ pathname: '/user-list', params: { type: 'following', userId: profile.id, title: 'Following' } })}
+        actions={actions}
+      />
+      {/* Blocked and private profiles show why there is nothing to see, in
+          place of the tabs and the grid. */}
+      {isBlocked ? (
+        <EmptyState
+          icon={<BlockIcon color={color.textMuted} size={40} strokeWidth={1.6} />}
+          title={`You blocked @${username}`}
+          body="They can't see your posts or find your profile."
+        />
+      ) : isLocked ? (
+        <EmptyState
+          icon={<LockClosedIcon color={color.textMuted} size={40} strokeWidth={1.6} />}
+          title="This account is private"
+          body={`Follow @${username} to see their posts.`}
+        />
+      ) : (
+        <ProfileTabs tabs={profileTabsFor(false)} selected={activeTab} onSelect={setActiveTab} />
+      )}
+    </>
+  );
+
+  const empty = profileEmptyState(activeTab, false);
+
   return (
-    <SafeAreaView className="flex-1 bg-black">
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
       <Stack.Screen
         options={{
           headerShown: true,
           title: `@${username}`,
-          headerStyle: { backgroundColor: '#000' },
-          headerTintColor: '#fff',
-          headerTitleStyle: { fontWeight: 'bold' },
           headerRight: () =>
             !isMyProfile ? (
-              <Pressable onPress={() => setMenuVisible(true)} className="p-2">
-                <Text className="text-white text-lg">...</Text>
-              </Pressable>
+              <IconButton
+                icon={<DotsHorizontalIcon color={color.text} size={20} />}
+                accessibilityLabel="Profile options"
+                onPress={() => setMenuVisible(true)}
+              />
             ) : null,
         }}
       />
 
-      {isBlocked || isLocked ? (
-        <FlatList
-          data={[]}
-          renderItem={() => null}
-          ListHeaderComponent={ProfileHeader}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3b82f6" />
-          }
-          contentContainerStyle={{ flexGrow: 1 }}
-        />
-      ) : (
-        <FlatList
-          data={currentData}
-          renderItem={renderItem}
-          keyExtractor={item => item.id}
-          numColumns={NUM_COLUMNS}
-          ListHeaderComponent={ProfileHeader}
-          ListEmptyComponent={
-            loading ? (
-              <View className="py-4">
-                <PostSkeleton />
-                <PostSkeleton />
-              </View>
-            ) : (
-              <View className="py-20 items-center">
-                <Text className="text-gray-500 text-lg">{emptyMessage}</Text>
-              </View>
-            )
-          }
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3b82f6" />
-          }
-          contentContainerStyle={{ flexGrow: 1 }}
-        />
-      )}
+      <FlatList
+        data={isBlocked || isLocked ? [] : currentData}
+        renderItem={renderItem}
+        keyExtractor={item => item.id}
+        numColumns={PROFILE_GRID_COLUMNS}
+        ListHeaderComponent={header}
+        ListEmptyComponent={
+          isBlocked || isLocked ? null : loading ? (
+            <ProfileGridSkeleton />
+          ) : (
+            <EmptyState title={empty.title} body={empty.body} />
+          )
+        }
+        refreshControl={refreshControl}
+        contentContainerStyle={styles.list}
+      />
 
-      {/* Options Menu Modal */}
-      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
-        <Pressable className="flex-1 bg-black/60 justify-end" onPress={() => setMenuVisible(false)}>
-          <View className="bg-gray-900 rounded-t-2xl border-t border-gray-800 pb-8">
-            <View className="items-center py-3">
-              <View className="w-10 h-1 bg-gray-700 rounded-full" />
-            </View>
-
-            <Pressable
-              onPress={() => { setMenuVisible(false); setReportMenuVisible(true); }}
-              className="flex-row items-center px-6 py-4 border-b border-gray-800"
-            >
-              <Text className="text-red-400 text-base font-semibold">Report User</Text>
-            </Pressable>
-
-            <Pressable onPress={handleBlockToggle} className="flex-row items-center px-6 py-4">
-              <Text className={`text-base font-semibold ${isBlocked ? 'text-white' : 'text-red-400'}`}>
-                {isBlocked ? 'Unblock' : 'Block'}
-              </Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
-
-      {/* Report Reason Modal */}
-      <Modal visible={reportMenuVisible} transparent animationType="slide" onRequestClose={() => setReportMenuVisible(false)}>
-        <Pressable className="flex-1 bg-black/60 justify-end" onPress={() => setReportMenuVisible(false)}>
-          <View className="bg-gray-900 rounded-t-2xl border-t border-gray-800 pb-8 max-h-[60%]">
-            <View className="items-center py-3">
-              <View className="w-10 h-1 bg-gray-700 rounded-full" />
-            </View>
-            <Text className="text-white font-bold text-base px-6 pb-3 border-b border-gray-800">
-              Why are you reporting this user?
-            </Text>
-            {REPORT_REASONS.map(reason => (
-              <Pressable
-                key={reason}
-                onPress={() => handleReport(reason)}
-                className="px-6 py-3 border-b border-gray-800"
-              >
-                <Text className="text-white text-sm">{reason}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
+      <Sheet
+        visible={menuVisible}
+        onClose={closeMenu}
+        title={showReport ? 'Why are you reporting this user?' : undefined}
+        onBack={showReport ? () => setShowReport(false) : undefined}
+      >
+        {showReport ? (
+          REPORT_REASONS.map(reason => (
+            <SheetRow key={reason} label={reason} onPress={() => handleReport(reason)} />
+          ))
+        ) : (
+          <>
+            <SheetRow
+              label="Report User"
+              destructive
+              chevron
+              icon={<ReportIcon color={color.heart} size={20} />}
+              onPress={() => setShowReport(true)}
+            />
+            <SheetRow
+              label={isBlocked ? 'Unblock' : 'Block'}
+              destructive={!isBlocked}
+              icon={<BlockIcon color={isBlocked ? color.text : color.heart} size={20} />}
+              onPress={handleBlockToggle}
+            />
+            {isAdmin ? (
+              <SheetRow
+                label={profile.isVerified ? 'Unverify Account' : 'Verify Account'}
+                icon={<VerifiedIcon color={color.text} size={20} />}
+                onPress={() => { void handleToggleVerify(); }}
+              />
+            ) : null}
+          </>
+        )}
+      </Sheet>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: color.bg,
+  },
+  list: {
+    flexGrow: 1,
+    backgroundColor: color.bg,
+  },
+  action: {
+    flex: 1,
+  },
+});

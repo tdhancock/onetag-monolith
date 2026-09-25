@@ -27,6 +27,8 @@ jest.mock('react-native', () => {
 }, { virtual: true });
 
 jest.mock('expo-image', () => require('../../support/expoImageStub'), { virtual: true });
+// The barrel reaches the icons (ListRow, Sheet), and through them react-native-svg.
+jest.mock('react-native-svg', () => require('../../support/reactNativeSvgStub'), { virtual: true });
 
 import ListRow, {
   LIST_ROW_MIN_HEIGHT,
@@ -79,8 +81,17 @@ const styleOf = (props: ListRowProps, pressed = false) => {
 /** [leading, text column, trailing] — the fragment's three slots. */
 const slotsOf = (props: ListRowProps) => render(props).props.children.props.children;
 
-const textsOf = (props: ListRowProps) =>
-  React.Children.toArray(slotsOf(props)[1].props.children) as Node[];
+/** [title, subtitle?] — the title sits in its row beside the verified mark. */
+const textsOf = (props: ListRowProps) => {
+  const [titleRow, ...rest] = React.Children.toArray(slotsOf(props)[1].props.children) as Node[];
+  const [title] = React.Children.toArray(titleRow.props.children) as Node[];
+  return [title, ...rest];
+};
+
+const verifiedOf = (props: ListRowProps) => {
+  const [titleRow] = React.Children.toArray(slotsOf(props)[1].props.children) as Node[];
+  return (React.Children.toArray(titleRow.props.children) as Node[])[1];
+};
 
 // ─── 3. Structure ───────────────────────────────────────────────────────
 
@@ -113,6 +124,12 @@ describe('ListRow — structure', () => {
 
   it('omits the subtitle line when there is none', () => {
     expect(textsOf({ title: 'Jordan Reeves' })).toHaveLength(1);
+  });
+
+  it('draws an ink verified mark after the title only when asked', () => {
+    expect(verifiedOf({ title: 'x' })).toBeUndefined();
+    const mark = verifiedOf({ title: 'x', verified: true });
+    expect(mark.props.accessibilityLabel).toBe('Verified');
   });
 
   it('spaces the text md away from the leading node', () => {

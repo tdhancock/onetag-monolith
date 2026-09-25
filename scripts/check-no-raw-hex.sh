@@ -30,6 +30,9 @@ components/native/HomeHeader.tsx
 components/native/ComposeMedia.tsx
 components/native/CharacterRing.tsx
 components/native/CommentRow.tsx
+components/native/ProfileHeader.tsx
+components/native/ProfileTabs.tsx
+components/native/ProfileGrid.tsx
 "
 
 # theme/tokens.ts is the source of truth and must contain hex.

@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { color, space, type } from '../../../theme/tokens';
 import Avatar from './Avatar';
+import { VerifiedIcon } from '../Icons';
 
 export interface ListRowProps {
   title: string;
@@ -17,6 +18,8 @@ export interface ListRowProps {
   onPress?: () => void;
   /** A `border` hairline along the row's bottom edge. */
   divider?: boolean;
+  /** An ink verified mark after the title. */
+  verified?: boolean;
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
 }
@@ -42,6 +45,7 @@ const ListRow: React.FC<ListRowProps> = ({
   trailing,
   onPress,
   divider = false,
+  verified = false,
   accessibilityLabel,
   style,
 }) => {
@@ -49,9 +53,16 @@ const ListRow: React.FC<ListRowProps> = ({
     <>
       {leading ?? <Avatar uri={avatarUri} name={title} size={LIST_ROW_AVATAR_SIZE} />}
       <View style={styles.text}>
-        <Text style={styles.title} numberOfLines={1}>
-          {title}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title} numberOfLines={1}>
+            {title}
+          </Text>
+          {verified ? (
+            <View style={styles.verified} accessible accessibilityLabel="Verified">
+              <VerifiedIcon color={color.text} size={14} />
+            </View>
+          ) : null}
+        </View>
         {subtitle ? (
           <Text style={styles.subtitle} numberOfLines={1}>
             {subtitle}
@@ -97,7 +108,15 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: space.md,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  verified: {
+    marginLeft: space.xs,
+  },
   title: {
+    flexShrink: 1,
     fontFamily: type.bodyBold,
     fontSize: 15,
     color: color.text,
