@@ -1,15 +1,18 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { View, Text, ActivityIndicator, Linking, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import type { BarcodeScanningResult } from 'expo-camera';
 import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
 import { useUploadStory } from '../../features/stories';
 import { pickImageFromLibrary } from '../../services/mediaPicker';
-import { Button, EmptyState, IconButton, Pressable, Sheet, SheetRow } from '../../components/native/ui';
-import { CameraIcon, FlipCameraIcon, GridIcon, ImageIcon, PlusCircleIcon } from '../../components/native/Icons';
+import { Button, EmptyState, IconButton, MonoLabel, Pressable, Sheet, SheetRow } from '../../components/native/ui';
+import { CameraIcon, FlipCameraIcon, GridIcon, ImageIcon, PlusCircleIcon, XIcon } from '../../components/native/Icons';
+import { buildTagRoute } from '../../lib/tagLinks';
+import { tagToOffer } from '../../lib/screens/cameraScan';
 import { color, space, type, withAlpha } from '../../theme/tokens';
 
 /** The shutter's outer ring and inner disc, in points. */
@@ -18,6 +21,13 @@ const SHUTTER_FILL_SIZE = 58;
 /** How far the disc shrinks while the finger is down. */
 const SHUTTER_PRESSED_SCALE = 0.9;
 const CONTROL_ICON_SIZE = 24;
+/** The scanning frame's side, and the length and weight of its corner marks. */
+const SCAN_FRAME_SIZE = 220;
+const SCAN_CORNER_SIZE = 28;
+const SCAN_CORNER_WEIGHT = 3;
+
+/** What the camera looks for: QR only — NFC is deferred (Working Agreement). */
+const BARCODE_SETTINGS = { barcodeTypes: ['qr' as const] };
 
 /** A photo waiting for the person to choose what it becomes. */
 interface Captured {
@@ -46,6 +56,101 @@ const Shutter: React.FC<{ onPress: () => void; disabled: boolean }> = ({ onPress
   </Pressable>
 );
 
+/**
+ * Tag detection over the live viewfinder (ONE-29).
+ *
+ * Scanning augments the camera rather than taking it over: a detected Tag is
+ * *offered*, never opened, so a QR drifting into frame while someone frames a
+ * photo changes nothing until they choose to act on it.
+ *
+ * `onBarcodeScanned` fires on every frame a code is visible. Refs, not state,
+ * guard it — state lags a render behind, and several frames arrive inside
+ * one. While an offer is showing, every read is ignored; after one is
+ * dismissed, detection re-arms, so the same tag can be offered again. After
+ * one is opened, the code stays ignored until the tab regains focus — the
+ * person is on their way to it, and it is probably still in frame.
+ */
+const useTagDetection = (enabled: boolean) => {
+  const [offered, setOffered] = useState<string | null>(null);
+  const lastOffered = useRef<string | null>(null);
+  const offering = useRef(false);
+
+  const onBarcodeScanned = useCallback(({ data }: BarcodeScanningResult) => {
+    if (offering.current) return;
+    const shortCode = tagToOffer(data, lastOffered.current);
+    if (!shortCode) return;
+    lastOffered.current = shortCode;
+    offering.current = true;
+    setOffered(shortCode);
+  }, []);
+
+  const dismiss = useCallback(() => {
+    offering.current = false;
+    lastOffered.current = null;
+    setOffered(null);
+  }, []);
+
+  const markOpened = useCallback(() => {
+    offering.current = false;
+    setOffered(null);
+  }, []);
+
+  // Back on the tab after opening a tag: re-arm, so it can be scanned again.
+  useFocusEffect(
+    useCallback(() => {
+      if (!offering.current) lastOffered.current = null;
+    }, []),
+  );
+
+  return {
+    offered,
+    // Detached entirely while an offer shows, or while a photo is being
+    // shared; the ref guard covers frames already on their way.
+    onBarcodeScanned: enabled && offered === null ? onBarcodeScanned : undefined,
+    dismiss,
+    markOpened,
+  };
+};
+
+/** The viewfinder's scanning affordance: four corner marks and a hint. Never touchable. */
+const ScanFrame: React.FC = () => (
+  <View style={[StyleSheet.absoluteFill, styles.centred]} pointerEvents="none">
+    <View style={styles.scanFrame}>
+      <View style={[styles.scanCorner, styles.scanCornerTopLeft]} />
+      <View style={[styles.scanCorner, styles.scanCornerTopRight]} />
+      <View style={[styles.scanCorner, styles.scanCornerBottomLeft]} />
+      <View style={[styles.scanCorner, styles.scanCornerBottomRight]} />
+    </View>
+    <MonoLabel color="inverse" style={styles.scanHint}>
+      Point at a tag to scan
+    </MonoLabel>
+  </View>
+);
+
+/** A detected Tag, offered: its short code, Open, and a way to dismiss it. */
+const TagOffer: React.FC<{ shortCode: string; onOpen: () => void; onDismiss: () => void }> = ({
+  shortCode,
+  onOpen,
+  onDismiss,
+}) => (
+  <SafeAreaView edges={['top']} style={styles.tagOfferArea} pointerEvents="box-none">
+    <View style={styles.tagOffer} accessibilityLiveRegion="polite">
+      <View style={styles.tagOfferText}>
+        <MonoLabel color="textMuted">Tag detected</MonoLabel>
+        <Text style={styles.tagOfferCode}>{shortCode}</Text>
+      </View>
+      <Button size="sm" onPress={onOpen}>
+        Open
+      </Button>
+      <IconButton
+        icon={<XIcon color={color.text} size={20} />}
+        accessibilityLabel="Dismiss tag"
+        onPress={onDismiss}
+      />
+    </View>
+  </SafeAreaView>
+);
+
 export default function CameraScreen() {
   const router = useRouter();
   const { addToast, triggerHapticFeedback } = useApp();
@@ -64,6 +169,20 @@ export default function CameraScreen() {
   const [capturing, setCapturing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [captured, setCaptured] = useState<Captured | null>(null);
+  const detection = useTagDetection(captured === null && !uploading);
+  const { offered, markOpened } = detection;
+
+  useEffect(() => {
+    if (offered) triggerHapticFeedback('light');
+  }, [offered, triggerHapticFeedback]);
+
+  const openTag = useCallback(() => {
+    if (!offered) return;
+    markOpened();
+    // Pushed, so Back returns here; the resolution route then replaces
+    // itself with the Destination.
+    router.push(buildTagRoute(offered));
+  }, [offered, markOpened, router]);
 
   const toggleFacing = useCallback(() => {
     triggerHapticFeedback('light');
@@ -191,12 +310,22 @@ export default function CameraScreen() {
 
   return (
     <View style={styles.viewfinder}>
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} />
+      <CameraView
+        ref={cameraRef}
+        style={StyleSheet.absoluteFill}
+        facing={facing}
+        barcodeScannerSettings={BARCODE_SETTINGS}
+        onBarcodeScanned={detection.onBarcodeScanned}
+      />
 
       {/* The photo being decided on, held under the sheet. */}
       {captured ? (
         <Image source={{ uri: captured.uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
-      ) : null}
+      ) : (
+        <ScanFrame />
+      )}
+
+      {offered ? <TagOffer shortCode={offered} onOpen={openTag} onDismiss={detection.dismiss} /> : null}
 
       <SafeAreaView edges={['bottom']} style={styles.controls}>
         <View style={styles.controlRow}>
@@ -291,5 +420,70 @@ const styles = StyleSheet.create({
     fontFamily: type.bodyMedium,
     fontSize: 15,
     color: color.inverse,
+  },
+  scanFrame: {
+    width: SCAN_FRAME_SIZE,
+    height: SCAN_FRAME_SIZE,
+  },
+  scanCorner: {
+    position: 'absolute',
+    width: SCAN_CORNER_SIZE,
+    height: SCAN_CORNER_SIZE,
+    borderColor: color.inverse,
+  },
+  scanCornerTopLeft: {
+    top: 0,
+    left: 0,
+    borderTopWidth: SCAN_CORNER_WEIGHT,
+    borderLeftWidth: SCAN_CORNER_WEIGHT,
+  },
+  scanCornerTopRight: {
+    top: 0,
+    right: 0,
+    borderTopWidth: SCAN_CORNER_WEIGHT,
+    borderRightWidth: SCAN_CORNER_WEIGHT,
+  },
+  scanCornerBottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: SCAN_CORNER_WEIGHT,
+    borderLeftWidth: SCAN_CORNER_WEIGHT,
+  },
+  scanCornerBottomRight: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: SCAN_CORNER_WEIGHT,
+    borderRightWidth: SCAN_CORNER_WEIGHT,
+  },
+  scanHint: {
+    marginTop: space.lg,
+  },
+  // Over the top of the viewfinder, clear of the shutter: an offer never
+  // stands between the person and a photo.
+  tagOfferArea: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  tagOffer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    marginHorizontal: space.lg,
+    marginTop: space.sm,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    paddingVertical: space.sm,
+    backgroundColor: color.bg,
+  },
+  tagOfferText: {
+    flex: 1,
+  },
+  tagOfferCode: {
+    marginTop: space.xs,
+    fontFamily: type.mono,
+    fontSize: 15,
+    color: color.text,
   },
 });

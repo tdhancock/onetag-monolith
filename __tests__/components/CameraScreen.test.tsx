@@ -30,7 +30,10 @@ jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { 
 
 const mockPush = jest.fn();
 const mockNavigate = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, navigate: mockNavigate }) }), { virtual: true });
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockPush, navigate: mockNavigate }),
+  useFocusEffect: () => undefined,
+}), { virtual: true });
 
 const camera = {
   permission: { granted: true, canAskAgain: true } as { granted: boolean; canAskAgain: boolean } | null,
