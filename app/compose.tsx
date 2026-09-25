@@ -24,12 +24,13 @@ import {
   type PickedMedia,
   type MediaPickerResult,
 } from '../services/mediaPicker';
-import { Avatar, Button, IconButton, ICON_BUTTON_SIZE } from '../components/native/ui';
+import { Avatar, Button, IconButton, ICON_BUTTON_SIZE, MonoLabel } from '../components/native/ui';
 import ComposeMedia from '../components/native/ComposeMedia';
 import CharacterRing from '../components/native/CharacterRing';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
 import { ImageIcon } from '../components/native/Icons';
 import { canPublish } from '../lib/screens/compose';
+import { postingAsLabel, profileKindLabel } from '../lib/screens/profile';
 import { color, space, type } from '../theme/tokens';
 import type { Post } from '../types';
 
@@ -202,6 +203,20 @@ export default function ComposeScreen() {
           keyboardDismissMode="interactive"
           contentContainerStyle={styles.scroll}
         >
+          {/* Which profile this will publish as, before it does (ONE-25). An
+              account can hold two, and the moment of posting is when it
+              matters. Only once there is a real profile to name: before
+              then `userProfile` is the display placeholder. */}
+          {profileId ? (
+            <View style={styles.postingAs} accessible accessibilityLabel={postingAsLabel(userProfile)}>
+              <MonoLabel>Posting as</MonoLabel>
+              <Text style={styles.postingAsHandle} numberOfLines={1}>
+                @{userProfile.username}
+              </Text>
+              <MonoLabel color="textMid">{profileKindLabel(userProfile.profileType)}</MonoLabel>
+            </View>
+          ) : null}
+
           <Pressable
             onPress={() => inputRef.current?.focus()}
             accessible={false}
@@ -294,6 +309,19 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 1,
+  },
+  postingAs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+  },
+  postingAsHandle: {
+    flexShrink: 1,
+    fontFamily: type.bodyBold,
+    fontSize: 13,
+    color: color.text,
   },
   body: {
     flexDirection: 'row',

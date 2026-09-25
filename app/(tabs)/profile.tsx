@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, RefreshControl, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, FlatList, RefreshControl, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -10,6 +10,7 @@ import { getUserPosts, getUserReposts } from '../../features/profiles';
 import { getSavedPosts } from '../../features/posts';
 import ProfileHeader, { ProfileHeaderSkeleton } from '../../components/native/ProfileHeader';
 import ProfileTabs from '../../components/native/ProfileTabs';
+import ProfileSwitcher, { ProfileSwitcherButton } from '../../components/native/ProfileSwitcher';
 import { GridTile, ProfileGridSkeleton } from '../../components/native/ProfileGrid';
 import { Button, EmptyState, IconButton } from '../../components/native/ui';
 import { MenuIcon } from '../../components/native/Icons';
@@ -20,7 +21,7 @@ import {
   PROFILE_GRID_COLUMNS,
   type ProfileTab,
 } from '../../lib/screens/profile';
-import { color, space, type } from '../../theme/tokens';
+import { color, space } from '../../theme/tokens';
 import type { Post } from '../../types';
 
 // ─── Profile Screen ──────────────────────────────
@@ -43,15 +44,22 @@ export default function ProfileScreen() {
   const [savedTabPosts, setSavedTabPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+
+  // The profile these lists were asked for. A switch mid-fetch must not let
+  // the previous profile's answer land under the new one's header.
+  const requestedFor = useRef(profileId);
 
   const fetchAll = useCallback(async () => {
     if (!profileId) return;
+    requestedFor.current = profileId;
     try {
       const [userPosts, userReposts, userSaved] = await Promise.all([
         getUserPosts(profileId),
         getUserReposts(profileId),
         getSavedPosts(profileId),
       ]);
+      if (requestedFor.current !== profileId) return;
       setPosts(userPosts);
       setReposts(userReposts);
       setSavedTabPosts(userSaved);
@@ -59,11 +67,18 @@ export default function ProfileScreen() {
       console.error('Profile fetch error:', error);
       addToast('Failed to load profile data', 'error');
     } finally {
-      setIsLoading(false);
+      if (requestedFor.current === profileId) setIsLoading(false);
     }
   }, [profileId]);
 
+  // A new identity — the first load, or a switch in the profile switcher —
+  // starts from the loading state rather than showing the previous profile's
+  // grid under the new header (ONE-25).
   useEffect(() => {
+    setIsLoading(true);
+    setPosts([]);
+    setReposts([]);
+    setSavedTabPosts([]);
     fetchAll();
   }, [fetchAll]);
 
@@ -125,12 +140,11 @@ export default function ProfileScreen() {
   const editButton = getEditButtonProps(userProfile);
   const empty = profileEmptyState(activeTab, true);
 
-  // A bar of its own above the header: your handle, and Settings.
+  // A bar of its own above the header: the profile you are acting as, which
+  // opens the switcher (ONE-25), and Settings.
   const topBar = (
     <View style={styles.topBar}>
-      <Text style={styles.topBarTitle} numberOfLines={1} accessibilityRole="header">
-        @{userProfile.username}
-      </Text>
+      <ProfileSwitcherButton profile={userProfile} onPress={() => setSwitcherOpen(true)} />
       <IconButton
         icon={<MenuIcon color={color.text} size={24} strokeWidth={1.8} />}
         accessibilityLabel="Settings"
@@ -190,6 +204,12 @@ export default function ProfileScreen() {
         }
         contentContainerStyle={styles.list}
       />
+
+      <ProfileSwitcher
+        visible={switcherOpen}
+        onClose={() => setSwitcherOpen(false)}
+        onAddProfile={() => router.push('/create-profile')}
+      />
     </SafeAreaView>
   );
 }
@@ -213,11 +233,5 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: color.border,
     backgroundColor: color.bg,
-  },
-  topBarTitle: {
-    flexShrink: 1,
-    fontFamily: type.bodyBold,
-    fontSize: 17,
-    color: color.text,
   },
 });

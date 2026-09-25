@@ -67,11 +67,12 @@ jest.mock('expo-router', () => ({
 const mockToast = jest.fn();
 const mockApp = { addToast: mockToast };
 jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }), { virtual: true });
+const mockActing: { profile: Record<string, unknown>; profileId: string | undefined } = {
+  profile: { username: 'me', name: 'Me Myself', profilePicture: null, isVerified: false, profileType: 'individual' },
+  profileId: 'p-me',
+};
 jest.mock('../../features/profiles', () => ({
-  useCurrentProfile: () => ({
-    profile: { username: 'me', name: 'Me Myself', profilePicture: null, isVerified: false },
-    profileId: 'p-me',
-  }),
+  useCurrentProfile: () => mockActing,
 }), { virtual: true });
 
 const mockMutateAsync = jest.fn();
@@ -174,6 +175,42 @@ describe('Compose — opening', () => {
     const photo = el.querySelector('[data-scroll] button[aria-label="Add a photo"]');
     expect(photo).not.toBeNull();
     expect(input(el).compareDocumentPosition(photo!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows which profile the post will publish as, before it is published (ONE-25)', () => {
+    const el = mount();
+    const indicator = el.querySelector('[aria-label="Posting as @me, individual profile"]');
+    expect(indicator).not.toBeNull();
+    expect(indicator!.textContent).toContain('@me');
+    expect(indicator!.textContent).toContain('INDIVIDUAL');
+    // Above the draft, where it is read before Post is tapped.
+    expect(indicator!.compareDocumentPosition(input(el)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('names the business profile when that is the one being acted as', () => {
+    const previous = { ...mockActing };
+    mockActing.profile = { username: 'me_studio', name: 'Me Studio', profilePicture: null, profileType: 'business' };
+    mockActing.profileId = 'p-biz';
+    try {
+      const el = mount();
+      const indicator = el.querySelector('[aria-label="Posting as @me_studio, business profile"]');
+      expect(indicator!.textContent).toContain('BUSINESS');
+    } finally {
+      Object.assign(mockActing, previous);
+    }
+  });
+
+  it('names no profile before the real one has loaded', () => {
+    const previous = { ...mockActing };
+    mockActing.profile = { username: 'onetag_user', name: 'OneTag User', profilePicture: null };
+    mockActing.profileId = undefined;
+    try {
+      const el = mount();
+      expect(el.querySelector('[aria-label^="Posting as"]')).toBeNull();
+      expect(el.textContent).not.toContain('Posting as');
+    } finally {
+      Object.assign(mockActing, previous);
+    }
   });
 
   it('offers no poll (ONE-59)', () => {

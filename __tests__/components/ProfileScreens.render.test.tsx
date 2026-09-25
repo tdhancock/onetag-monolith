@@ -92,6 +92,8 @@ const state = {
   isAdmin: false,
   profile: null as null | Record<string, unknown>,
   posts: [] as unknown[],
+  /** Per-profile post requests a test controls the timing of. */
+  postsFor: {} as Partial<Record<string, Promise<unknown[]>>>,
   users: [] as unknown[],
 };
 
@@ -106,13 +108,17 @@ jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }), { 
 const mockFollowToggle = jest.fn();
 const mockUpdateProfile = jest.fn(() => Promise.resolve());
 const mockUpdateBusiness = jest.fn((_updates: unknown) => Promise.resolve());
+const mockSetActive = jest.fn();
 jest.mock('../../features/profiles', () => ({
-  useCurrentProfile: () => ({ profile: state.me, profileId: 'p-me' }),
+  useCurrentProfile: () => ({ profile: state.me, profileId: state.me.id, authUserId: 'a-me' }),
+  useMyProfilesQuery: () => ({ data: [state.me] }),
+  useSetActiveProfile: () => ({ mutate: mockSetActive }),
+  asProfileId: (id: string) => id,
   useFollowCountsQuery: () => ({ data: state.counts }),
   useFollowState: () => ({ isFollowing: (u: string) => state.following.has(u) }),
   useToggleFollow: () => ({ toggle: mockFollowToggle, isPending: false }),
   profileKeys: { all: ['profiles'], posts: () => ['p'], counts: () => ['c'] },
-  getUserPosts: () => Promise.resolve(state.posts),
+  getUserPosts: (id: string) => state.postsFor[id] ?? Promise.resolve(state.posts),
   getUserReposts: () => Promise.resolve([]),
   getUserProfile: () => Promise.resolve(state.profile),
   getFollowerUsers: () => Promise.resolve(state.users),
@@ -166,8 +172,9 @@ beforeEach(() => {
   state.profile = { id: 'p-ana', username: 'ana', name: 'Ana Reyes', bio: 'Hi.', profilePicture: null, isVerified: false, isPrivate: false };
   state.posts = [{ id: 'post-1', content: 'first line\nsecond', media_type: 'text' }];
   state.users = [];
+  state.postsFor = {};
   mockParams.current = {};
-  [mockPush, mockBack, mockFollowToggle, mockUpdateProfile, mockUpdateBusiness, mockOpenURL].forEach(m => m.mockClear());
+  [mockPush, mockBack, mockFollowToggle, mockUpdateProfile, mockUpdateBusiness, mockOpenURL, mockSetActive].forEach(m => m.mockClear());
 });
 
 afterEach(() => {
@@ -217,6 +224,37 @@ describe('Your profile', () => {
     const el = await mount(<OwnProfileScreen />);
     act(() => button(el, '10 Followers')!.click());
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({ pathname: '/user-list', params: expect.objectContaining({ type: 'followers' }) }));
+  });
+
+  it('shows the profile you are acting as in the top bar, and opens the switcher from it (ONE-25)', async () => {
+    const el = await mount(<OwnProfileScreen />);
+    const entry = button(el, 'Acting as @me. Switch profile')!;
+    expect(entry.textContent).toContain('@me');
+    expect(el.querySelector('[data-modal]')).toBeNull();
+
+    act(() => entry.click());
+    expect(el.querySelector('[data-modal]')).not.toBeNull();
+    expect(button(el, 'Me Myself, @me, Individual profile, active')).not.toBeNull();
+
+    act(() => button(el, 'Add a Profile')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/create-profile');
+  });
+
+  it("drops the previous profile's grid the moment the acting profile switches", async () => {
+    const el = await mount(<OwnProfileScreen />);
+    expect(button(el, 'first line')).not.toBeNull();
+
+    // The business profile's posts have not arrived yet.
+    let resolveBusiness: (posts: unknown[]) => void = () => undefined;
+    state.postsFor['p-biz'] = new Promise((resolve) => { resolveBusiness = resolve; });
+    state.me = { ...ME_BUSINESS, id: 'p-biz', username: 'me_studio' };
+    await rerender(<OwnProfileScreen />);
+
+    expect(button(el, 'first line')).toBeNull();
+    expect(el.textContent).toContain('@me_studio');
+
+    await act(async () => resolveBusiness([{ id: 'post-b', content: 'studio news', media_type: 'text' }]));
+    expect(button(el, 'studio news')).not.toBeNull();
   });
 
   it('invites your first post when you have none', async () => {

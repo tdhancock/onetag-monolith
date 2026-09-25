@@ -479,3 +479,48 @@ export const hasBusinessChanges = (
   const after = businessUpdatesFrom(edited);
   return before.category !== after.category || before.website !== after.website || before.location !== after.location;
 };
+
+// ---------------------------------------------------------------------------
+// The profile switcher (ONE-25)
+// ---------------------------------------------------------------------------
+
+export type ProfileKind = 'individual' | 'business';
+
+/** Every kind of profile an account can hold, at most one of each. */
+export const PROFILE_KINDS: readonly ProfileKind[] = ['individual', 'business'];
+
+/** The mono label a profile carries in the switcher and the composer. */
+export const profileKindLabel = (kind: ProfileKind | undefined): 'BUSINESS' | 'INDIVIDUAL' =>
+  kind === 'business' ? 'BUSINESS' : 'INDIVIDUAL';
+
+/** The kinds an account does not hold yet — what "Add a Profile" can create. */
+export const missingProfileKinds = (profiles: readonly { profileType?: ProfileKind }[]): ProfileKind[] =>
+  PROFILE_KINDS.filter(kind => !profiles.some(profile => (profile.profileType ?? 'individual') === kind));
+
+/**
+ * Whether the switcher offers "Add a Profile": only while a kind is missing.
+ * With both, the one-of-each index makes a third impossible, and offering it
+ * would only lead to an error.
+ */
+export const canAddProfile = (profiles: readonly { profileType?: ProfileKind }[]): boolean =>
+  missingProfileKinds(profiles).length > 0;
+
+export interface SwitcherRowProfile {
+  username: string;
+  name?: string;
+  profileType?: ProfileKind;
+}
+
+/**
+ * What a screen reader says for one switcher row: name, handle and kind, and
+ * whether it is the one being acted as — in words, not only in colour.
+ */
+export const switcherRowLabel = (profile: SwitcherRowProfile, isActive: boolean): string => {
+  const kind = profile.profileType === 'business' ? 'Business profile' : 'Individual profile';
+  const name = profile.name || profile.username;
+  return `${name}, @${profile.username}, ${kind}${isActive ? ', active' : ''}`;
+};
+
+/** What the composer says a post will publish as, for a screen reader. */
+export const postingAsLabel = (profile: SwitcherRowProfile): string =>
+  `Posting as @${profile.username}, ${profile.profileType === 'business' ? 'business' : 'individual'} profile`;
