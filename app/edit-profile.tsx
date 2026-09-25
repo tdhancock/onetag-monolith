@@ -11,11 +11,18 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '../store/AppContext.native';
-import { useUpdateProfile, useUploadAvatar, useCurrentProfile } from '../features/profiles';
+import { useUpdateProfile, useUpdateBusinessProfile, useUploadAvatar, useCurrentProfile } from '../features/profiles';
 import { cleanHtml } from '../lib/cleanHtml';
 import { Avatar, TextField } from '../components/native/ui';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
-import { hasProfileChanges, usernameError } from '../lib/screens/profile';
+import {
+  businessFormValues,
+  businessUpdatesFrom,
+  hasBusinessChanges,
+  hasProfileChanges,
+  usernameError,
+  websiteError,
+} from '../lib/screens/profile';
 import { color, space, type } from '../theme/tokens';
 
 export default function EditProfileScreen() {
@@ -23,26 +30,38 @@ export default function EditProfileScreen() {
   const { addToast } = useApp();
   const { profile: userProfile, profileId } = useCurrentProfile();
   const updateProfile = useUpdateProfile(profileId);
+  const updateBusiness = useUpdateBusinessProfile(profileId);
   const uploadAvatarMutation = useUploadAvatar();
+
+  // A business profile edits its category, website and location here too
+  // (ONE-23). Decided by type, as the profile screen decides what to show.
+  const isBusiness = userProfile?.profileType === 'business';
 
   const [name, setName] = useState(userProfile?.name ?? '');
   const [username, setUsername] = useState(userProfile?.username ?? '');
   const [bio, setBio] = useState(userProfile?.bio ?? '');
+  const [business, setBusiness] = useState(() => businessFormValues(userProfile));
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const setBusinessField = (field: keyof typeof business) => (value: string) =>
+    setBusiness(prev => ({ ...prev, [field]: value }));
 
   // Save waits for a change: a new photo, or a field that differs. A new
   // handle sign-up would refuse, or none at all, cannot be saved; an
   // unchanged one is left alone, so an account older than the rule can still
   // edit its bio.
-  const dirty = hasProfileChanges(userProfile, { name, username, bio }, Boolean(avatarUri));
+  const businessDirty = isBusiness && hasBusinessChanges(userProfile, business);
+  const profileDirty = hasProfileChanges(userProfile, { name, username, bio }, Boolean(avatarUri));
+  const dirty = profileDirty || businessDirty;
   const handleProblem =
     username === (userProfile?.username ?? '')
       ? null
       : username.length === 0
         ? 'Choose a username.'
         : usernameError(username);
-  const canSave = dirty && !saving && !handleProblem;
+  const websiteProblem = isBusiness ? websiteError(business.website) : null;
+  const canSave = dirty && !saving && !handleProblem && !websiteProblem;
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -76,12 +95,19 @@ export default function EditProfileScreen() {
 
       // One call now: the mutation saves the row and updates every cached
       // copy of this person — their own screen and anywhere else they appear.
-      await updateProfile.mutateAsync({
-        name,
-        username,
-        bio: cleanedBio,
-        ...(avatarUrl ? { profilePicture: avatarUrl } : {}),
-      });
+      if (profileDirty) {
+        await updateProfile.mutateAsync({
+          name,
+          username,
+          bio: cleanedBio,
+          ...(avatarUrl ? { profilePicture: avatarUrl } : {}),
+        });
+      }
+      // The business fields are their own row. The website is stored
+      // normalized, scheme included, so it opens when tapped.
+      if (businessDirty) {
+        await updateBusiness.mutateAsync(businessUpdatesFrom(business));
+      }
       router.back();
     } catch {
       // Nothing was applied locally, so there is nothing to revert — the user
@@ -175,6 +201,36 @@ export default function EditProfileScreen() {
                 {bio.length}
               </Text>
             </View>
+            {isBusiness ? (
+              <>
+                <TextField
+                  label="Category"
+                  value={business.category}
+                  onChangeText={setBusinessField('category')}
+                  placeholder="What kind of business, e.g. Cafe"
+                  accessibilityLabel="Category"
+                />
+                <TextField
+                  label="Website"
+                  value={business.website}
+                  onChangeText={setBusinessField('website')}
+                  placeholder="example.com"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  textContentType="URL"
+                  error={websiteProblem}
+                  accessibilityLabel="Website"
+                />
+                <TextField
+                  label="Location"
+                  value={business.location}
+                  onChangeText={setBusinessField('location')}
+                  placeholder="City, region"
+                  accessibilityLabel="Location"
+                />
+              </>
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAvoider>

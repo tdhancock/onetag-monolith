@@ -19,19 +19,67 @@ import { readLocalFile } from '../../services/localFile';
 // this api.ts imports no other feature (features/README.md, rule 1).
 import { POST_SELECT_QUERY, mapPostData } from '../../services/postRows';
 import type { Post } from '../../types';
-import type { SimpleUser, UserProfile, ProfileRow, ProfileUpdates, AuthUserId, ProfileId } from './types';
+import type {
+    SimpleUser,
+    UserProfile,
+    ProfileRow,
+    ProfileUpdates,
+    BusinessProfileFields,
+    BusinessProfileRow,
+    BusinessProfileUpdates,
+    AuthUserId,
+    ProfileId,
+} from './types';
 
-export const mapProfileRow = (row: ProfileRow): UserProfile => ({
-    id: row.id,
-    name: row.full_name,
-    username: row.username,
-    bio: row.bio,
-    profilePicture: row.avatar_url,
-    isVerified: row.is_verified,
-    isPrivate: row.is_private,
-    userId: row.user_id,
-    profileType: row.profile_type,
-} as UserProfile);
+/**
+ * Every column of a profile, with its business fields embedded (ONE-23).
+ *
+ * One request, not two: PostgREST follows `business_profiles.profile_id`
+ * back to `profiles` and nests the row, so a profile screen never makes a
+ * second round trip for a business profile's category and website. An
+ * individual profile simply comes back with nothing embedded.
+ */
+export const PROFILE_SELECT = '*, business_profiles(category, website, location, logo_url)';
+
+/** A business row as the client reads it. */
+const mapBusinessRow = (row: BusinessProfileRow): BusinessProfileFields => ({
+    category: row.category,
+    website: row.website,
+    location: row.location,
+    logoUrl: row.logo_url,
+});
+
+export const mapProfileRow = (row: ProfileRow): UserProfile => {
+    const profile = {
+        id: row.id,
+        name: row.full_name,
+        username: row.username,
+        bio: row.bio,
+        profilePicture: row.avatar_url,
+        isVerified: row.is_verified,
+        isPrivate: row.is_private,
+        userId: row.user_id,
+        profileType: row.profile_type,
+    } as UserProfile;
+
+    // Only a business profile carries business fields; the type guard in the
+    // migration keeps an individual from having a row at all.
+    if (row.profile_type === 'business') {
+        const embedded = Array.isArray(row.business_profiles) ? row.business_profiles[0] : row.business_profiles;
+        profile.business = embedded ? mapBusinessRow(embedded) : null;
+    }
+    return profile;
+};
+
+/** The inverse of `mapBusinessRow`: client field names → `business_profiles` columns. */
+export const mapBusinessUpdatesToRow = (updates: BusinessProfileUpdates): Partial<BusinessProfileRow> => {
+    const row: Partial<BusinessProfileRow> = {};
+    if (updates.category !== undefined) row.category = updates.category;
+    if (updates.website !== undefined) row.website = updates.website;
+    if (updates.location !== undefined) row.location = updates.location;
+    if (updates.logoUrl !== undefined) row.logo_url = updates.logoUrl;
+    return row;
+};
 
 /** The inverse of `mapProfileRow`: client field names → `profiles` columns. */
 export const mapProfileUpdatesToRow = (updates: ProfileUpdates): Partial<ProfileRow> => {
@@ -55,7 +103,7 @@ export const mapProfileUpdatesToRow = (updates: ProfileUpdates): Partial<Profile
 export const fetchMyProfiles = async (authUserId: AuthUserId): Promise<UserProfile[]> => {
     const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select(PROFILE_SELECT)
         .eq('user_id', authUserId);
 
     if (error) throw error;
@@ -67,7 +115,7 @@ export const fetchMyProfiles = async (authUserId: AuthUserId): Promise<UserProfi
 };
 
 export const getUserProfile = async (username: string): Promise<UserProfile | null> => {
-    const { data, error } = await supabase.from('profiles').select('*').eq('username', username).single();
+    const { data, error } = await supabase.from('profiles').select(PROFILE_SELECT).eq('username', username).single();
     if (error || !data) {
         console.error("Error fetching profile", error);
         return null;
@@ -139,6 +187,23 @@ export const updateUserProfileData = async (profileId: ProfileId, updates: Profi
     }
 
     return true;
+};
+
+/**
+ * Save a business profile's own fields (ONE-23).
+ *
+ * An upsert on the profile id: a business profile created before its row was
+ * — or whose row failed to insert alongside it — becomes editable on the
+ * first save rather than silently updating nothing. The migration's type
+ * guard rejects a row for an individual profile, and RLS a profile the
+ * account does not own.
+ */
+export const updateBusinessProfile = async (profileId: ProfileId, updates: BusinessProfileUpdates): Promise<void> => {
+    const row = mapBusinessUpdatesToRow(updates);
+    const { error } = await supabase
+        .from('business_profiles')
+        .upsert({ profile_id: profileId, ...row }, { onConflict: 'profile_id' });
+    if (error) throw error;
 };
 
 /**

@@ -368,3 +368,114 @@ export const hasProfileChanges = (
   edited.name !== (original?.name ?? '') ||
   edited.username !== (original?.username ?? '') ||
   edited.bio !== (original?.bio ?? '');
+
+// ---------------------------------------------------------------------------
+// Business profiles (ONE-23)
+// ---------------------------------------------------------------------------
+
+/** The profile fields the business helpers read. */
+export interface BusinessAwareProfile {
+  profileType?: 'individual' | 'business';
+  business?: {
+    category: string | null;
+    website: string | null;
+    location: string | null;
+  } | null;
+}
+
+/** What a business profile shows under its name, each part null when unset. */
+export interface BusinessDetails {
+  category: string | null;
+  location: string | null;
+  /** The stored link to open, and the shorter text to show for it. */
+  website: { url: string; label: string } | null;
+}
+
+const present = (value: string | null | undefined): string | null => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+};
+
+/**
+ * The business details a profile header shows, or null for a profile that
+ * shows none.
+ *
+ * Decided by `profileType`, never by which fields happen to be filled: an
+ * individual profile renders exactly as it always has, and a business profile
+ * that has not filled anything in yet shows nothing extra rather than
+ * switching layouts once it does.
+ */
+export const businessDetailsFor = (profile: BusinessAwareProfile | null | undefined): BusinessDetails | null => {
+  if (profile?.profileType !== 'business') return null;
+  const business = profile.business;
+  const url = present(business?.website);
+  return {
+    category: present(business?.category),
+    location: present(business?.location),
+    website: url ? { url, label: websiteLabel(url) } : null,
+  };
+};
+
+/** A website as a profile shows it: no scheme, no trailing slash. */
+export const websiteLabel = (url: string): string =>
+  url.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '');
+
+/**
+ * A website as it is stored: trimmed, scheme included, so it opens wherever
+ * it is tapped. People type `example.com`, so a bare address gets `https://`;
+ * one that already names http or https keeps it. Anything with another scheme
+ * is returned as typed, for `websiteError` to refuse. Empty is null.
+ */
+export const normalizeWebsite = (input: string): string | null => {
+  const trimmed = input.trim();
+  if (trimmed === '') return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/^https?/i, (scheme) => scheme.toLowerCase());
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) && !/^[^:/]+:\d/.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+};
+
+/**
+ * A web address the app will open: http or https, a host with a dot in it,
+ * then an optional port and path. The database checks the scheme too, so the
+ * two cannot drift into accepting something the other refuses.
+ */
+const WEBSITE_PATTERN = /^https?:\/\/([a-z0-9-]+\.)+[a-z]{2,}(:\d{1,5})?([/?#]\S*)?$/i;
+
+export const WEBSITE_ERROR = 'Enter a web address, like example.com.';
+
+/** What is wrong with a website entry, or null when nothing is. Empty is fine. */
+export const websiteError = (input: string): string | null => {
+  const normalized = normalizeWebsite(input);
+  if (normalized === null) return null;
+  return WEBSITE_PATTERN.test(normalized) ? null : WEBSITE_ERROR;
+};
+
+export interface EditableBusinessFields {
+  category: string;
+  website: string;
+  location: string;
+}
+
+/** The business fields as the edit form holds them: plain strings, empty when unset. */
+export const businessFormValues = (profile: BusinessAwareProfile | null | undefined): EditableBusinessFields => ({
+  category: profile?.business?.category ?? '',
+  website: profile?.business?.website ?? '',
+  location: profile?.business?.location ?? '',
+});
+
+/** What the edit form's business fields save as: trimmed, empties as null, the website normalized. */
+export const businessUpdatesFrom = (fields: EditableBusinessFields) => ({
+  category: present(fields.category),
+  website: normalizeWebsite(fields.website),
+  location: present(fields.location),
+});
+
+/** Whether any business field would save differently from what is stored. */
+export const hasBusinessChanges = (
+  profile: BusinessAwareProfile | null | undefined,
+  edited: EditableBusinessFields,
+): boolean => {
+  const before = businessUpdatesFrom(businessFormValues(profile));
+  const after = businessUpdatesFrom(edited);
+  return before.category !== after.category || before.website !== after.website || before.location !== after.location;
+};

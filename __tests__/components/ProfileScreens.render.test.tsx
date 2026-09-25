@@ -17,6 +17,8 @@ import { act } from 'react';
 
 // ─── 1. Mock the native runtime ─────────────────────────────────────────
 
+const mockOpenURL = jest.fn((_url: string) => Promise.resolve());
+
 jest.mock('react-native', () => {
   const React = require('react');
   const shim = require('../support/reactNativeDom');
@@ -48,6 +50,7 @@ jest.mock('react-native', () => {
     RefreshControl: () => null,
     Platform: { OS: 'ios' },
     useWindowDimensions: () => ({ width: 375, height: 812 }),
+    Linking: { openURL: mockOpenURL },
   };
 }, { virtual: true });
 jest.mock('react-native-safe-area-context', () => {
@@ -74,7 +77,15 @@ jest.mock('expo-router', () => ({
 
 const ME = { id: 'p-me', username: 'me', name: 'Me Myself', bio: 'Builds things.', profilePicture: null, isVerified: true };
 
+/** A business profile, with every business field filled in (ONE-23). */
+const ME_BUSINESS = {
+  ...ME,
+  profileType: 'business',
+  business: { category: 'Cafe', website: 'https://me.example/', location: 'Austin, TX', logoUrl: null },
+};
+
 const state = {
+  me: ME as Record<string, unknown>,
   blocked: new Set<string>(),
   following: new Set<string>(),
   counts: { followers: 10, following: 4 },
@@ -94,8 +105,9 @@ jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }), { 
 
 const mockFollowToggle = jest.fn();
 const mockUpdateProfile = jest.fn(() => Promise.resolve());
+const mockUpdateBusiness = jest.fn((_updates: unknown) => Promise.resolve());
 jest.mock('../../features/profiles', () => ({
-  useCurrentProfile: () => ({ profile: ME, profileId: 'p-me' }),
+  useCurrentProfile: () => ({ profile: state.me, profileId: 'p-me' }),
   useFollowCountsQuery: () => ({ data: state.counts }),
   useFollowState: () => ({ isFollowing: (u: string) => state.following.has(u) }),
   useToggleFollow: () => ({ toggle: mockFollowToggle, isPending: false }),
@@ -106,6 +118,7 @@ jest.mock('../../features/profiles', () => ({
   getFollowerUsers: () => Promise.resolve(state.users),
   getFollowingUsers: () => Promise.resolve(state.users),
   useUpdateProfile: () => ({ mutateAsync: mockUpdateProfile }),
+  useUpdateBusinessProfile: () => ({ mutateAsync: mockUpdateBusiness }),
   useUploadAvatar: () => ({ mutateAsync: jest.fn() }),
 }), { virtual: true });
 jest.mock('../../lib/realtimeBridge', () => ({ useRealtimeSync: jest.fn() }), { virtual: true });
@@ -145,6 +158,7 @@ async function rerender(element: React.ReactElement): Promise<void> {
 }
 
 beforeEach(() => {
+  state.me = ME;
   state.blocked = new Set();
   state.following = new Set();
   state.counts = { followers: 10, following: 4 };
@@ -153,7 +167,7 @@ beforeEach(() => {
   state.posts = [{ id: 'post-1', content: 'first line\nsecond', media_type: 'text' }];
   state.users = [];
   mockParams.current = {};
-  [mockPush, mockBack, mockFollowToggle, mockUpdateProfile].forEach(m => m.mockClear());
+  [mockPush, mockBack, mockFollowToggle, mockUpdateProfile, mockUpdateBusiness, mockOpenURL].forEach(m => m.mockClear());
 });
 
 afterEach(() => {
@@ -211,6 +225,51 @@ describe('Your profile', () => {
     expect(el.textContent).toContain('No posts yet');
     act(() => buttonByText(el, 'Create your first post')!.click());
     expect(mockPush).toHaveBeenCalledWith('/compose');
+  });
+});
+
+// ─── 4b. Business fields (ONE-23) ───────────────────────────────────────
+
+describe('Business fields on a profile', () => {
+  const location = (el: HTMLElement) => el.querySelector('[aria-label^="Location"]');
+  const website = (el: HTMLElement) => el.querySelector('[aria-label^="Website"]') as HTMLElement | null;
+
+  it('shows an individual profile exactly as before: no category, location or website', async () => {
+    const el = await mount(<OwnProfileScreen />);
+    expect(location(el)).toBeNull();
+    expect(website(el)).toBeNull();
+    expect(el.textContent).not.toContain('Cafe');
+  });
+
+  it("shows a business profile's category, location and website, and opens the website", async () => {
+    state.me = ME_BUSINESS;
+    const el = await mount(<OwnProfileScreen />);
+    expect(el.textContent).toContain('Cafe');
+    expect(location(el)!.textContent).toBe('Austin, TX');
+
+    expect(website(el)!.getAttribute('aria-label')).toBe('Website, me.example');
+    act(() => website(el)!.click());
+    expect(mockOpenURL).toHaveBeenCalledWith('https://me.example/');
+  });
+
+  it('decides by type: an individual profile carrying business data shows none of it', async () => {
+    state.me = { ...ME_BUSINESS, profileType: 'individual' };
+    const el = await mount(<OwnProfileScreen />);
+    expect(el.textContent).not.toContain('Cafe');
+    expect(website(el)).toBeNull();
+  });
+
+  it("shows another account's business fields, from the one profile request", async () => {
+    mockParams.current = { username: 'ana' };
+    state.profile = {
+      ...state.profile!,
+      profileType: 'business',
+      business: { category: 'Bakery', website: 'https://ana.example', location: 'Lisbon', logoUrl: null },
+    };
+    const el = await mount(<UserProfileScreen />);
+    expect(el.textContent).toContain('Bakery');
+    expect(location(el)!.textContent).toBe('Lisbon');
+    expect(website(el)!.getAttribute('aria-label')).toBe('Website, ana.example');
   });
 });
 
@@ -345,5 +404,40 @@ describe('Edit profile', () => {
       expect(field(el, label)).not.toBeNull();
     }
     expect(el.textContent).toContain('Change photo');
+  });
+
+  const typeInto = (input: HTMLInputElement, value: string) =>
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+  it('offers no business fields on an individual profile', async () => {
+    const el = await mount(<EditProfileScreen />);
+    for (const label of ['Category', 'Website', 'Location']) expect(field(el, label)).toBeNull();
+  });
+
+  it("edits a business profile's fields, saving the website with its scheme", async () => {
+    state.me = { ...ME_BUSINESS, business: { category: 'Cafe', website: null, location: null, logoUrl: null } };
+    const el = await mount(<EditProfileScreen />);
+    expect(field(el, 'Category').value).toBe('Cafe');
+
+    typeInto(field(el, 'Website'), '  shop.example ');
+    typeInto(field(el, 'Location'), 'Austin, TX');
+    expect(button(el, 'Save')!.disabled).toBe(false);
+
+    await act(async () => { button(el, 'Save')!.click(); });
+    expect(mockUpdateBusiness).toHaveBeenCalledWith({ category: 'Cafe', website: 'https://shop.example', location: 'Austin, TX' });
+    // Nothing on the profile row itself changed, so it is not rewritten.
+    expect(mockUpdateProfile).not.toHaveBeenCalled();
+    expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('will not save a website that is not a web address, and says why', async () => {
+    state.me = ME_BUSINESS;
+    const el = await mount(<EditProfileScreen />);
+    typeInto(field(el, 'Website'), 'not a website');
+    expect(button(el, 'Save')!.disabled).toBe(true);
+    expect(el.textContent).toContain('Enter a web address');
   });
 });

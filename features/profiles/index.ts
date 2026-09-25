@@ -22,11 +22,25 @@ export {
   searchUsers,
   getSmartUserSuggestions,
   fetchMyProfiles,
+  updateBusinessProfile,
+  mapBusinessUpdatesToRow,
+  PROFILE_SELECT,
 } from './api';
 
 export { profileKeys } from './keys';
 
-export type { UserProfile, SimpleUser, ProfileRow, ProfileUpdates, ProfileType, AuthUserId, ProfileId } from './types';
+export type {
+  UserProfile,
+  SimpleUser,
+  ProfileRow,
+  ProfileUpdates,
+  ProfileType,
+  AuthUserId,
+  ProfileId,
+  BusinessProfileFields,
+  BusinessProfileRow,
+  BusinessProfileUpdates,
+} from './types';
 export { asAuthUserId, asProfileId } from './types';
 
 export {
@@ -46,5 +60,5 @@ export {
 } from './queries';
 export type { FollowCounts, CurrentProfile, CurrentProfileStatus } from './queries';
 
-export { useToggleFollow, useUpdateProfile, useUploadAvatar } from './mutations';
+export { useToggleFollow, useUpdateProfile, useUpdateBusinessProfile, useUploadAvatar } from './mutations';
 export type { FollowToggle, FollowTarget } from './mutations';

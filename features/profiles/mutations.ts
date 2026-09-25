@@ -13,10 +13,10 @@
 
 import { useCallback, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { followUser, unfollowUser, updateUserProfileData, uploadAvatar } from './api';
+import { followUser, unfollowUser, updateBusinessProfile, updateUserProfileData, uploadAvatar } from './api';
 import { profileKeys } from './keys';
 import type { FollowCounts } from './queries';
-import type { ProfileId, ProfileUpdates, UserProfile } from './types';
+import type { BusinessProfileUpdates, ProfileId, ProfileUpdates, UserProfile } from './types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
 
 /** What a screen needs to follow someone. */
@@ -147,6 +147,45 @@ export const useUpdateProfile = (profileId: ProfileId | undefined) => {
       // values while the refetch is in flight.
       queryClient.setQueriesData<UserProfile[]>({ queryKey: profileKeys.allMine() }, (profiles) =>
         profiles?.map((profile) => (profile.id === profileId ? { ...profile, ...updates } : profile)),
+      );
+
+      queryClient.invalidateQueries({ queryKey: profileKeys.all });
+    },
+  });
+};
+
+/**
+ * Save a business profile's category, website, location or logo (ONE-23).
+ *
+ * The same cache treatment as `useUpdateProfile`: written through to the
+ * account's own list so the edit screen's caller shows the new values at
+ * once, then every profile query is invalidated so other screens catch up.
+ */
+export const useUpdateBusinessProfile = (profileId: ProfileId | undefined) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (updates: BusinessProfileUpdates): Promise<void> => {
+      if (!profileId) throw new Error('You must be signed in.');
+      await updateBusinessProfile(profileId, updates);
+    },
+    onSuccess: (_saved, updates) => {
+      queryClient.setQueriesData<UserProfile[]>({ queryKey: profileKeys.allMine() }, (profiles) =>
+        profiles?.map((profile) =>
+          profile.id === profileId
+            ? {
+                ...profile,
+                business: {
+                  category: null,
+                  website: null,
+                  location: null,
+                  logoUrl: null,
+                  ...profile.business,
+                  ...updates,
+                },
+              }
+            : profile,
+        ),
       );
 
       queryClient.invalidateQueries({ queryKey: profileKeys.all });
