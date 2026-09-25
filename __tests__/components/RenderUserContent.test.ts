@@ -35,11 +35,10 @@ import { color, type } from '../../theme/tokens';
 
 // ─── 2. Helpers ─────────────────────────────────────────────────────────
 
-type Props = { content: string; className?: string; style?: unknown };
+type Props = { content: string; style?: unknown };
 
 type SpanElement = React.ReactElement<{
   style?: unknown;
-  className?: string;
   onPress?: () => void;
   children?: React.ReactNode;
 }>;
@@ -108,10 +107,9 @@ describe('RenderUserContent — rendering', () => {
     expect(style.color).toBe(color.text);
   });
 
-  it('lets a legacy className colour win on screens not yet re-skinned', () => {
-    const el = render({ content: 'hello', className: 'text-white' })!;
-    expect(el.props.className).toBe('text-white');
-    expect(flatten(el.props.style).color).toBeUndefined();
+  it('lets a caller override the ink, as a message bubble does with inverse', () => {
+    const el = render({ content: 'hello', style: { color: color.inverse } })!;
+    expect(flatten(el.props.style).color).toBe(color.inverse);
   });
 
   it('sets mentions and hashtags in the medium weight, with no colour of their own', () => {

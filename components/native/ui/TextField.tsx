@@ -1,6 +1,6 @@
 import React, { forwardRef, useState } from 'react';
 import { TextInput, View, Text, StyleSheet } from 'react-native';
-import type { StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
+import type { LayoutChangeEvent, StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
 import { color, radius, space, type, withAlpha } from '../../../theme/tokens';
 import MonoLabel from './MonoLabel';
 
@@ -20,6 +20,16 @@ export interface TextFieldProps extends Omit<TextInputProps, 'style' | 'placehol
   label?: string;
   /** Error text shown beneath the field in `heart`. */
   error?: string | null;
+  /**
+   * Drawn inside the field's leading edge, e.g. a search icon. Decorative:
+   * it never takes a touch, so tapping it still focuses the field.
+   */
+  leading?: React.ReactNode;
+  /**
+   * Drawn inside the field's trailing edge: a show/hide control, a status
+   * such as "Available", a spinner. It stays interactive.
+   */
+  trailing?: React.ReactNode;
   /** Wraps the label, field and error. */
   containerStyle?: StyleProp<ViewStyle>;
   /** Applied to the input itself, after the defaults. */
@@ -28,6 +38,15 @@ export interface TextFieldProps extends Omit<TextInputProps, 'style' | 'placehol
 
 /** The field's minimum height, in points — comfortably above the 44pt target. */
 export const TEXT_FIELD_MIN_HEIGHT = 48;
+
+/** Gap between an adornment and the text beside it. */
+const ADORNMENT_GAP = space.sm;
+/**
+ * The trailing adornment sits snug to the edge, because a trailing IconButton
+ * already carries its own inset inside its 44pt hit area. A text status pads
+ * itself.
+ */
+const TRAILING_INSET = space.xs;
 
 /** Surface, border, text and placeholder colours for each variant. */
 export const TEXT_FIELD_COLORS: Record<
@@ -57,14 +76,35 @@ export const TEXT_FIELD_COLORS: Record<
  *
  * Forwards its ref to the underlying TextInput so a screen can still call
  * `focus()` or `blur()` on it.
+ *
+ * Adornments sit over the input rather than beside it in a row, so the input
+ * alone keeps the fill, border and focus colour; each one's measured width is
+ * added to the input's padding so text never runs underneath it.
  */
 const TextField = forwardRef<TextInput, TextFieldProps>(
   (
-    { variant = 'panel', label, error, containerStyle, inputStyle, multiline, onFocus, onBlur, ...rest },
+    {
+      variant = 'panel',
+      label,
+      error,
+      leading,
+      trailing,
+      containerStyle,
+      inputStyle,
+      multiline,
+      onFocus,
+      onBlur,
+      ...rest
+    },
     ref,
   ) => {
     const [focused, setFocused] = useState(false);
+    const [leadingWidth, setLeadingWidth] = useState(0);
+    const [trailingWidth, setTrailingWidth] = useState(0);
     const colors = TEXT_FIELD_COLORS[variant];
+
+    const onLeadingLayout = (e: LayoutChangeEvent) => setLeadingWidth(e.nativeEvent.layout.width);
+    const onTrailingLayout = (e: LayoutChangeEvent) => setTrailingWidth(e.nativeEvent.layout.width);
 
     const handleFocus = (e: FocusEvent) => {
       setFocused(true);
@@ -83,25 +123,39 @@ const TextField = forwardRef<TextInput, TextFieldProps>(
             {label}
           </MonoLabel>
         ) : null}
-        <TextInput
-          ref={ref}
-          multiline={multiline}
-          placeholderTextColor={colors.placeholder}
-          selectionColor={colors.focusedBorder}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          style={[
-            styles.input,
-            multiline && styles.multiline,
-            {
-              backgroundColor: colors.fill,
-              color: colors.text,
-              borderColor: focused ? colors.focusedBorder : colors.border,
-            },
-            inputStyle,
-          ]}
-          {...rest}
-        />
+        <View>
+          <TextInput
+            ref={ref}
+            multiline={multiline}
+            placeholderTextColor={colors.placeholder}
+            selectionColor={colors.focusedBorder}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            style={[
+              styles.input,
+              multiline && styles.multiline,
+              {
+                backgroundColor: colors.fill,
+                color: colors.text,
+                borderColor: focused ? colors.focusedBorder : colors.border,
+              },
+              leading ? { paddingLeft: space.md + leadingWidth + ADORNMENT_GAP } : null,
+              trailing ? { paddingRight: TRAILING_INSET + trailingWidth + ADORNMENT_GAP } : null,
+              inputStyle,
+            ]}
+            {...rest}
+          />
+          {leading ? (
+            <View pointerEvents="none" onLayout={onLeadingLayout} style={[styles.adornment, styles.leading]}>
+              {leading}
+            </View>
+          ) : null}
+          {trailing ? (
+            <View onLayout={onTrailingLayout} style={[styles.adornment, styles.trailing]}>
+              {trailing}
+            </View>
+          ) : null}
+        </View>
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
     );
@@ -125,6 +179,19 @@ const styles = StyleSheet.create({
   },
   multiline: {
     textAlignVertical: 'top',
+  },
+  adornment: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  leading: {
+    left: space.md,
+  },
+  trailing: {
+    right: TRAILING_INSET,
   },
   error: {
     marginTop: space.xs,

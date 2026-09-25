@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
@@ -42,29 +42,73 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: color.bg }}>
+    <SafeAreaView style={styles.screen}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={{ flex: 1, justifyContent: 'center', padding: space.xl, gap: space.lg }}>
+      <View style={styles.body}>
         <MonoLabel color="textMuted">Almost there</MonoLabel>
-        <Text style={{ fontFamily: type.bodyBold, fontSize: 24, color: color.text }}>
+        <Text style={styles.title} accessibilityRole="header">
           Set up your profile
         </Text>
-        <Text style={{ fontFamily: type.body, fontSize: 15, lineHeight: 22, color: color.textMid }}>
+        <Text style={styles.copy}>
           Your account doesn't have a profile yet. Create one to start posting, following and
           messaging.
         </Text>
+        {/* A form-level error, as on the sign-in screens: once, above the action. */}
         {failed && (
-          <Text style={{ fontFamily: type.body, fontSize: 14, color: color.heart }}>
-            That didn't work. Check your connection and try again.
-          </Text>
+          <View style={styles.error} accessibilityLiveRegion="polite">
+            <Text style={styles.errorText}>That didn't work. Check your connection and try again.</Text>
+          </View>
         )}
-        <Button fullWidth onPress={createProfile} disabled={working || status === 'ready'}>
-          {working ? 'Creating…' : 'Create my profile'}
-        </Button>
-        <Button fullWidth variant="outline" onPress={() => supabase.auth.signOut()} disabled={working}>
-          Sign out
-        </Button>
+        <View style={styles.actions}>
+          <Button fullWidth onPress={createProfile} loading={working} disabled={status === 'ready'}>
+            Create my profile
+          </Button>
+          <Button fullWidth variant="outline" onPress={() => supabase.auth.signOut()} disabled={working}>
+            Sign out
+          </Button>
+        </View>
       </View>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: color.bg,
+  },
+  body: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: space.xl,
+  },
+  title: {
+    marginTop: space.md,
+    fontFamily: type.bodyBold,
+    fontSize: 24,
+    lineHeight: 30,
+    color: color.text,
+  },
+  copy: {
+    marginTop: space.sm,
+    fontFamily: type.body,
+    fontSize: 15,
+    lineHeight: 22,
+    color: color.textMid,
+  },
+  error: {
+    marginTop: space.lg,
+    padding: space.md,
+    backgroundColor: color.bgPanel,
+  },
+  errorText: {
+    fontFamily: type.body,
+    fontSize: 13,
+    lineHeight: 18,
+    color: color.heart,
+  },
+  actions: {
+    marginTop: space.xl,
+    gap: space.md,
+  },
+});

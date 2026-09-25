@@ -18,6 +18,8 @@ export interface SheetProps {
 
 export interface SheetRowProps {
   label: string;
+  /** A second line under the label saying what the action does. */
+  hint?: string;
   icon?: React.ReactNode;
   /** Heart red, for Delete, Block, Report. */
   destructive?: boolean;
@@ -67,15 +69,19 @@ const Sheet: React.FC<SheetProps> = ({ visible, onClose, title, onBack, children
 );
 
 /** One action in a Sheet. */
-export const SheetRow: React.FC<SheetRowProps> = ({ label, icon, destructive = false, chevron = false, onPress }) => (
+export const SheetRow: React.FC<SheetRowProps> = ({ label, hint, icon, destructive = false, chevron = false, onPress }) => (
   <Pressable
     accessibilityRole="button"
     accessibilityLabel={label}
+    accessibilityHint={hint}
     onPress={onPress}
-    style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+    style={({ pressed }) => [styles.row, hint ? styles.rowWithHint : null, pressed && styles.rowPressed]}
   >
     {icon ? <View style={styles.rowIcon}>{icon}</View> : null}
-    <Text style={[styles.rowLabel, destructive && styles.destructive]}>{label}</Text>
+    <View style={styles.rowText}>
+      <Text style={[styles.rowLabel, destructive && styles.destructive]}>{label}</Text>
+      {hint ? <Text style={styles.rowHint}>{hint}</Text> : null}
+    </View>
     {chevron ? <ChevronRightIcon color={color.textMuted} size={18} /> : null}
   </Pressable>
 );
@@ -121,17 +127,30 @@ const styles = StyleSheet.create({
     minHeight: SHEET_ROW_HEIGHT,
     paddingHorizontal: space.xl,
   },
+  // A hinted row is two lines, so it grows past the 56pt minimum.
+  rowWithHint: {
+    minHeight: 72,
+    paddingVertical: space.md,
+  },
   rowPressed: {
     backgroundColor: color.bgSub,
+  },
+  rowText: {
+    flex: 1,
   },
   rowIcon: {
     marginRight: space.md,
   },
   rowLabel: {
-    flex: 1,
     fontFamily: type.body,
     fontSize: 16,
     color: color.text,
+  },
+  rowHint: {
+    marginTop: 2,
+    fontFamily: type.body,
+    fontSize: 13,
+    color: color.textMid,
   },
   destructive: {
     color: color.heart,

@@ -1,7 +1,6 @@
-
-
 import React, { useState, useRef, useCallback } from 'react';
-import { View, Text, Pressable, Alert, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator, Linking, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -9,12 +8,43 @@ import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
 import { useUploadStory } from '../../features/stories';
 import { pickImageFromLibrary } from '../../services/mediaPicker';
-import {
-  CameraIcon,
-  FlipCameraIcon,
-  ImageIcon,
-  XIcon,
-} from '../../components/native/Icons';
+import { Button, EmptyState, IconButton, Pressable, Sheet, SheetRow } from '../../components/native/ui';
+import { CameraIcon, FlipCameraIcon, GridIcon, ImageIcon, PlusCircleIcon } from '../../components/native/Icons';
+import { color, space, type, withAlpha } from '../../theme/tokens';
+
+/** The shutter's outer ring and inner disc, in points. */
+const SHUTTER_RING_SIZE = 72;
+const SHUTTER_FILL_SIZE = 58;
+/** How far the disc shrinks while the finger is down. */
+const SHUTTER_PRESSED_SCALE = 0.9;
+const CONTROL_ICON_SIZE = 24;
+
+/** A photo waiting for the person to choose what it becomes. */
+interface Captured {
+  uri: string;
+  width?: number | null;
+  height?: number | null;
+}
+
+/**
+ * The shutter: a white ring around a white disc that shrinks under the
+ * finger. Round, like an avatar — a control drawn over full-bleed media, not
+ * a surface of the square house style.
+ */
+const Shutter: React.FC<{ onPress: () => void; disabled: boolean }> = ({ onPress, disabled }) => (
+  <Pressable
+    onPress={onPress}
+    disabled={disabled}
+    accessibilityRole="button"
+    accessibilityLabel="Take photo"
+    accessibilityState={{ disabled }}
+    style={[styles.shutterRing, disabled && styles.shutterBusy]}
+  >
+    {({ pressed }) => (
+      <View style={[styles.shutterFill, pressed && { transform: [{ scale: SHUTTER_PRESSED_SCALE }] }]} />
+    )}
+  </Pressable>
+);
 
 export default function CameraScreen() {
   const router = useRouter();
@@ -33,6 +63,7 @@ export default function CameraScreen() {
   const [facing, setFacing] = useState<'front' | 'back'>('back');
   const [capturing, setCapturing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [captured, setCaptured] = useState<Captured | null>(null);
 
   const toggleFacing = useCallback(() => {
     triggerHapticFeedback('light');
@@ -43,13 +74,13 @@ export default function CameraScreen() {
     if (!profileId || uploading) return;
 
     setUploading(true);
-    addToast('Uploading story...', 'info');
+    addToast('Uploading OneSnap…', 'info');
 
     try {
       await uploadStory.mutateAsync({ imageUri: uri, caption: null });
     } catch (error) {
-      console.error('Story upload failed', error);
-      addToast('Failed to upload story.', 'error');
+      console.error('OneSnap upload failed', error);
+      addToast('Failed to upload OneSnap.', 'error');
     } finally {
       setUploading(false);
       // Small delay so toast is visible
@@ -65,29 +96,7 @@ export default function CameraScreen() {
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.9 });
       if (photo?.uri) {
-        Alert.alert('Share as', 'What would you like to do with this photo?', [
-          {
-            text: 'Story',
-            onPress: () => handleUploadStory(photo.uri),
-          },
-          {
-            text: 'Post',
-            onPress: () =>
-              router.push({
-                pathname: '/compose',
-                // Dimensions travel with the URI so the composer can measure
-                // the aspect ratio at the source rather than from a rendered
-                // view — see ONE-55.
-                params: {
-                  mediaUri: photo.uri,
-                  mediaType: 'image',
-                  mediaWidth: String(photo.width ?? ''),
-                  mediaHeight: String(photo.height ?? ''),
-                },
-              }),
-          },
-          { text: 'Cancel', style: 'cancel' },
-        ]);
+        setCaptured({ uri: photo.uri, width: photo.width, height: photo.height });
       }
     } catch (error) {
       console.error('Failed to take photo', error);
@@ -95,132 +104,192 @@ export default function CameraScreen() {
     } finally {
       setCapturing(false);
     }
-  }, [capturing, triggerHapticFeedback, handleUploadStory, router, addToast]);
+  }, [capturing, triggerHapticFeedback, addToast]);
 
   const pickFromGallery = useCallback(async () => {
     const result = await pickImageFromLibrary();
 
     if (result.status === 'selected') {
       const { uri, width, height } = result.media;
-      Alert.alert('Share as', 'What would you like to do with this photo?', [
-        {
-          text: 'Story',
-          onPress: () => handleUploadStory(uri),
-        },
-        {
-          text: 'Post',
-          onPress: () =>
-            router.push({
-              pathname: '/compose',
-              params: {
-                mediaUri: uri,
-                mediaType: 'image',
-                mediaWidth: String(width ?? ''),
-                mediaHeight: String(height ?? ''),
-              },
-            }),
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
+      setCaptured({ uri, width, height });
     }
-  }, [handleUploadStory, router]);
+  }, []);
 
-  // Permission not determined
+  // The two choices the old "Share as" Alert offered, unchanged.
+  const shareAsOneSnap = () => {
+    if (!captured) return;
+    setCaptured(null);
+    void handleUploadStory(captured.uri);
+  };
+
+  const shareAsPost = () => {
+    if (!captured) return;
+    setCaptured(null);
+    router.push({
+      pathname: '/compose',
+      // Dimensions travel with the URI so the composer can measure the
+      // aspect ratio at the source rather than from a rendered view — see
+      // ONE-55.
+      params: {
+        mediaUri: captured.uri,
+        mediaType: 'image',
+        mediaWidth: String(captured.width ?? ''),
+        mediaHeight: String(captured.height ?? ''),
+      },
+    });
+  };
+
+  const shareSheet = (
+    <Sheet visible={captured !== null} onClose={() => setCaptured(null)} title="Share as">
+      <SheetRow
+        label="Share as OneSnap"
+        hint="Disappears after 24 hours"
+        icon={<PlusCircleIcon color={color.text} size={24} />}
+        onPress={shareAsOneSnap}
+      />
+      <SheetRow
+        label="Share as post"
+        hint="Add a caption and post it to your profile"
+        icon={<GridIcon color={color.text} size={24} />}
+        onPress={shareAsPost}
+      />
+    </Sheet>
+  );
+
+  // Permission not determined yet
   if (!permission) {
     return (
-      <SafeAreaView className="flex-1 bg-black justify-center items-center">
-        <Text className="text-gray-400">Loading camera...</Text>
-      </SafeAreaView>
+      <View style={[styles.lightScreen, styles.centred]}>
+        <ActivityIndicator color={color.textMuted} accessibilityLabel="Loading camera" />
+      </View>
     );
   }
 
-  // Permission denied
+  // Permission not granted: ask, or send to Settings once the system will
+  // no longer show the prompt.
   if (!permission.granted) {
+    const canAsk = permission.canAskAgain;
     return (
-      <SafeAreaView className="flex-1 bg-black justify-center items-center px-8">
-        <CameraIcon color="#6b7280" size={64} />
-        <Text className="text-white text-xl font-bold mt-6 mb-2 text-center">
-          Camera Access Required
-        </Text>
-        <Text className="text-gray-400 text-center mb-6">
-          Allow camera access to take photos and create stories.
-        </Text>
-        <Pressable
-          onPress={requestPermission}
-          className="bg-blue-500 px-8 py-3 rounded-full"
-        >
-          <Text className="text-white font-bold text-base">Grant Access</Text>
-        </Pressable>
-        <Pressable onPress={pickFromGallery} className="mt-4">
-          <Text className="text-blue-500 font-semibold">Pick from Gallery instead</Text>
-        </Pressable>
+      <SafeAreaView style={[styles.lightScreen, styles.centred]}>
+        <EmptyState
+          icon={<CameraIcon color={color.text} size={48} strokeWidth={1.5} />}
+          title="Allow camera access"
+          body="OneTag uses the camera for photos and OneSnaps"
+          action={
+            canAsk
+              ? { label: 'Allow access', onPress: () => void requestPermission() }
+              : { label: 'Open settings', onPress: () => void Linking.openSettings() }
+          }
+        />
+        <Button variant="outline" onPress={pickFromGallery}>
+          Choose from library
+        </Button>
+        {shareSheet}
       </SafeAreaView>
     );
   }
 
   return (
-    <View className="flex-1 bg-black">
-      <CameraView
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        facing={facing}
-      />
+    <View style={styles.viewfinder}>
+      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} />
 
-      {/* Uploading overlay */}
-      {uploading && (
-        <View className="absolute inset-0 bg-black/70 z-20 items-center justify-center">
-          <ActivityIndicator size="large" color="#3b82f6" />
-          <Text className="text-white mt-4 font-semibold text-lg">Uploading story...</Text>
-        </View>
-      )}
+      {/* The photo being decided on, held under the sheet. */}
+      {captured ? (
+        <Image source={{ uri: captured.uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
+      ) : null}
 
-      {/* Top controls */}
-      <SafeAreaView edges={['top']} className="absolute top-0 left-0 right-0 z-10">
-        <View className="flex-row justify-between items-center px-4 py-2">
-          <Pressable
-            onPress={() => router.back()}
-            className="bg-black/40 p-2 rounded-full"
-          >
-            <XIcon color="white" size={24} />
-          </Pressable>
-          <Pressable
-            onPress={toggleFacing}
-            className="bg-black/40 p-2 rounded-full"
-          >
-            <FlipCameraIcon color="white" size={24} />
-          </Pressable>
-        </View>
-      </SafeAreaView>
-
-      {/* Bottom controls */}
-      <SafeAreaView edges={['bottom']} className="absolute bottom-0 left-0 right-0 z-10">
-        <View className="flex-row justify-around items-center pb-6 pt-4">
-          {/* Gallery */}
-          <Pressable
+      <SafeAreaView edges={['bottom']} style={styles.controls}>
+        <View style={styles.controlRow}>
+          <IconButton
+            icon={<ImageIcon color={color.inverse} size={CONTROL_ICON_SIZE} />}
+            accessibilityLabel="Choose from library"
             onPress={pickFromGallery}
-            className="bg-black/40 p-3 rounded-full"
-          >
-            <ImageIcon color="white" size={28} />
-          </Pressable>
-
-          {/* Capture */}
-          <Pressable
-            onPress={takePhoto}
-            disabled={capturing}
-            className="items-center justify-center"
-          >
-            <View
-              className="w-20 h-20 rounded-full border-4 border-white items-center justify-center"
-              style={{ opacity: capturing ? 0.5 : 1 }}
-            >
-              <View className="w-16 h-16 rounded-full bg-white" />
-            </View>
-          </Pressable>
-
-          {/* Placeholder for symmetry */}
-          <View className="w-14" />
+            style={styles.overlayControl}
+          />
+          <Shutter onPress={takePhoto} disabled={capturing} />
+          <IconButton
+            icon={<FlipCameraIcon color={color.inverse} size={CONTROL_ICON_SIZE} />}
+            accessibilityLabel="Flip camera"
+            onPress={toggleFacing}
+            style={styles.overlayControl}
+          />
         </View>
       </SafeAreaView>
+
+      {uploading ? (
+        <View style={[StyleSheet.absoluteFill, styles.centred]} pointerEvents="none">
+          <View style={styles.uploadPanel} accessibilityLiveRegion="polite">
+            <ActivityIndicator color={color.inverse} />
+            <Text style={styles.uploadLabel}>Uploading OneSnap…</Text>
+          </View>
+        </View>
+      ) : null}
+
+      {shareSheet}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  lightScreen: {
+    flex: 1,
+    backgroundColor: color.bg,
+  },
+  centred: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Full-bleed content stays black; the black is the ink token.
+  viewfinder: {
+    flex: 1,
+    backgroundColor: color.text,
+  },
+  controls: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  controlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: space.xl,
+    paddingTop: space.lg,
+    paddingBottom: space.xl,
+  },
+  overlayControl: {
+    backgroundColor: withAlpha(color.text, 0.4),
+  },
+  shutterRing: {
+    width: SHUTTER_RING_SIZE,
+    height: SHUTTER_RING_SIZE,
+    borderRadius: SHUTTER_RING_SIZE / 2,
+    borderWidth: 3,
+    borderColor: color.inverse,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shutterBusy: {
+    opacity: 0.5,
+  },
+  shutterFill: {
+    width: SHUTTER_FILL_SIZE,
+    height: SHUTTER_FILL_SIZE,
+    borderRadius: SHUTTER_FILL_SIZE / 2,
+    backgroundColor: color.inverse,
+  },
+  uploadPanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    backgroundColor: color.text,
+  },
+  uploadLabel: {
+    fontFamily: type.bodyMedium,
+    fontSize: 15,
+    color: color.inverse,
+  },
+});

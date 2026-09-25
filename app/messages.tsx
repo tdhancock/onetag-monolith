@@ -1,19 +1,5 @@
-
-
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  FlatList,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Modal,
-  Alert,
-} from 'react-native';
-import { Image } from 'expo-image';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, TextInput, FlatList, RefreshControl, StyleSheet } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
@@ -29,78 +15,52 @@ import {
   isPendingMessage,
 } from '../features/messages';
 import { cleanHtml } from '../lib/cleanHtml';
-import UserAvatar from '../components/native/UserAvatar';
-import RenderUserContent from '../components/native/RenderUserContent';
-import { SearchIcon, VerifiedIcon, CheckIcon, DoubleCheckIcon, ArrowLeftIcon } from '../components/native/Icons';
+import { bubbleGapAbove, endsRun, lastOwnMessageId, messageMetaLabel } from '../lib/screens/messages';
+import MessageBubble from '../components/native/MessageBubble';
+import KeyboardAvoider from '../components/native/KeyboardAvoider';
+import {
+  Avatar,
+  EmptyState,
+  IconButton,
+  ListRow,
+  Pressable,
+  Sheet,
+  SheetRow,
+  Skeleton,
+  TextField,
+} from '../components/native/ui';
+import { ArrowLeftIcon, PencilAltIcon, ReplyIcon, SearchIcon, SendIcon, TrashIcon, XIcon } from '../components/native/Icons';
+import { color, space, type } from '../theme/tokens';
 import type { Message, Post, SimpleUser } from '../types';
 
-// ─── Message Status ───────────────────────────
+const EMPTY_MESSAGES: Message[] = [];
 
-const MessageStatus: React.FC<{ message: Message; isMyMessage: boolean }> = ({ message, isMyMessage }) => {
-  const isTempMessage = isPendingMessage(message);
-  const creationTime = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+/** Placeholder rows while the inbox or a search loads. */
+const SKELETON_ROWS = 6;
+/** The inbox's avatars are a step larger than a plain list's. */
+const CONVERSATION_AVATAR_SIZE = 52;
+/** The composer grows with its text up to about four lines, then scrolls. */
+const COMPOSER_MAX_HEIGHT = 4 * 21 + 2 * space.md;
 
-  if (!isMyMessage) {
-    return (
-      <View className="flex-row justify-end items-center mt-1">
-        <Text className="text-xs text-gray-400">{creationTime}</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View className="flex-row justify-end items-center mt-1" style={{ gap: 4 }}>
-      <Text className="text-xs text-blue-200/80">{creationTime}</Text>
-      {isTempMessage ? (
-        <CheckIcon color="rgba(191,219,254,0.8)" size={14} />
-      ) : (
-        <DoubleCheckIcon color="rgba(191,219,254,0.8)" size={14} />
-      )}
+/** A conversation-row-shaped placeholder. */
+const RowSkeleton: React.FC<{ avatarSize?: number }> = ({ avatarSize = 40 }) => (
+  <View style={styles.skeletonRow}>
+    <Skeleton circle height={avatarSize} />
+    <View style={styles.skeletonText}>
+      <Skeleton width={140} height={12} />
+      <Skeleton width={90} height={10} style={styles.skeletonGap} />
     </View>
-  );
-};
-
-// ─── Shared Post Preview ──────────────────────
-
-const SharedPostPreview: React.FC<{ post: Post; onPress: () => void }> = ({ post, onPress }) => (
-  <Pressable onPress={onPress} className="bg-black/20 p-2 rounded-lg border border-white/30 mb-2">
-    <View className="flex-row items-center mb-2" style={{ gap: 8 }}>
-      <UserAvatar username={post.username} avatarUrl={post.avatar} size={24} />
-      <Text className="text-white text-sm font-semibold">@{post.username}</Text>
-    </View>
-    {post.media ? (
-      <View className="aspect-square rounded-md overflow-hidden bg-gray-800">
-        <Image
-          // The preview is a 50px blur-up, not something to show on its own.
-          source={{ uri: post.media }}
-          placeholder={post.media_preview_url ? { uri: post.media_preview_url } : undefined}
-          style={{ width: '100%', height: '100%' }}
-          contentFit="cover"
-        />
-      </View>
-    ) : (
-      <Text className="text-gray-200 text-sm" numberOfLines={3}>{post.content}</Text>
-    )}
-    <Text className="text-xs text-blue-300 mt-2 font-semibold">View Post</Text>
-  </Pressable>
+  </View>
 );
 
-// ─── Shared User Preview ──────────────────────
-
-const SharedUserPreview: React.FC<{ user: SimpleUser; onPress: () => void }> = ({ user, onPress }) => (
-  <View className="bg-black/20 p-3 rounded-lg border border-white/30 mb-2">
-    <View className="flex-row items-center" style={{ gap: 12 }}>
-      <UserAvatar username={user.username} avatarUrl={user.avatar} size={48} />
-      <View className="flex-1">
-        <View className="flex-row items-center" style={{ gap: 4 }}>
-          <Text className="text-white font-semibold">@{user.username}</Text>
-          {user.isVerified && <VerifiedIcon color="#3b82f6" size={14} />}
-        </View>
+/** Bubble-shaped placeholders, alternating sides, while a thread loads. */
+const ThreadSkeleton: React.FC = () => (
+  <View style={styles.threadSkeleton}>
+    {[180, 120, 220, 150].map((width, i) => (
+      <View key={i} style={[styles.skeletonBubbleRow, i % 2 === 1 && styles.skeletonBubbleMine]}>
+        <Skeleton width={width} height={36} />
       </View>
-      <Pressable onPress={onPress} className="bg-blue-500 px-3 py-1 rounded-lg">
-        <Text className="text-white text-sm">View</Text>
-      </Pressable>
-    </View>
+    ))}
   </View>
 );
 
@@ -117,11 +77,14 @@ export default function MessagesScreen() {
   const [searchTerm, setSearchTerm] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Conversations, the open thread and unread state are queries (ONE-18),
   // kept live by the realtime hook AppContext mounts for the session.
-  const { data: chatUsers = [], isLoading: isLoadingUsers } = useConversationsQuery(userId);
-  const { data: messages = [] } = useThreadQuery(userId, chatWith?.id);
+  const conversations = useConversationsQuery(userId);
+  const chatUsers = conversations.data ?? [];
+  const thread = useThreadQuery(userId, chatWith?.id);
+  const messages = thread.data ?? EMPTY_MESSAGES;
   const unreadChats = useUnreadChats(userId);
 
   const sendMessage = useSendMessage(userId);
@@ -133,10 +96,15 @@ export default function MessagesScreen() {
   const [userSearchResults, setUserSearchResults] = useState<SimpleUser[]>([]);
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
 
-  // Delete modal
+  // The conversation a long press picked, for the delete sheet.
   const [userToDelete, setUserToDelete] = useState<SimpleUser | null>(null);
+  // The message a long press picked, for the options sheet.
+  const [messageForOptions, setMessageForOptions] = useState<Message | null>(null);
 
   const inputRef = useRef<TextInput>(null);
+  const searchRef = useRef<TextInput>(null);
+
+  const focusSearch = useCallback(() => searchRef.current?.focus(), []);
 
   // Mark messages read on mount (list view)
   useEffect(() => {
@@ -214,6 +182,15 @@ export default function MessagesScreen() {
     setReplyingTo(null);
   };
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await conversations.refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [conversations]);
+
   const handleSendMessage = () => {
     if (!newMessage.trim() || !chatWith || !userId) return;
 
@@ -251,140 +228,157 @@ export default function MessagesScreen() {
     });
   };
 
+  const usernameOf = (senderId: string, other: SimpleUser) =>
+    senderId === profileId ? userProfile?.username : other.username;
+
   // ─── Chat View ────────────────────────────────
 
   if (chatWith) {
-    const renderMessage = ({ item: msg }: { item: Message }) => {
-      const isMyMessage = msg.sender_id === profileId;
-      const repliedMsgSender = msg.repliedMessage?.sender_id === profileId
-        ? userProfile?.username
-        : chatWith.username;
+    const lastOwnId = lastOwnMessageId(messages, profileId);
+    const canSend = newMessage.trim().length > 0;
+    const displayName = chatWith.name || chatWith.username;
 
+    const renderMessage = ({ item: msg, index }: { item: Message; index: number }) => {
+      const mine = msg.sender_id === profileId;
+      const pending = isPendingMessage(msg);
       return (
-        <Pressable
-          onLongPress={() => {
-            if (!isPendingMessage(msg)) {
-              triggerHapticFeedback();
-              setReplyingTo(msg);
-            }
-          }}
-          className={`flex-row mb-2 ${isMyMessage ? 'justify-end' : 'justify-start'}`}
-        >
-          <View
-            className={`max-w-[75%] py-2 px-3 rounded-2xl ${
-              isMyMessage ? 'bg-blue-600 rounded-br-none' : 'bg-gray-700 rounded-bl-none'
-            }`}
-          >
-            {/* Replied message */}
-            {msg.repliedMessage && (
-              <View className="bg-black/20 p-2 rounded-lg border-l-2 border-blue-400 mb-2">
-                <Text className="font-bold text-xs text-blue-300">@{repliedMsgSender}</Text>
-                <Text className="text-sm text-gray-300" numberOfLines={2}>{msg.repliedMessage.text}</Text>
-              </View>
-            )}
+        <MessageBubble
+          message={msg}
+          mine={mine}
+          gapAbove={bubbleGapAbove(messages, index)}
+          meta={messageMetaLabel({
+            message: msg,
+            endsRun: endsRun(messages, index),
+            isLastOwn: msg.id === lastOwnId,
+            isPending: pending,
+          })}
+          quotedUsername={msg.repliedMessage ? usernameOf(msg.repliedMessage.sender_id, chatWith) : null}
+          // A message still on its way has no server id to reply to.
+          onLongPress={
+            pending
+              ? undefined
+              : () => {
+                  triggerHapticFeedback();
+                  setMessageForOptions(msg);
+                }
+          }
+          onOpenPost={(post: Post) => router.push(`/post/${post.id}`)}
+          onOpenProfile={(user: SimpleUser) => router.push(`/user/${user.username}`)}
+        />
+      );
+    };
 
-            {/* Shared post */}
-            {msg.type === 'post_share' && msg.sharedPost && (
-              <SharedPostPreview
-                post={msg.sharedPost}
-                onPress={() => router.push(`/post/${msg.sharedPost!.id}`)}
-              />
-            )}
-
-            {/* Shared user */}
-            {msg.type === 'profile_share' && msg.sharedUser && (
-              <SharedUserPreview
-                user={msg.sharedUser}
-                onPress={() => router.push(`/user/${msg.sharedUser!.username}`)}
-              />
-            )}
-
-            {/* Text */}
-            {msg.text ? (
-              <View className="px-1 py-1">
-                <RenderUserContent content={msg.text} className="text-white" />
-              </View>
-            ) : null}
-
-            <MessageStatus message={msg} isMyMessage={isMyMessage} />
+    const renderThread = () => {
+      if (thread.isLoading) return <ThreadSkeleton />;
+      if (messages.length === 0) {
+        return (
+          <View style={styles.emptyThread}>
+            <Avatar uri={chatWith.avatar} name={displayName} size={56} />
+            <Text style={styles.emptyThreadName}>{displayName}</Text>
+            <Text style={styles.emptyThreadBody}>Say hi to @{chatWith.username}</Text>
           </View>
-        </Pressable>
+        );
+      }
+      return (
+        <FlatList
+          data={messages}
+          keyExtractor={item => item.id}
+          renderItem={renderMessage}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.threadList}
+        />
       );
     };
 
     return (
-      <SafeAreaView className="flex-1 bg-black" edges={['bottom']}>
+      <SafeAreaView style={styles.screen} edges={['bottom']}>
         <Stack.Screen
           options={{
             headerShown: true,
-            title: `@${chatWith.username}`,
-            headerStyle: { backgroundColor: '#000' },
-            headerTintColor: '#fff',
-            headerTitleStyle: { fontWeight: 'bold' },
+            title: displayName,
+            headerTitle: () => (
+              <Pressable
+                onPress={() => router.push(`/user/${chatWith.username}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`View ${chatWith.username}'s profile`}
+                style={styles.threadHeader}
+              >
+                <Avatar uri={chatWith.avatar} name={displayName} size={32} />
+                <Text style={styles.threadHeaderName} numberOfLines={1}>
+                  {displayName}
+                </Text>
+              </Pressable>
+            ),
             headerLeft: () => (
-              <Pressable onPress={closeChat} className="mr-2 p-1 -ml-1" hitSlop={8}>
-                <ArrowLeftIcon color="#fff" size={24} />
-              </Pressable>
+              <IconButton
+                icon={<ArrowLeftIcon color={color.text} size={22} />}
+                accessibilityLabel="Back to messages"
+                onPress={closeChat}
+              />
             ),
-            headerRight: () => (
-              <Pressable onPress={() => router.push(`/user/${chatWith.username}`)}>
-                <UserAvatar username={chatWith.username} avatarUrl={chatWith.avatar} size={32} />
-              </Pressable>
-            ),
+            headerRight: () => null,
           }}
         />
 
-        <KeyboardAvoidingView
-          className="flex-1"
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-        >
-          <FlatList
-            data={messages}
-            keyExtractor={item => item.id}
-            renderItem={renderMessage}
-            contentContainerStyle={{ padding: 16, flexGrow: 1, justifyContent: 'flex-end' }}
-          />
+        {/* Measures itself against the keyboard, so the modal's header height
+            never has to be guessed (see KeyboardAvoider). */}
+        <KeyboardAvoider style={styles.fill}>
+          <View style={styles.fill}>{renderThread()}</View>
 
-          {/* Reply banner */}
-          {replyingTo && (
-            <View className="px-3 py-2 bg-gray-800 flex-row items-center">
-              <View className="flex-1 border-l-2 border-blue-400 pl-2">
-                <Text className="text-sm font-bold text-blue-400">
-                  Replying to @{replyingTo.sender_id === profileId ? userProfile?.username : chatWith.username}
+          {replyingTo ? (
+            <View style={styles.replyBanner}>
+              <View style={styles.fill}>
+                <Text style={styles.replyTitle} numberOfLines={1}>
+                  Replying to @{usernameOf(replyingTo.sender_id, chatWith)}
                 </Text>
-                <Text className="text-xs text-gray-300" numberOfLines={1}>{replyingTo.text}</Text>
+                <Text style={styles.replyQuote} numberOfLines={1}>
+                  {replyingTo.text}
+                </Text>
               </View>
-              <Pressable onPress={() => setReplyingTo(null)} className="p-2">
-                <Text className="text-gray-400 text-lg">×</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {/* Input */}
-          <View className="border-t border-gray-800 bg-black px-3 py-2">
-            <View className="flex-row items-center" style={{ gap: 8 }}>
-              <TextInput
-                ref={inputRef}
-                value={newMessage}
-                onChangeText={setNewMessage}
-                placeholder="Type a message..."
-                placeholderTextColor="#6b7280"
-                className="flex-1 bg-gray-800 rounded-full py-2 px-4 text-white"
-                returnKeyType="send"
-                onSubmitEditing={handleSendMessage}
+              <IconButton
+                icon={<XIcon color={color.textMid} size={18} />}
+                accessibilityLabel="Cancel reply"
+                onPress={() => setReplyingTo(null)}
               />
-              <Pressable
-                onPress={handleSendMessage}
-                disabled={!newMessage.trim()}
-              >
-                <Text className={`font-semibold ${newMessage.trim() ? 'text-blue-500' : 'text-gray-500'}`}>
-                  Send
-                </Text>
-              </Pressable>
             </View>
+          ) : null}
+
+          {/* The composer, pinned above the keyboard and the home indicator. */}
+          <View style={styles.composer}>
+            <TextField
+              ref={inputRef}
+              value={newMessage}
+              onChangeText={setNewMessage}
+              placeholder="Message…"
+              multiline
+              // Return sends, as it always has here.
+              submitBehavior="submit"
+              returnKeyType="send"
+              onSubmitEditing={handleSendMessage}
+              containerStyle={styles.fill}
+              inputStyle={styles.composerInput}
+              accessibilityLabel="Message"
+            />
+            <IconButton
+              icon={<SendIcon color={canSend ? color.text : color.textMuted} size={22} />}
+              accessibilityLabel="Send"
+              onPress={handleSendMessage}
+              disabled={!canSend}
+            />
           </View>
-        </KeyboardAvoidingView>
+        </KeyboardAvoider>
+
+        <Sheet visible={!!messageForOptions} onClose={() => setMessageForOptions(null)}>
+          <SheetRow
+            label="Reply"
+            icon={<ReplyIcon color={color.text} size={20} />}
+            onPress={() => {
+              setReplyingTo(messageForOptions);
+              setMessageForOptions(null);
+              inputRef.current?.focus();
+            }}
+          />
+        </Sheet>
       </SafeAreaView>
     );
   }
@@ -393,129 +387,278 @@ export default function MessagesScreen() {
 
   const renderChatUser = ({ item: user }: { item: SimpleUser }) => {
     const hasUnread = unreadChats.has(user.id);
+    const name = user.name || user.username;
 
     return (
-      <Pressable
+      <ListRow
+        title={name}
+        subtitle={`@${user.username}`}
+        verified={user.isVerified}
+        leading={<Avatar uri={user.avatar} name={name} size={CONVERSATION_AVATAR_SIZE} />}
+        trailing={hasUnread ? <View style={styles.unreadDot} /> : null}
         onPress={() => openChat(user)}
         onLongPress={() => {
           triggerHapticFeedback();
           setUserToDelete(user);
         }}
-        className="flex-row items-center px-4 py-3 border-b border-gray-800"
-        style={{ gap: 12 }}
-      >
-        <View className="relative">
-          <UserAvatar username={user.username} avatarUrl={user.avatar} size={48} />
-          {hasUnread && (
-            <View className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-black" />
-          )}
-        </View>
-        <View className="flex-1">
-          <Text className="text-white font-bold text-lg">@{user.username}</Text>
-          <Text className="text-sm text-gray-400">Tap to start chatting</Text>
-        </View>
-      </Pressable>
+        accessibilityLabel={`${hasUnread ? 'Unread. ' : ''}Conversation with ${user.username}`}
+        accessibilityHint="Long press to delete the conversation"
+      />
     );
   };
 
   const renderSearchResult = ({ item: user }: { item: SimpleUser }) => (
-    <Pressable
+    <ListRow
+      title={user.name || user.username}
+      subtitle={`@${user.username}`}
+      avatarUri={user.avatar}
+      verified={user.isVerified}
       onPress={() => openChat(user)}
-      className="flex-row items-center px-4 py-3 border-b border-gray-800"
-      style={{ gap: 12 }}
-    >
-      <UserAvatar username={user.username} avatarUrl={user.avatar} size={48} />
-      <View className="flex-1">
-        <View className="flex-row items-center" style={{ gap: 4 }}>
-          <Text className="text-white font-bold">@{user.username}</Text>
-          {user.isVerified && <VerifiedIcon color="#3b82f6" size={14} />}
-        </View>
-        <Text className="text-sm text-gray-400">{user.name}</Text>
-      </View>
-    </Pressable>
+      accessibilityLabel={`Message ${user.username}`}
+    />
   );
 
+  const skeletonRows = (avatarSize?: number) => (
+    <View>
+      {Array.from({ length: SKELETON_ROWS }, (_, i) => <RowSkeleton key={i} avatarSize={avatarSize} />)}
+    </View>
+  );
+
+  const renderInbox = () => {
+    if (searchTerm.trim()) {
+      if (isSearchingUsers) return skeletonRows();
+      if (userSearchResults.length === 0) {
+        return <Text style={styles.noResults}>No results for "{searchTerm.trim()}"</Text>;
+      }
+      return (
+        <FlatList
+          data={userSearchResults}
+          keyExtractor={item => item.id}
+          renderItem={renderSearchResult}
+          keyboardShouldPersistTaps="handled"
+        />
+      );
+    }
+
+    if (conversations.isLoading) return skeletonRows(CONVERSATION_AVATAR_SIZE);
+
+    if (conversations.isError && !conversations.data) {
+      return (
+        <EmptyState
+          title="Couldn't load your messages"
+          body="Check your connection and try again."
+          action={{ label: 'Retry', onPress: () => void conversations.refetch() }}
+        />
+      );
+    }
+
+    return (
+      <FlatList
+        data={chatUsers}
+        keyExtractor={item => item.id}
+        renderItem={renderChatUser}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={color.textMuted}
+            colors={[color.textMuted]}
+          />
+        }
+        ListEmptyComponent={
+          <EmptyState
+            title="No messages yet"
+            body="Search for someone to start a conversation."
+            action={{ label: 'Find people', onPress: focusSearch }}
+          />
+        }
+        contentContainerStyle={styles.fillGrow}
+      />
+    );
+  };
+
   return (
-    <SafeAreaView className="flex-1 bg-black">
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
       <Stack.Screen
         options={{
           headerShown: true,
           title: 'Messages',
-          headerStyle: { backgroundColor: '#000' },
-          headerTintColor: '#fff',
-          headerTitleStyle: { fontWeight: 'bold' },
+          // Reset what the thread view set, since options merge.
+          headerTitle: undefined,
+          headerLeft: undefined,
+          headerRight: () => (
+            <IconButton
+              icon={<PencilAltIcon color={color.text} size={22} />}
+              accessibilityLabel="New message"
+              onPress={focusSearch}
+            />
+          ),
         }}
       />
 
-      {/* Search bar */}
-      <View className="px-4 py-3 border-b border-gray-800">
-        <View className="flex-row items-center bg-gray-800 rounded-full px-4 py-2 border border-gray-700">
-          <SearchIcon color="#6b7280" size={20} />
-          <TextInput
-            value={searchTerm}
-            onChangeText={setSearchTerm}
-            placeholder="Search for users..."
-            placeholderTextColor="#6b7280"
-            className="flex-1 text-white ml-2"
-            autoCapitalize="none"
-          />
-        </View>
+      <View style={styles.searchBar}>
+        <TextField
+          ref={searchRef}
+          value={searchTerm}
+          onChangeText={setSearchTerm}
+          placeholder="Search"
+          leading={<SearchIcon color={color.textMuted} size={18} />}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          inputStyle={styles.searchInput}
+          accessibilityLabel="Search people"
+        />
       </View>
 
-      {/* Content */}
-      {searchTerm.trim() ? (
-        isSearchingUsers ? (
-          <View className="flex-1 justify-center items-center">
-            <ActivityIndicator color="#3b82f6" />
-          </View>
-        ) : userSearchResults.length > 0 ? (
-          <FlatList
-            data={userSearchResults}
-            keyExtractor={item => item.id}
-            renderItem={renderSearchResult}
-          />
-        ) : (
-          <View className="flex-1 justify-center items-center">
-            <Text className="text-gray-500">No users found for "{searchTerm}".</Text>
-          </View>
-        )
-      ) : isLoadingUsers ? (
-        <View className="flex-1 justify-center items-center">
-          <ActivityIndicator color="#3b82f6" size="large" />
-        </View>
-      ) : chatUsers.length > 0 ? (
-        <FlatList
-          data={chatUsers}
-          keyExtractor={item => item.id}
-          renderItem={renderChatUser}
-        />
-      ) : (
-        <View className="flex-1 justify-center items-center px-8">
-          <Text className="text-gray-500 text-center">
-            No messages yet. Start a new chat by searching for a user.
-          </Text>
-        </View>
-      )}
+      {renderInbox()}
 
-      {/* Delete conversation modal */}
-      <Modal visible={!!userToDelete} transparent animationType="fade" onRequestClose={() => setUserToDelete(null)}>
-        <Pressable className="flex-1 bg-black/60 justify-center items-center px-4" onPress={() => setUserToDelete(null)}>
-          <View className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-sm overflow-hidden">
-            <View className="p-4 items-center border-b border-gray-800">
-              <Text className="text-lg font-bold text-white">Delete Conversation</Text>
-              {userToDelete && (
-                <Text className="text-sm text-gray-400 mt-1">with @{userToDelete.username}</Text>
-              )}
-            </View>
-            <Pressable onPress={handleDeleteChat} className="p-4 border-b border-gray-800">
-              <Text className="text-red-500 font-bold text-center">Delete conversation for both sides</Text>
-            </Pressable>
-            <Pressable onPress={() => setUserToDelete(null)} className="p-4">
-              <Text className="text-white font-semibold text-center">Cancel</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
+      <Sheet
+        visible={!!userToDelete}
+        onClose={() => setUserToDelete(null)}
+        title={userToDelete ? `Conversation with @${userToDelete.username}` : undefined}
+      >
+        <SheetRow
+          label="Delete for both sides"
+          icon={<TrashIcon color={color.heart} size={20} />}
+          destructive
+          onPress={handleDeleteChat}
+        />
+      </Sheet>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: color.bg,
+  },
+  fill: {
+    flex: 1,
+  },
+  fillGrow: {
+    flexGrow: 1,
+  },
+  searchBar: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.sm,
+    paddingBottom: space.sm,
+  },
+  searchInput: {
+    minHeight: 44,
+    paddingVertical: space.sm,
+  },
+  noResults: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.xl,
+    fontFamily: type.body,
+    fontSize: 15,
+    color: color.textMid,
+    textAlign: 'center',
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: color.text,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 56,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+  },
+  skeletonText: {
+    marginLeft: space.md,
+  },
+  skeletonGap: {
+    marginTop: space.sm,
+  },
+  threadHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    minHeight: 44,
+    maxWidth: 240,
+  },
+  threadHeaderName: {
+    flexShrink: 1,
+    fontFamily: type.bodyBold,
+    fontSize: 17,
+    color: color.text,
+  },
+  threadList: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+    paddingVertical: space.md,
+  },
+  threadSkeleton: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    gap: space.md,
+  },
+  skeletonBubbleRow: {
+    alignItems: 'flex-start',
+  },
+  skeletonBubbleMine: {
+    alignItems: 'flex-end',
+  },
+  emptyThread: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.xl,
+  },
+  emptyThreadName: {
+    marginTop: space.md,
+    fontFamily: type.bodyBold,
+    fontSize: 17,
+    color: color.text,
+  },
+  emptyThreadBody: {
+    marginTop: space.xs,
+    fontFamily: type.body,
+    fontSize: 15,
+    color: color.textMid,
+  },
+  replyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    paddingVertical: space.xs,
+    backgroundColor: color.bgPanel,
+  },
+  replyTitle: {
+    fontFamily: type.bodyBold,
+    fontSize: 13,
+    color: color.text,
+  },
+  replyQuote: {
+    marginTop: 2,
+    fontFamily: type.body,
+    fontSize: 13,
+    color: color.textMid,
+  },
+  composer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: space.xs,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    paddingVertical: space.sm,
+    borderTopWidth: 1,
+    borderTopColor: color.border,
+    backgroundColor: color.bg,
+  },
+  composerInput: {
+    minHeight: 44,
+    maxHeight: COMPOSER_MAX_HEIGHT,
+    paddingVertical: space.sm,
+  },
+});

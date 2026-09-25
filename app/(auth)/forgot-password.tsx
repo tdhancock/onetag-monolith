@@ -1,21 +1,13 @@
-
-
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Image,
-} from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, Link } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { supabase } from '../../services/supabase.native';
-import { tokens } from '../../theme/tokens';
+import { Button, EmptyState, TextField } from '../../components/native/ui';
+import AuthScaffold, { AuthFormError, AuthSwitch } from '../../components/native/AuthScaffold';
+import { EnvelopeIcon } from '../../components/native/Icons';
+import { resetFormValid } from '../../lib/screens/auth';
+import { color } from '../../theme/tokens';
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
@@ -25,6 +17,7 @@ export default function ForgotPasswordScreen() {
   const router = useRouter();
 
   const handleResetPassword = async () => {
+    if (loading) return;
     if (!email.trim()) {
       setError('Please enter your email address');
       return;
@@ -54,96 +47,52 @@ export default function ForgotPasswordScreen() {
 
   if (success) {
     return (
-      <SafeAreaView className="flex-1 bg-black">
-        <View className="flex-1 justify-center items-center px-6">
-          <Text className="text-blue-500 text-5xl mb-4">✉</Text>
-          <Text className="text-white text-2xl font-bold mb-4 text-center">
-            Check your email
-          </Text>
-          <Text className="text-gray-400 text-center mb-2">
-            We sent a password reset link to
-          </Text>
-          <Text className="text-white font-semibold mb-6">{email.trim()}</Text>
-          <Text className="text-gray-500 text-center text-sm mb-8">
-            Click the link in the email to reset your password, then come back and log in.
-          </Text>
-          <Pressable
-            onPress={() => router.replace('/(auth)/login')}
-            className="bg-blue-500 px-8 py-4 rounded-xl w-full items-center"
-          >
-            <Text className="text-white font-bold text-lg">Back to Login</Text>
-          </Pressable>
-        </View>
+      <SafeAreaView style={styles.outcome}>
+        <EmptyState
+          icon={<EnvelopeIcon color={color.text} size={48} strokeWidth={1.5} />}
+          title="Check your email"
+          body={`We sent a password reset link to ${email.trim()}. Open it to reset your password, then come back and sign in.`}
+          action={{ label: 'Back to sign in', onPress: () => router.replace('/(auth)/login') }}
+        />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-black">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1"
-      >
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }} className="px-6">
-          <View className="flex-1 justify-center py-12">
-            <View className="items-center mb-10">
-              <Image
-                source={require('../../assets/icon.png')}
-                style={{ width: 88, height: 88, borderRadius: 44, marginBottom: 12 }}
-                resizeMode="cover"
-              />
-              <Text style={{ fontFamily: tokens.type.bodyBold }} className="text-5xl text-white" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-                OneTag
-              </Text>
-              <Text className="text-gray-400 mt-2 text-lg">Reset your password</Text>
-            </View>
+    <AuthScaffold
+      subtitle="Reset your password"
+      footer={
+        <AuthSwitch prompt="Remember your password?" action="Sign in" onPress={() => router.push('/(auth)/login')} />
+      }
+    >
+      <TextField
+        label="Email"
+        placeholder="Enter your email address"
+        value={email}
+        onChangeText={setEmail}
+        textContentType="emailAddress"
+        autoComplete="email"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoCorrect={false}
+        returnKeyType="send"
+        onSubmitEditing={handleResetPassword}
+        accessibilityLabel="Email"
+      />
 
-            <View className="space-y-4">
-              <View>
-                <Text className="text-gray-400 mb-2 ml-1">Email</Text>
-                <TextInput
-                  className="bg-gray-900 text-white px-4 py-4 rounded-xl border border-gray-800 focus:border-blue-500"
-                  placeholder="Enter your email address"
-                  placeholderTextColor="#6b7280"
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  value={email}
-                  onChangeText={setEmail}
-                />
-              </View>
+      {error ? <AuthFormError message={error} /> : null}
 
-              {error && (
-                <View className="bg-red-900/20 border border-red-900/50 p-3 rounded-xl mt-4">
-                  <Text className="text-red-500 text-center">{error}</Text>
-                </View>
-              )}
-
-              <Pressable
-                onPress={handleResetPassword}
-                disabled={loading}
-                className={`mt-8 py-4 rounded-xl items-center ${loading ? 'bg-blue-500/50' : 'bg-blue-500'}`}
-              >
-                {loading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text className="text-white font-bold text-lg">Send Reset Link</Text>
-                )}
-              </Pressable>
-            </View>
-          </View>
-
-          <View className="pb-8 items-center">
-            <Text className="text-gray-400">
-              Remember your password?{' '}
-              <Link href="/(auth)/login" asChild>
-                <Pressable>
-                  <Text className="text-blue-500 font-bold">Log in</Text>
-                </Pressable>
-              </Link>
-            </Text>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      <Button fullWidth onPress={handleResetPassword} loading={loading} disabled={!resetFormValid(email)}>
+        Send reset link
+      </Button>
+    </AuthScaffold>
   );
 }
+
+const styles = StyleSheet.create({
+  outcome: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: color.bg,
+  },
+});

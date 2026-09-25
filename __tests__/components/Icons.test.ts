@@ -66,7 +66,7 @@ const ICON_NAMES = [
   'BookmarkIcon', 'TrashIcon', 'XIcon', 'PlusIcon', 'ArrowRightIcon',
   'ArrowLeftIcon', 'ImageIcon', 'FlipCameraIcon', 'PencilIcon', 'TypeIcon',
   'ShareIcon', 'DownloadIcon', 'LockClosedIcon', 'PlusCircleIcon', 'MenuIcon',
-  'ThreeDotsVerticalIcon', 'GridIcon', 'DotsHorizontalIcon', 'BlockIcon', 'LogoutIcon', 'EyeIcon', 'ReplyIcon',
+  'ThreeDotsVerticalIcon', 'GridIcon', 'DotsHorizontalIcon', 'BlockIcon', 'LogoutIcon', 'EyeIcon', 'EyeSlashIcon', 'EnvelopeIcon', 'ReplyIcon',
   'HashtagIcon', 'VerifiedIcon', 'CheckIcon', 'DoubleCheckIcon',
   'FlagIcon', 'ReportIcon', 'SendIcon', 'StarIcon', 'ChevronDownIcon',
   'ChevronUpIcon', 'ShareIOSIcon', 'AddToHomeScreenIOSIcon',

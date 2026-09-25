@@ -31,7 +31,7 @@ export interface ProfileScreenProfile {
 /**
  * Resolves the image source the avatar component should render. Returns
  * `null` when the profile has no usable picture so the caller can fall
- * back to the initials-based avatar (which `UserAvatar` already handles
+ * back to the initials-based avatar (which `Avatar` already handles
  * internally — we just have to decide whether to pass a URL at all).
  *
  * Empty strings and pure-whitespace strings are treated the same as
@@ -52,7 +52,7 @@ export const resolveAvatarSource = (
 /**
  * Returns the two-letter initials shown inside the avatar fallback
  * bubble. The ProfileScreen delegates the actual rendering to
- * `UserAvatar`, but the initials are derived from `name` (preferred) or
+ * `Avatar`, but the initials are derived from `name` (preferred) or
  * `username` so the test can pin down the exact fallback string.
  */
 export const getAvatarInitials = (
@@ -63,7 +63,7 @@ export const getAvatarInitials = (
     if (source === '') return '';
 
     // Split on any whitespace and pick the first letter of up to two
-    // words. This matches what the existing UserAvatar component does
+    // words. This matches what the Avatar primitive does
     // for the `name`-based fallback path.
     const words = source.split(/\s+/).filter(Boolean);
     if (words.length === 0) return '';
