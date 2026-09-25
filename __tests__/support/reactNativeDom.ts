@@ -49,6 +49,19 @@ export const StyleSheet = {
 export const View: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props =>
   React.createElement('div', passthroughProps(props), props.children);
 
+/**
+ * The click handler for something with an onPress. In React Native the
+ * innermost touchable claims the touch and the ones around it never fire; a
+ * DOM click bubbles instead, so the handler stops it where RN would.
+ */
+const pressHandler = (onPress: unknown): React.MouseEventHandler | undefined =>
+  typeof onPress === 'function'
+    ? (event) => {
+        event.stopPropagation();
+        (onPress as (e: unknown) => void)(event);
+      }
+    : undefined;
+
 /** A Text with onPress (an inline link, a "more" control) is clickable. */
 export const Text: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props => {
   const { onPress, accessibilityLabel, ...rest } = props;
@@ -56,7 +69,7 @@ export const Text: React.FC<React.PropsWithChildren<Record<string, unknown>>> = 
     'span',
     {
       ...passthroughProps(rest),
-      onClick: onPress as React.MouseEventHandler | undefined,
+      onClick: pressHandler(onPress),
       'aria-label': accessibilityLabel as string | undefined,
     },
     props.children,
@@ -73,7 +86,7 @@ export const Pressable: React.FC<React.PropsWithChildren<Record<string, unknown>
     'button',
     {
       ...passthroughProps({ ...rest, style: resolvedStyle }),
-      onClick: onPress as React.MouseEventHandler,
+      onClick: pressHandler(onPress),
       'aria-label': accessibilityLabel as string | undefined,
     },
     props.children,

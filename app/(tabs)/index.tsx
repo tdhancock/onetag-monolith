@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
@@ -8,7 +6,9 @@ import {
   RefreshControl,
   ActivityIndicator,
   ScrollView,
-  Pressable,
+  StyleSheet,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -32,12 +32,19 @@ import type { FeedData } from '../../features/posts';
 import { supabase } from '../../services/supabase.native';
 import PostCard from '../../components/native/PostCard';
 import PostSkeleton from '../../components/native/PostSkeleton';
-import StoryReel, { StoryGroup } from '../../components/native/StoryReel';
+import HomeHeader from '../../components/native/HomeHeader';
+import StoryReel, { StoryGroup, StoryReelSkeleton } from '../../components/native/StoryReel';
 import StoryCreator from '../../components/native/StoryCreator';
-import UserAvatar from '../../components/native/UserAvatar';
-import { VerifiedIcon, BellIcon, SendIcon } from '../../components/native/Icons';
+import { Avatar, Button, Card, EmptyState, MonoLabel } from '../../components/native/ui';
+import { VerifiedIcon } from '../../components/native/Icons';
+import {
+  HOME_EXPLORE_TARGET,
+  HOME_SUGGESTIONS_HEADING,
+  getHomeEmptyState,
+  getHomeHeaderTarget,
+} from '../../lib/screens/home';
 import type { Post, Story, SimpleUser } from '../../types';
-import { tokens } from '../../theme/tokens';
+import { color, space, type } from '../../theme/tokens';
 
 const dedupeStoriesById = (stories: Story[]): Story[] => {
   const seen = new Set<string>();
@@ -68,6 +75,9 @@ export default function HomeFeedScreen() {
   const queryClient = useQueryClient();
   const [suggestedUsers, setSuggestedUsers] = useState<SimpleUser[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  // The header is sticky rather than collapsing (ONE-66): it draws a hairline
+  // once the feed has scrolled beneath it.
+  const [scrolled, setScrolled] = useState(false);
 
   // ─── Feed ──────────────────────────────────────
   // Page state belongs to the query, not to this component and not to a
@@ -272,131 +282,130 @@ export default function HomeFeedScreen() {
 
   const keyExtractor = useCallback((item: Post) => item.id, []);
 
-  const ListHeader = useCallback(() => {
-    return (
-      <View>
-        {/* Stories section — compact, Instagram-style (no title) */}
-        <View className="py-2 border-b border-gray-800">
-          <View className="flex-row px-2">
-            <StoryCreator
-              onAddStory={handleAddStory}
-              onViewStories={handleViewStories}
-            />
-            {storyGroups.length > 0 && (
-              <StoryReel
-                storyGroups={storyGroups}
-                allStories={allStories}
-                onViewStories={handleViewStories}
-              />
-            )}
-          </View>
-        </View>
-      </View>
-    );
-  }, [storyGroups, allStories, isLoading, handleAddStory, handleViewStories]);
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    // Only crossing zero changes anything; React drops the same-value sets.
+    setScrolled(event.nativeEvent.contentOffset.y > 0);
+  }, []);
+
+  // The OneSnap strip's slot: directly under the header, on white, with a
+  // hairline beneath. The reel draws its own cards (ONE-67).
+  const ListHeader = useCallback(() => (
+    <View style={styles.strip}>
+      <StoryReel
+        storyGroups={storyGroups}
+        allStories={allStories}
+        onViewStories={handleViewStories}
+        leading={<StoryCreator onAddStory={handleAddStory} onViewStories={handleViewStories} />}
+      />
+    </View>
+  ), [storyGroups, allStories, handleAddStory, handleViewStories]);
 
   const ListEmpty = useCallback(() => {
-    if (isLoading) return null;
+    const state = getHomeEmptyState(isLoading, following.length > 0, feedQuery.isError);
 
-    const hasFollows = following.length > 0;
+    switch (state.kind) {
+      case 'loading':
+        return null;
 
-    return (
-      <View className="items-center mt-20 px-4">
-        {hasFollows ? (
-          <>
-            <Text className="text-gray-400 text-lg text-center">
-              No posts yet
-            </Text>
-            <Text className="text-gray-600 text-sm text-center mt-2">
-              The people you follow haven't posted anything yet. Check back later!
-            </Text>
-          </>
-        ) : (
-          <>
-            <Text className="text-gray-400 text-lg text-center">
-              Welcome to OneTag!
-            </Text>
-            <Text className="text-gray-600 text-sm text-center mt-2">
-              Follow users to build your feed.
-            </Text>
+      case 'error':
+        return (
+          <EmptyState
+            title={state.title}
+            body={state.body}
+            action={{ label: state.action, onPress: () => void feedQuery.refetch() }}
+          />
+        );
 
+      case 'following-no-posts':
+        return (
+          <EmptyState
+            title={state.title}
+            body={state.body}
+            action={{ label: state.action, onPress: () => router.navigate(HOME_EXPLORE_TARGET) }}
+          />
+        );
+
+      case 'new-user':
+        return (
+          <View>
+            <EmptyState title={state.title} body={state.body} />
             {suggestedUsers.length > 0 && (
-              <View className="w-full mt-6">
-                <Text className="text-white font-semibold mb-3 px-1">Suggested for you</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.suggestions}>
+                <MonoLabel color="textMid" style={styles.suggestionsHeading}>
+                  {HOME_SUGGESTIONS_HEADING}
+                </MonoLabel>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.suggestionRow}
+                >
                   {suggestedUsers.map(user => {
                     const isFollowing = isUserFollowing(user.username);
                     return (
-                      <View key={user.id} className="w-36 bg-gray-900 rounded-xl p-3 mr-3">
-                        <Pressable
-                          onPress={() => handleViewProfile(user.username)}
-                          className="items-center"
-                        >
-                          <UserAvatar username={user.username} avatarUrl={user.avatar} size={56} />
-                          <View className="flex-row items-center mt-2" style={{ gap: 4 }}>
-                            <Text className="text-white font-semibold" numberOfLines={1}>
-                              @{user.username}
+                      <Card
+                        key={user.id}
+                        padding="md"
+                        onPress={() => handleViewProfile(user.username)}
+                        style={styles.suggestionCard}
+                      >
+                        <View style={styles.suggestionBody}>
+                          <Avatar uri={user.avatar} name={user.name} size={56} />
+                          <View style={styles.suggestionName}>
+                            <Text style={styles.suggestionNameText} numberOfLines={1}>
+                              {user.name}
                             </Text>
-                            {user.isVerified && <VerifiedIcon color="#3b82f6" size={14} />}
+                            {user.isVerified && <VerifiedIcon color={color.text} size={14} />}
                           </View>
-                        </Pressable>
-
-                        <Pressable
-                          onPress={() => follow.toggle({ userId: user.id, username: user.username })}
-                          className={`mt-3 py-2 rounded-full items-center ${isFollowing ? 'bg-gray-800' : 'bg-blue-600'}`}
-                        >
-                          <Text className="text-white text-sm font-semibold">
-                            {isFollowing ? 'Following' : 'Follow'}
+                          <Text style={styles.suggestionHandle} numberOfLines={1}>
+                            @{user.username}
                           </Text>
-                        </Pressable>
-                      </View>
+                        </View>
+                        <Button
+                          size="sm"
+                          fullWidth
+                          variant={isFollowing ? 'outline' : 'primary'}
+                          onPress={() => follow.toggle({ userId: user.id, username: user.username })}
+                        >
+                          {isFollowing ? 'Following' : 'Follow'}
+                        </Button>
+                      </Card>
                     );
                   })}
                 </ScrollView>
               </View>
             )}
-          </>
-        )}
-      </View>
-    );
-  }, [isLoading, following, suggestedUsers, isUserFollowing, follow, handleViewProfile]);
+          </View>
+        );
+    }
+  }, [isLoading, following, feedQuery, suggestedUsers, isUserFollowing, follow, handleViewProfile, router]);
 
   const ListFooter = useCallback(() => {
     if (!feedQuery.isFetchingNextPage) return null;
     return (
-      <View className="py-6">
-        <ActivityIndicator color="#3b82f6" />
+      <View style={styles.nextPage}>
+        <ActivityIndicator size="small" color={color.textMuted} />
       </View>
     );
   }, [feedQuery.isFetchingNextPage]);
 
+  const header = (
+    <HomeHeader
+      notificationCount={unreadNotificationCount}
+      messageCount={unreadMessageCount}
+      scrolled={scrolled && !isLoading}
+      onPressNotifications={() => router.push(getHomeHeaderTarget('notifications'))}
+      onPressMessages={() => router.push(getHomeHeaderTarget('messages'))}
+    />
+  );
+
+  // First load: the shape of the feed, not a centred spinner.
   if (isLoading) {
     return (
-      <SafeAreaView className="flex-1 bg-black">
-        <View className="px-4 py-2 border-b border-gray-800 flex-row justify-between items-center">
-          <Text style={{ fontFamily: tokens.type.bodyBold }} className="text-2xl text-white">
-            OneTag
-          </Text>
-          <View className="flex-row items-center" style={{ gap: 16 }}>
-            <Pressable onPress={() => router.push('/notifications')} className="relative">
-              <BellIcon color="#e5e7eb" size={24} />
-              {unreadNotificationCount > 0 && (
-                <View className="absolute -top-1 -right-1 bg-red-500 rounded-full w-4 h-4 items-center justify-center">
-                  <Text className="text-white text-[10px] font-bold">{unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}</Text>
-                </View>
-              )}
-            </Pressable>
-            <Pressable onPress={() => router.push('/messages')} className="relative">
-              <SendIcon color="#e5e7eb" size={22} />
-              {unreadMessageCount > 0 && (
-                <View className="absolute -top-1 -right-2 bg-red-500 rounded-full w-4 h-4 items-center justify-center">
-                  <Text className="text-white text-[10px] font-bold">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</Text>
-                </View>
-              )}
-            </Pressable>
-          </View>
+      <SafeAreaView edges={['top']} style={styles.screen}>
+        {header}
+        <View style={styles.strip}>
+          <StoryReelSkeleton />
         </View>
-        <PostSkeleton />
         <PostSkeleton />
         <PostSkeleton />
       </SafeAreaView>
@@ -404,30 +413,8 @@ export default function HomeFeedScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-black">
-      <View className="px-4 py-2 border-b border-gray-800 flex-row justify-between items-center">
-        <Text style={{ fontFamily: tokens.type.bodyBold }} className="text-2xl text-white">
-          OneTag
-        </Text>
-        <View className="flex-row items-center" style={{ gap: 16 }}>
-          <Pressable onPress={() => router.push('/notifications')} className="relative">
-            <BellIcon color="#e5e7eb" size={24} />
-            {unreadNotificationCount > 0 && (
-              <View className="absolute -top-1 -right-1 bg-red-500 rounded-full w-4 h-4 items-center justify-center">
-                <Text className="text-white text-[10px] font-bold">{unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}</Text>
-              </View>
-            )}
-          </Pressable>
-          <Pressable onPress={() => router.push('/messages')} className="relative">
-            <SendIcon color="#e5e7eb" size={22} />
-            {unreadMessageCount > 0 && (
-              <View className="absolute -top-1 -right-2 bg-red-500 rounded-full w-4 h-4 items-center justify-center">
-                <Text className="text-white text-[10px] font-bold">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</Text>
-              </View>
-            )}
-          </Pressable>
-        </View>
-      </View>
+    <SafeAreaView edges={['top']} style={styles.screen}>
+      {header}
 
       <FlatList
         data={posts}
@@ -440,13 +427,15 @@ export default function HomeFeedScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#3b82f6"
-            colors={['#3b82f6']}
+            tintColor={color.textMuted}
+            colors={[color.textMuted]}
           />
         }
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         onEndReached={loadMore}
         onEndReachedThreshold={0.6}
-        contentContainerStyle={{ flexGrow: 1 }}
+        contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews
         initialNumToRender={5}
@@ -456,3 +445,60 @@ export default function HomeFeedScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: color.bg,
+  },
+  list: {
+    flexGrow: 1,
+    backgroundColor: color.bg,
+  },
+  strip: {
+    paddingVertical: space.md,
+    backgroundColor: color.bg,
+    borderBottomWidth: 1,
+    borderBottomColor: color.border,
+  },
+  suggestions: {
+    marginTop: -space.md,
+  },
+  suggestionsHeading: {
+    paddingHorizontal: space.lg,
+    marginBottom: space.md,
+  },
+  suggestionRow: {
+    paddingHorizontal: space.lg,
+    gap: space.sm,
+  },
+  suggestionCard: {
+    width: 152,
+  },
+  suggestionBody: {
+    alignItems: 'center',
+    marginBottom: space.md,
+  },
+  suggestionName: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    marginTop: space.sm,
+    maxWidth: '100%',
+  },
+  suggestionNameText: {
+    flexShrink: 1,
+    fontFamily: type.bodyBold,
+    fontSize: 15,
+    color: color.text,
+  },
+  suggestionHandle: {
+    marginTop: 2,
+    fontFamily: type.body,
+    fontSize: 13,
+    color: color.textMid,
+  },
+  nextPage: {
+    paddingVertical: space.xl,
+  },
+});

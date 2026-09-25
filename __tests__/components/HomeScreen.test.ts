@@ -1,34 +1,46 @@
-
 //
 // target: __tests__/components/HomeScreen.test.ts
 //
 // HomeScreen pure-logic snapshot tests. The component delegates the
-// screen-shell decisions — header brand, empty-state copy, the
-// unread-badge label, and the two header action routes — to a sidecar
-// utils module (`lib/screens/home.ts`) so those rules can be
-// exercised without spinning up React Native, expo-router, or the
-// AppContext provider. These tests pin every value the user actually
-// sees on the Home / Feed tab so a refactor cannot silently change
-// the screen shell.
+// screen-shell decisions — header brand, the header's two actions, and
+// which empty or error state the feed shows — to a sidecar module
+// (`lib/screens/home.ts`) so those rules can be exercised without spinning
+// up React Native, expo-router, or the AppContext provider. These tests pin
+// every value the user actually sees on the Home tab so a refactor cannot
+// silently change the screen shell.
 //
 // Coverage:
 //   1. Header brand (the literal "OneTag" string)
-//   2. Empty-state copy (loading / "No posts yet" / "Welcome to OneTag!")
-//   3. Unread badge (truncation to "9+", zero handling, non-numeric input)
-//   4. Header action targets (/notifications and /messages)
+//   2. Empty and error states (loading / error + Retry / "Nothing new yet" +
+//      Explore / the new-user welcome)
+//   3. Unread badges (drawn by IconButton: hidden at zero, "99+" past 99)
+//   4. Header action targets (/notifications and /messages) and labels
 
 import {
+    HOME_EMPTY_FOLLOWING_ACTION,
     HOME_EMPTY_FOLLOWING_BODY,
     HOME_EMPTY_FOLLOWING_TITLE,
     HOME_EMPTY_NEW_USER_BODY,
     HOME_EMPTY_NEW_USER_TITLE,
+    HOME_EXPLORE_TARGET,
+    HOME_FEED_ERROR_ACTION,
+    HOME_FEED_ERROR_BODY,
+    HOME_FEED_ERROR_TITLE,
     HOME_HEADER_ACTIONS,
     HOME_HEADER_BRAND,
-    UNREAD_BADGE_MAX,
+    HOME_SUGGESTIONS_HEADING,
     getHomeEmptyState,
+    getHomeHeaderLabel,
     getHomeHeaderTarget,
-    getUnreadBadgeLabel,
 } from '../../lib/screens/home';
+import { badgeLabel } from '../../components/native/ui/IconButton';
+
+jest.mock('react-native', () => ({
+    Pressable: () => null,
+    View: () => null,
+    Text: () => null,
+    StyleSheet: { create: (sheet: unknown) => sheet },
+}), { virtual: true });
 
 // ---------------------------------------------------------------------------
 // 1. Header brand
@@ -53,116 +65,91 @@ describe('HomeScreen – header brand', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. Empty-state copy
+// 2. Empty and error states
 // ---------------------------------------------------------------------------
 
-describe('HomeScreen – empty-state copy', () => {
+describe('HomeScreen – empty and error states', () => {
     it('returns the loading sentinel while the initial feed fetch is in flight', () => {
-        // The component renders the post-skeleton stack during the
-        // first load and skips both empty-state branches entirely.
-        const state = getHomeEmptyState(true, false);
-        expect(state.kind).toBe('loading');
+        // The component renders the skeletons during the first load and
+        // skips every empty-state branch entirely.
+        expect(getHomeEmptyState(true, false).kind).toBe('loading');
+        expect(getHomeEmptyState(true, true).kind).toBe('loading');
+        expect(getHomeEmptyState(true, false, true).kind).toBe('loading');
     });
 
-    it('returns the "No posts yet" copy when the user follows at least one account', () => {
-        const state = getHomeEmptyState(false, true);
-        expect(state).toEqual({
+    it('shows "Couldn\'t load your feed" with Retry once the feed query has failed', () => {
+        expect(getHomeEmptyState(false, true, true)).toEqual({
+            kind: 'error',
+            title: HOME_FEED_ERROR_TITLE,
+            body: HOME_FEED_ERROR_BODY,
+            action: HOME_FEED_ERROR_ACTION,
+        });
+        expect(HOME_FEED_ERROR_TITLE).toBe("Couldn't load your feed");
+        expect(HOME_FEED_ERROR_ACTION).toBe('Retry');
+    });
+
+    it('the error state wins over both empty states', () => {
+        expect(getHomeEmptyState(false, false, true).kind).toBe('error');
+    });
+
+    it('shows "Nothing new yet" with an Explore action when the user follows people', () => {
+        expect(getHomeEmptyState(false, true)).toEqual({
             kind: 'following-no-posts',
             title: HOME_EMPTY_FOLLOWING_TITLE,
             body: HOME_EMPTY_FOLLOWING_BODY,
+            action: HOME_EMPTY_FOLLOWING_ACTION,
         });
+        expect(HOME_EMPTY_FOLLOWING_TITLE).toBe('Nothing new yet');
+        expect(HOME_EMPTY_FOLLOWING_ACTION).toBe('Explore');
     });
 
-    it('the "No posts yet" copy is stable and non-empty', () => {
-        expect(HOME_EMPTY_FOLLOWING_TITLE).toBe('No posts yet');
-        expect(HOME_EMPTY_FOLLOWING_BODY.length).toBeGreaterThan(0);
-        expect(HOME_EMPTY_FOLLOWING_BODY).toContain('Check back later');
+    it('Explore goes to the Explore tab', () => {
+        expect(HOME_EXPLORE_TARGET).toBe('/(tabs)/search');
     });
 
-    it('returns the "Welcome to OneTag!" copy when the viewer follows nobody yet', () => {
-        const state = getHomeEmptyState(false, false);
-        expect(state).toEqual({
+    it('welcomes someone who follows nobody, ahead of the suggestions', () => {
+        expect(getHomeEmptyState(false, false)).toEqual({
             kind: 'new-user',
             title: HOME_EMPTY_NEW_USER_TITLE,
             body: HOME_EMPTY_NEW_USER_BODY,
         });
+        expect(HOME_EMPTY_NEW_USER_TITLE).toBe('Your feed starts with who you follow');
+        expect(HOME_SUGGESTIONS_HEADING).toBe('Suggested for you');
     });
 
-    it('the "Welcome to OneTag!" copy is stable and non-empty', () => {
-        expect(HOME_EMPTY_NEW_USER_TITLE).toBe('Welcome to OneTag!');
-        expect(HOME_EMPTY_NEW_USER_BODY).toBe('Follow users to build your feed.');
+    it('keeps each body to one line of copy', () => {
+        for (const body of [HOME_EMPTY_FOLLOWING_BODY, HOME_EMPTY_NEW_USER_BODY, HOME_FEED_ERROR_BODY]) {
+            expect(body.length).toBeGreaterThan(0);
+            expect(body).not.toContain('\n');
+        }
     });
 
-    it('the two empty states are mutually exclusive in body copy', () => {
-        // Belt-and-braces: make sure nobody accidentally wires the
-        // following copy into the new-user branch or vice versa.
-        expect(HOME_EMPTY_FOLLOWING_BODY).not.toBe(HOME_EMPTY_NEW_USER_BODY);
-        expect(HOME_EMPTY_FOLLOWING_TITLE).not.toBe(HOME_EMPTY_NEW_USER_TITLE);
-    });
-
-    it('returns the loading sentinel even when hasFollows is true', () => {
-        // The component short-circuits on `isLoading` first; the
-        // hasFollows flag must not leak through during the skeleton
-        // render.
-        const state = getHomeEmptyState(true, true);
-        expect(state.kind).toBe('loading');
+    it('the empty states are mutually exclusive in copy', () => {
+        const titles = [HOME_EMPTY_FOLLOWING_TITLE, HOME_EMPTY_NEW_USER_TITLE, HOME_FEED_ERROR_TITLE];
+        expect(new Set(titles).size).toBe(titles.length);
     });
 });
 
 // ---------------------------------------------------------------------------
-// 3. Unread badge
+// 3. Unread badges
 // ---------------------------------------------------------------------------
 
-describe('HomeScreen – unread badge label', () => {
-    it('renders "0" for the zero count (no badge content shown)', () => {
-        // The component wraps the badge in a conditional, but if the
-        // count is ever passed through directly (e.g. during a hot
-        // reload of state) it should never read as a non-zero number.
-        expect(getUnreadBadgeLabel(0)).toBe('0');
+describe('HomeScreen – unread badges', () => {
+    // Each header action is an IconButton carrying its own count; the badge
+    // text is IconButton's badgeLabel, the same rule as the tab bar.
+    it('hides the badge at zero', () => {
+        expect(badgeLabel(0)).toBeNull();
     });
 
-    it('renders the literal count for values from 1 up to the max', () => {
-        for (let n = 1; n <= UNREAD_BADGE_MAX; n++) {
-            expect(getUnreadBadgeLabel(n)).toBe(String(n));
-        }
+    it('shows counts up to 99 verbatim', () => {
+        expect(badgeLabel(1)).toBe('1');
+        expect(badgeLabel(42)).toBe('42');
+        expect(badgeLabel(99)).toBe('99');
     });
 
-    it('renders "9+" for any count above the max', () => {
-        expect(getUnreadBadgeLabel(10)).toBe('9+');
-        expect(getUnreadBadgeLabel(42)).toBe('9+');
-        expect(getUnreadBadgeLabel(9_999)).toBe('9+');
-    });
-
-    it('treats negative values as zero (defensive against underflow)', () => {
-        expect(getUnreadBadgeLabel(-1)).toBe('0');
-        expect(getUnreadBadgeLabel(-99)).toBe('0');
-    });
-
-    it('treats non-finite or non-number input as zero', () => {
-        // The component stores these counts in component state; the
-        // helper is the boundary the test pins.
-        expect(getUnreadBadgeLabel(NaN)).toBe('0');
-        expect(getUnreadBadgeLabel(Infinity)).toBe('0');
-        expect(getUnreadBadgeLabel(-Infinity)).toBe('0');
-        expect(getUnreadBadgeLabel(null)).toBe('0');
-        expect(getUnreadBadgeLabel(undefined)).toBe('0');
-        // @ts-expect-error – exercising the runtime guard
-        expect(getUnreadBadgeLabel('5')).toBe('0');
-    });
-
-    it('truncates fractional counts to their integer part', () => {
-        // The component never produces fractional counts, but the
-        // helper is the boundary so we lock the rounding behaviour.
-        expect(getUnreadBadgeLabel(1.9)).toBe('1');
-        expect(getUnreadBadgeLabel(9.4)).toBe('9');
-        expect(getUnreadBadgeLabel(9.9)).toBe('9');
-    });
-
-    it('exposes a stable UNREAD_BADGE_MAX constant', () => {
-        // The component hard-codes the literal 9; the helper exposes
-        // the same number as a named constant. If a future refactor
-        // changes one without the other the test will catch it.
-        expect(UNREAD_BADGE_MAX).toBe(9);
+    it('overflows to "99+"', () => {
+        expect(badgeLabel(100)).toBe('99+');
+        expect(badgeLabel(9_999)).toBe('99+');
     });
 });
 
@@ -203,5 +190,14 @@ describe('HomeScreen – header action navigation targets', () => {
             expect(action.target.startsWith('/')).toBe(true);
             expect(action.target.length).toBeGreaterThan(1);
         }
+    });
+});
+
+describe('HomeScreen – header action labels', () => {
+    it('names each action, and says how many are unread', () => {
+        expect(getHomeHeaderLabel('notifications', 0)).toBe('Notifications');
+        expect(getHomeHeaderLabel('notifications', 3)).toBe('Notifications, 3 unread');
+        expect(getHomeHeaderLabel('messages', 0)).toBe('Messages');
+        expect(getHomeHeaderLabel('messages', 120)).toBe('Messages, 120 unread');
     });
 });
