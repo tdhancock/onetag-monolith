@@ -1,14 +1,25 @@
-
-
 import React, { useEffect, useRef } from "react";
-import { Text, Animated, Pressable } from "react-native";
+import { Text, Animated, Pressable, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "../../store/AppContext.native";
+import type { Toast } from "../../types";
+import { color, radius, space, type } from "../../theme/tokens";
 
-const ToastItem: React.FC<{ id: string; message: string; type?: "info" | "success" | "error" }> = ({
+/**
+ * The tab bar's height above the bottom safe-area inset — see
+ * `app/(tabs)/_layout.tsx`, which sizes it `60 + insets.bottom`. Toasts sit
+ * this far up, plus a gap, so they never cover the tabs.
+ */
+const TAB_BAR_HEIGHT = 60;
+
+/** Ink for news, `heart` for failures. Success reads as news, not as green. */
+export const toastBackground = (kind: Toast["type"]): string =>
+  kind === "error" ? color.heart : color.text;
+
+const ToastItem: React.FC<{ id: string; message: string; type?: Toast["type"] }> = ({
   id,
   message,
-  type = "info",
+  type: kind = "info",
 }) => {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current;
@@ -30,16 +41,19 @@ const ToastItem: React.FC<{ id: string; message: string; type?: "info" | "succes
     return () => clearTimeout(timeout);
   }, [id, opacity, translateY, removeToast]);
 
-  const bgColor =
-    type === "error" ? "bg-red-600" : type === "success" ? "bg-green-600" : "bg-gray-800";
-
   return (
     <Animated.View
-      style={{ opacity, transform: [{ translateY }] }}
-      className={`${bgColor} rounded-xl px-4 py-3 mb-2 shadow-lg`}
+      style={[
+        styles.toast,
+        { backgroundColor: toastBackground(kind), opacity, transform: [{ translateY }] },
+      ]}
     >
-      <Pressable onPress={() => removeToast(id)}>
-        <Text className="text-white text-sm text-center">{message}</Text>
+      <Pressable
+        onPress={() => removeToast(id)}
+        accessibilityRole="alert"
+        accessibilityLabel={message}
+      >
+        <Text style={styles.message}>{message}</Text>
       </Pressable>
     </Animated.View>
   );
@@ -53,7 +67,7 @@ const ToastContainer: React.FC = () => {
 
   return (
     <Animated.View
-      style={{ position: "absolute", bottom: 80 + insets.bottom, left: 16, right: 16, zIndex: 9999 }}
+      style={[styles.container, { bottom: TAB_BAR_HEIGHT + insets.bottom + space.sm }]}
       pointerEvents="box-none"
     >
       {toasts.map((toast) => (
@@ -62,5 +76,27 @@ const ToastContainer: React.FC = () => {
     </Animated.View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    position: "absolute",
+    left: space.lg,
+    right: space.lg,
+    zIndex: 9999,
+  },
+  toast: {
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    marginBottom: space.sm,
+    borderRadius: radius.none,
+  },
+  message: {
+    fontFamily: type.bodyMedium,
+    fontSize: 14,
+    lineHeight: 20,
+    color: color.inverse,
+    textAlign: "center",
+  },
+});
 
 export default ToastContainer;

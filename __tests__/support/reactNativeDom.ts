@@ -37,6 +37,15 @@ const passthroughProps = (props: Record<string, unknown>) => {
   return domProps;
 };
 
+/** Sheets pass through as plain objects; the flattening happens per element. */
+export const StyleSheet = {
+  create: <T,>(sheet: T): T => sheet,
+  flatten: flattenStyle,
+  hairlineWidth: 1,
+  absoluteFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+  absoluteFillObject: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+};
+
 export const View: React.FC<React.PropsWithChildren<Record<string, unknown>>> = props =>
   React.createElement('div', passthroughProps(props), props.children);
 
@@ -62,13 +71,51 @@ export const Modal: React.FC<React.PropsWithChildren<Record<string, unknown>>> =
     ? null
     : React.createElement('div', { ...passthroughProps(props), 'data-modal': 'true' }, props.children);
 
+/** Maps onChangeText / onFocus / onBlur onto the DOM input's own events. */
+export const TextInput = React.forwardRef<HTMLInputElement, Record<string, unknown>>(
+  (props, ref) => {
+    const {
+      onChangeText,
+      onFocus,
+      onBlur,
+      placeholder,
+      placeholderTextColor,
+      multiline,
+      ...rest
+    } = props;
+    return React.createElement('input', {
+      ...passthroughProps(rest),
+      ref,
+      placeholder,
+      'data-placeholder-color': placeholderTextColor,
+      'data-multiline': multiline ? 'true' : undefined,
+      onChange: (e: { target: { value: string } }) =>
+        (onChangeText as ((v: string) => void) | undefined)?.(e.target.value),
+      onFocus: onFocus as React.FocusEventHandler | undefined,
+      onBlur: onBlur as React.FocusEventHandler | undefined,
+    });
+  },
+);
+
 export const Alert = { alert: jest.fn() };
+
+/**
+ * Reduce-motion defaults to off. A suite that needs it on overrides
+ * `isReduceMotionEnabled` for that test.
+ */
+export const AccessibilityInfo = {
+  isReduceMotionEnabled: jest.fn(() => Promise.resolve(false)),
+  addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+};
 
 const animationHandles = { start: jest.fn(), stop: jest.fn() };
 
 class AnimatedValue {
   _value: number;
   constructor(value: number) {
+    this._value = value;
+  }
+  setValue(value: number) {
     this._value = value;
   }
 }

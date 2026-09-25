@@ -25,6 +25,7 @@ import React from 'react';
 jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
 
 import * as Icons from '../../components/native/Icons';
+import { color } from '../../theme/tokens';
 
 // ─── 2. Helpers ─────────────────────────────────────────────────────────
 
@@ -124,9 +125,21 @@ describe('native Icons — color prop is threaded into the SVG', () => {
     expect(treePaintsWith(el, '#abcdef')).toBe(true);
   });
 
-  it.each(ICON_NAMES)('%s defaults to white when no color is given', name => {
+  it.each(ICON_NAMES)('%s defaults to the ink token when no color is given', name => {
+    // ONE-64: the icons were white for the old dark skin. On the light
+    // ground they default to color.text (#0a0a0a) — via the token, so the
+    // literal never appears in Icons.tsx.
     const el = renderIcon((Icons as Record<string, unknown>)[name], {});
-    expect(treePaintsWith(el, '#fff')).toBe(true);
+    expect(treePaintsWith(el, color.text)).toBe(true);
+    expect(color.text).toBe('#0a0a0a');
+  });
+
+  it.each(ICON_NAMES)('%s paints nothing white by default', name => {
+    // A hard-coded white detail (OneTagIcon's cross used to be one) would
+    // vanish on the light ground.
+    const el = renderIcon((Icons as Record<string, unknown>)[name], {});
+    expect(treePaintsWith(el, '#fff')).toBe(false);
+    expect(treePaintsWith(el, color.inverse)).toBe(false);
   });
 
   it('accepts a non-string ColorValue without coercing it', () => {
@@ -157,6 +170,32 @@ describe('native Icons — HeartIcon liked toggle', () => {
   it('defaults to unliked when the prop is omitted', () => {
     const el = renderIcon(Icons.HeartIcon, { color: '#ff0000' });
     expect(el.props.fill).toBe('none');
+  });
+
+  it('with no color, a liked heart is filled heart red via the token', () => {
+    const el = renderIcon(Icons.HeartIcon, { liked: true });
+    expect(el.props.fill).toBe(color.heart);
+    expect(el.props.stroke).toBe(color.heart);
+  });
+
+  it('with no color, an unliked heart is an ink outline', () => {
+    const el = renderIcon(Icons.HeartIcon, { liked: false });
+    expect(el.props.fill).toBe('none');
+    expect(el.props.stroke).toBe(color.text);
+  });
+});
+
+describe('native Icons — strokeWidth', () => {
+  it('threads an explicit weight onto a stroked icon', () => {
+    expect(renderIcon(Icons.CommentIcon, { strokeWidth: 1.8 }).props.strokeWidth).toBe(1.8);
+    expect(renderIcon(Icons.HeartIcon, { strokeWidth: 1.8 }).props.strokeWidth).toBe(1.8);
+    expect(renderIcon(Icons.BookmarkIcon, { strokeWidth: 1.8 }).props.strokeWidth).toBe(1.8);
+  });
+
+  it('leaves an icon at its own weight when none is given', () => {
+    expect(renderIcon(Icons.CommentIcon, {}).props.strokeWidth).toBeUndefined();
+    expect(renderIcon(Icons.SendIcon, {}).props.strokeWidth).toBe(1.5);
+    expect(renderIcon(Icons.CheckIcon, {}).props.strokeWidth).toBe(2.5);
   });
 });
 

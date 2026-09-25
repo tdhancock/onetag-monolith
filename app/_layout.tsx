@@ -25,7 +25,7 @@ import {
   setBadgeCount,
 } from '../services/notifications';
 import ToastContainer from '../components/native/Toast';
-import { color } from '../theme/tokens';
+import { color, type } from '../theme/tokens';
 import QueryProvider from '../lib/QueryProvider';
 
 // Keep the splash screen visible while we fetch resources
@@ -138,7 +138,12 @@ function RootLayoutNav() {
         headerTintColor: color.text,
         headerBackTitle: '',
         headerBackButtonDisplayMode: 'minimal',
-        headerTitleStyle: { color: color.text, fontWeight: 'bold' },
+        headerTitleStyle: { color: color.text, fontFamily: type.bodyBold, fontSize: 17 },
+        // Separation comes from hairlines, not shadows (M1c style guide).
+        headerShadowVisible: false,
+        // Paint every scene white before its own content mounts, so a pushed
+        // screen never flashes the navigator's default background first.
+        contentStyle: { backgroundColor: color.bg },
       }}
     >
       <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />

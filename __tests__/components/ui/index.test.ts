@@ -24,25 +24,40 @@ jest.mock('react-native', () => {
     View: passthrough('div'),
     Text: passthrough('span'),
     Pressable: passthrough('button'),
+    TextInput: passthrough('input'),
+    Animated: { View: passthrough('div'), Value: class {} },
+    AccessibilityInfo: {},
     StyleSheet: { create: (sheet: unknown) => sheet, hairlineWidth: 1 },
   };
 }, { virtual: true });
 
 jest.mock('expo-image', () => require('../../support/expoImageStub'), { virtual: true });
 
-// The import line from the acceptance criterion, verbatim in spirit: all
-// five primitives, one specifier. If this does not typecheck, tsc fails.
+// The import line from the acceptance criterion, verbatim in spirit: every
+// primitive, one specifier. If this does not typecheck, tsc fails.
 import {
   Button,
   Card,
   MonoLabel,
   Divider,
   Avatar,
+  IconButton,
+  TextField,
+  ListRow,
+  EmptyState,
+  Skeleton,
+  useReducedMotion,
   initialsFrom,
   letterSpacingFor,
+  badgeLabel,
   DISABLED_OPACITY,
   DEFAULT_AVATAR_SIZE,
   INITIALS_FALLBACK,
+  BADGE_MAX,
+  ICON_BUTTON_SIZE,
+  TEXT_FIELD_MIN_HEIGHT,
+  LIST_ROW_MIN_HEIGHT,
+  LIST_ROW_AVATAR_SIZE,
 } from '../../../components/native/ui';
 import type {
   ButtonProps,
@@ -53,6 +68,12 @@ import type {
   DividerProps,
   AvatarProps,
   ColorTokenKey,
+  IconButtonProps,
+  TextFieldProps,
+  ListRowProps,
+  EmptyStateProps,
+  EmptyStateAction,
+  SkeletonProps,
 } from '../../../components/native/ui';
 
 import MonoLabelDirect from '../../../components/native/ui/MonoLabel';
@@ -66,8 +87,23 @@ describe('components/native/ui — public surface', () => {
     ['Card', Card],
     ['Divider', Divider],
     ['Avatar', Avatar],
+    // ONE-64
+    ['IconButton', IconButton],
+    ['ListRow', ListRow],
+    ['EmptyState', EmptyState],
+    ['Skeleton', Skeleton],
   ])('exports %s as a component', (_name, Component) => {
     expect(typeof Component).toBe('function');
+  });
+
+  it('exports TextField, a forwardRef component', () => {
+    // forwardRef returns an exotic object, not a function.
+    expect(TextField).toBeDefined();
+    expect((TextField as unknown as { displayName?: string }).displayName).toBe('TextField');
+  });
+
+  it('exports the reduce-motion hook the Skeleton uses', () => {
+    expect(typeof useReducedMotion).toBe('function');
   });
 
   it('re-exports the same identity as the module itself, not a copy', () => {
@@ -80,6 +116,11 @@ describe('components/native/ui — public surface', () => {
     expect(DISABLED_OPACITY).toBeGreaterThan(0);
     expect(DEFAULT_AVATAR_SIZE).toBeGreaterThan(0);
     expect(INITIALS_FALLBACK).toBe('?');
+    expect(badgeLabel(BADGE_MAX + 1)).toBe('99+');
+    expect(ICON_BUTTON_SIZE).toBeGreaterThanOrEqual(44);
+    expect(TEXT_FIELD_MIN_HEIGHT).toBeGreaterThanOrEqual(48);
+    expect(LIST_ROW_MIN_HEIGHT).toBeGreaterThanOrEqual(56);
+    expect(LIST_ROW_AVATAR_SIZE).toBe(40);
   });
 });
 
@@ -94,12 +135,19 @@ describe('components/native/ui — prop types', () => {
     const card: CardProps = { children: 'x', padding: 'lg' };
     const divider: DividerProps = { inset: 'md' };
     const avatar: AvatarProps = { name: 'Jordan Reeves', size: 40 };
+    const iconButton: IconButtonProps = { icon: null, accessibilityLabel: 'Close' };
+    const textField: TextFieldProps = { label: 'Caption', error: null };
+    const listRow: ListRowProps = { title: 'Jordan Reeves', subtitle: '@jordan' };
+    const action: EmptyStateAction = { label: 'Explore', onPress: () => {} };
+    const empty: EmptyStateProps = { title: 'Nothing new yet', action };
+    const skeleton: SkeletonProps = { height: 36, circle: true };
 
     const variant: ButtonVariant = 'outline';
     const size: ButtonSize = 'sm';
     const colorKey: ColorTokenKey = 'textMuted';
 
     expect([mono, button, card, divider, avatar]).toHaveLength(5);
+    expect([iconButton, textField, listRow, empty, skeleton]).toHaveLength(5);
     expect([variant, size, colorKey]).toEqual(['outline', 'sm', 'textMuted']);
   });
 });
