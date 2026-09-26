@@ -27,8 +27,40 @@ export const POST_SELECT_QUERY = `
     reposts:reposts(count),
     viewer_like:likes(user_id),
     viewer_repost:reposts(user_id),
-    viewer_save:saved_posts(user_id)
+    viewer_save:saves(profile_id)
 `;
+
+/**
+ * Restrict the viewer-scoped embeds to one profile's rows.
+ *
+ * `likes:likes(count)` and `viewer_like:likes(user_id)` are separate aliases
+ * over the same table, so filtering the alias leaves the total count alone —
+ * verified against a local stack: a post liked by two people, one of them the
+ * viewer, comes back with `likes: [{count: 2}]` and a one-row `viewer_like`.
+ * The embeds are left joins, so a post the viewer has not touched still
+ * appears, with an empty array.
+ *
+ * Signed out there is no viewer, and an impossible id is cheaper than
+ * branching the select: every embed comes back empty, which is the truth.
+ *
+ * Here rather than in features/posts so any feature listing posts — saved
+ * posts (features/saves) included — scopes them the same way.
+ */
+const NO_VIEWER = '00000000-0000-0000-0000-000000000000';
+
+export const scopePostsToViewer = <T>(query: T, viewerId: string | undefined): T => {
+  // Cast through a minimal shape: chaining three `.eq()` calls on the
+  // PostgREST builder's own generics makes tsc give up with "type
+  // instantiation is excessively deep". The runtime chain is the ordinary
+  // one; only the types are being stepped around.
+  const viewer = viewerId || NO_VIEWER;
+  const builder = query as unknown as { eq: (column: string, value: string) => typeof builder };
+
+  return builder
+    .eq('viewer_like.user_id', viewer)
+    .eq('viewer_repost.user_id', viewer)
+    .eq('viewer_save.profile_id', viewer) as unknown as T;
+};
 
 const toNumber = (value: unknown): number => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;

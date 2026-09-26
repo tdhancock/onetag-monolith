@@ -11,7 +11,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   toggleLike,
   toggleRepost,
-  toggleSavePost,
   publishPost,
   updatePost,
   deletePost,
@@ -22,6 +21,7 @@ import { postKeys } from './keys';
 // features/profiles imported this feature and importing back closed a cycle;
 // the post mapper moving to services/postRows.ts (ONE-20) broke that loop.
 import { profileKeys } from '../profiles';
+import { saveKeys, toggleSave } from '../saves';
 import type { Post } from './types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
 import type { ProfileId } from '../../types';
@@ -85,14 +85,25 @@ export const useRepostPost = (userId: ProfileId | undefined, onToggle?: OnToggle
 /**
  * Save or unsave, optimistically.
  *
+ * The write is a save of a post through features/saves (ONE-39), where every
+ * kind of target is saved the same way. The cache is the post's: a post's
+ * save state lives on the post (`isSaved`), in every feed page that shows it,
+ * so this configuration patches those — and then marks the profile's save
+ * list stale, since it holds the same fact.
+ *
  * A Save has no visible count on the post, so it toggles against a count of
  * zero — the helper still tracks one, which keeps the three configurations
  * identical in shape and costs nothing.
  */
 export const useSavePost = (userId: ProfileId | undefined, onToggle?: OnToggle): PostToggle => {
+  const queryClient = useQueryClient();
   const mutation = useOptimisticToggle<Post>({
     ...postToggleBase,
-    mutationFn: (postId) => toggleSavePost(postId, requireUser(userId)),
+    mutationFn: async (postId) => {
+      const saved = await toggleSave(requireUser(userId), { kind: 'post', id: postId });
+      void queryClient.invalidateQueries({ queryKey: saveKeys.all });
+      return saved;
+    },
     isOn: (post) => Boolean(post.isSaved),
     count: () => 0,
     apply: (post, next) => ({ ...post, isSaved: next.isOn }),

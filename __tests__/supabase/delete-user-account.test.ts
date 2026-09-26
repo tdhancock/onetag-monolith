@@ -2,15 +2,21 @@
 //
 // Tests for the delete-user-account Supabase Edge Function logic.
 
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
 describe('delete-user-account Edge Function', () => {
   const mockUserId = 'test-user-id-123';
 
+  /** The table list, read out of the function itself rather than a copy of it. */
   function buildTableList(): string[] {
-    return [
-      'comments', 'comment_likes', 'likes', 'reposts', 'saved_posts',
-      'story_likes', 'story_views', 'notifications', 'messages',
-      'follows', 'stories', 'posts', 'profiles',
-    ];
+    const source = readFileSync(
+      join(__dirname, '..', '..', 'supabase', 'functions', 'delete-user-account', 'index.ts'),
+      'utf8',
+    );
+    const list = /const tables = \[([^\]]*)\]/.exec(source);
+    if (!list) throw new Error('delete-user-account has no `const tables = [...]` list');
+    return Array.from(list[1].matchAll(/'([^']+)'/g), (m) => m[1]);
   }
 
   it('includes all required tables for deletion', () => {
@@ -23,7 +29,11 @@ describe('delete-user-account Edge Function', () => {
     expect(tables).toContain('follows');
     expect(tables).toContain('notifications');
     expect(tables).toContain('stories');
-    expect(tables).toHaveLength(13);
+    expect(tables).toHaveLength(12);
+  });
+
+  it('names no table that no longer exists — saved_posts became saves (ONE-39)', () => {
+    expect(buildTableList()).not.toContain('saved_posts');
   });
 
   it('follows table uses both follower_id and followed_id', () => {

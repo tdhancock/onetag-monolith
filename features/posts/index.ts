@@ -6,7 +6,6 @@
 export {
   toggleLike,
   toggleRepost,
-  toggleSavePost,
   publishPost,
   updatePost,
   deletePost,
@@ -17,7 +16,6 @@ export {
   nextFeedCursor,
   getFeedUserIds,
   mapPostData,
-  getSavedPosts,
   getPostLikers,
   getPostReposters,
   FEED_PAGE_SIZE,

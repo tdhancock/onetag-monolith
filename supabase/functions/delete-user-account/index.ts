@@ -42,9 +42,10 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // 1. Delete all public data
+    // 1. Delete all public data. Saves (ONE-39, which replaced saved_posts)
+    // go with their profile through its cascade.
     const tables = [
-      'comments', 'comment_likes', 'likes', 'reposts', 'saved_posts',
+      'comments', 'comment_likes', 'likes', 'reposts',
       'story_likes', 'story_views', 'notifications', 'messages',
       'follows', 'stories', 'posts', 'profiles'
     ];

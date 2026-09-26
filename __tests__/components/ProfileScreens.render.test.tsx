@@ -128,8 +128,10 @@ jest.mock('../../features/profiles', () => ({
   useUploadAvatar: () => ({ mutateAsync: jest.fn() }),
 }));
 jest.mock('../../lib/realtimeBridge', () => ({ useRealtimeSync: jest.fn() }));
-jest.mock('../../features/posts', () => ({
+jest.mock('../../features/saves', () => ({
   getSavedPosts: () => Promise.resolve([]),
+}));
+jest.mock('../../features/posts', () => ({
   getPostLikers: () => Promise.resolve([]),
   getPostReposters: () => Promise.resolve([]),
 }));
