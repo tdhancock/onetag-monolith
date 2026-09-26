@@ -42,8 +42,6 @@ under `app/` (ONE-62).
 `store/AppContext.native.tsx` and `services/supabase.native.ts` keep a `.native` suffix left
 over from a web fork deleted in ONE-5. Neither has a non-native twin — import the `.native` one.
 
-**Not here yet:** `lib/tagLinks.ts` (M4). Don't import it before its ticket lands.
-
 ## Commands
 
 ```
@@ -143,8 +141,7 @@ Use these exactly — as table names, variable names, and user-facing labels.
 | **Tag** | A portal linking to exactly one Destination. Never the destination itself. |
 | **Physical Tag** | A QR code in the real world. Always-on; anyone can scan it without the owner present. |
 | **Digital Tag** | A Tag shared from inside the app as a short link. The owner shares it deliberately. |
-| **Embedded Tag** | A Tag inside a post, shown as a Tag Dot. Created during post creation. |
-| **Tag Dot** | The pin indicator on a post image marking an Embedded Tag. Tapped, never scanned. |
+| **Embedded Tag** | A Tag inside a post, pinned to a point on its image. Created during post creation. Tapped, never scanned. In the UI it is just a tag. |
 | **Destination** | What a Tag points to. Exactly four kinds: Business Profile, Individual Profile, Product, Project. |
 | **Tag Resolution** | Reading a Tag, identifying its Destination, routing there, recording the Scan. |
 | **Scan** | Reading a Physical Tag with the camera. Applies to Physical Tags only. |
@@ -158,7 +155,7 @@ Use these exactly — as table names, variable names, and user-facing labels.
 | **OneSnap** | Ephemeral 24-hour content. Renders as a **square card, never a circle**. |
 | **Waterfall Discovery** | Navigating down through connected content. Every page must offer somewhere to go next. |
 
-Avoid: *vendor* → Contributor · *favorite* / *bookmark* → Save · *story* → OneSnap in new copy.
+Avoid: *vendor* → Contributor · *favorite* / *bookmark* → Save · *story* → OneSnap in new copy · *tag dot* → tag (an Embedded Tag is just a tag).
 
 ## Two locked decisions that change how you write code
 

@@ -44,9 +44,14 @@ const SHORT_CODE_PATTERN = new RegExp(`^[${TAG_SHORT_CODE_ALPHABET}]{${TAG_SHORT
 /** True when a string has the shape of a short code the database could have issued. */
 export const isValidShortCode = (code: string): boolean => SHORT_CODE_PATTERN.test(code);
 
+/**
+ * The app's own route for a Tag, `/t/<code>` — where the in-app scanner
+ * sends a detected code, and where both link forms below land.
+ */
+export const buildTagRoute = (shortCode: string): string => `/${TAG_PATH_PREFIX}/${shortCode}`;
+
 /** The URL printed onto a Tag, or shared as a Digital Tag. */
-export const buildTagUrl = (shortCode: string): string =>
-  `${TAG_BASE_URL}/${TAG_PATH_PREFIX}/${shortCode}`;
+export const buildTagUrl = (shortCode: string): string => `${TAG_BASE_URL}${buildTagRoute(shortCode)}`;
 
 export interface ParsedTagUrl {
   shortCode: string;

@@ -22,7 +22,7 @@ export const UPLOAD_FAILED_NOTE = "Photo didn't upload. Try again.";
  * A photo attached to a post being written: full content width, framed at the
  * ratio the feed will use, with a remove control over its top-right corner.
  *
- * Self-contained so Tag Dot placement (ONE-46) can build on it.
+ * Self-contained so placing Embedded Tags on the photo (ONE-46) can build on it.
  */
 const ComposeMedia: React.FC<ComposeMediaProps> = ({ uri, aspectRatio, onRemove, uploadFailed = false }) => (
   <View>

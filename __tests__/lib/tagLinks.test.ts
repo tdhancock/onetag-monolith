@@ -7,6 +7,7 @@
 // forged one would try.
 
 import {
+  buildTagRoute,
   buildTagUrl,
   parseTagUrl,
   resolveTagBaseUrl,
@@ -18,6 +19,16 @@ import {
 } from '../../lib/tagLinks';
 
 const CODE = 'ABC23XYZ';
+
+describe('buildTagRoute', () => {
+  it("builds the app's own route for a tag (ONE-29)", () => {
+    expect(buildTagRoute(CODE)).toBe('/t/ABC23XYZ');
+  });
+
+  it('is the path every Tag URL carries', () => {
+    expect(buildTagUrl(CODE)).toBe(`${TAG_BASE_URL}${buildTagRoute(CODE)}`);
+  });
+});
 
 describe('buildTagUrl', () => {
   it('builds from the default base', () => {

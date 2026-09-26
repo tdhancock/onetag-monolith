@@ -289,7 +289,7 @@ export const useCreateProfile = () => {
   return useMutation({
     mutationFn: async (input: NewProfile): Promise<UserProfile> => {
       if (!authUserId) throw new Error('You must be signed in.');
-      const created = await createProfile(authUserId, input);
+      const created = await createProfile(input);
 
       await queryClient.invalidateQueries({ queryKey: profileKeys.mine(authUserId) });
       await setActiveProfile(queryClient, authUserId, asProfileId(created.id));

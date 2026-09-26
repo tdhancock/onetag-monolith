@@ -8,6 +8,8 @@
 //   * SIGNED_IN / INITIAL_SESSION / USER_UPDATED — make sure the profile row
 //     exists, then record who is signed in. Recording it only after the row
 //     exists is what keeps the profile query from racing a brand-new signup.
+//     An INITIAL_SESSION with no session records null: launched signed out,
+//     which `useAuthStatus` tells apart from not known yet (ONE-30).
 //   * SIGNED_OUT — everything cached belongs to the previous account, so
 //     every query but the session is dropped and the session records null.
 //   * TOKEN_REFRESHED — a silent refresh; nothing changes.
@@ -45,6 +47,10 @@ export const useAuthSessionSync = ({ onSyncError }: AuthSessionSyncOptions = {})
           console.error('Error syncing user data:', error);
           onError.current?.(error);
         }
+      } else if (event === 'INITIAL_SESSION') {
+        // Launched with no session. Nothing is cached for an account yet, so
+        // there is nothing to drop — only the answer to record.
+        queryClient.setQueryData<AuthUserId | null>(authKeys.session(), null);
       } else if (event === 'SIGNED_OUT') {
         // Record the empty session in the query everyone is already watching,
         // then drop every other query. `queryClient.clear()` would remove the
