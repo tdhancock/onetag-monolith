@@ -1,4 +1,4 @@
-// The public surface of the projects domain (ONE-41).
+// The public surface of the projects domain (ONE-41), Contributors included (ONE-42).
 //
 // Screens and other features import from `features/projects`, never from a
 // file inside it. See features/README.md.
@@ -16,6 +16,9 @@ export {
   deleteProject,
   linkProduct,
   unlinkProduct,
+  addContributor,
+  removeContributor,
+  updateContributor,
   mapProjectRow,
   mapContributorRow,
   PROJECT_SELECT,
@@ -23,7 +26,7 @@ export {
 } from './api';
 // A project as a list shows it, shared with other features through services/.
 export { mapProjectSummaryRow, PROJECT_SUMMARY_SELECT } from '../../services/projectRows';
-export type { NewProjectInput, ProjectEdits } from './api';
+export type { NewProjectInput, ProjectEdits, NewContributor, ContributorChanges } from './api';
 export { projectKeys } from './keys';
 export {
   useProjectQuery,
@@ -40,8 +43,18 @@ export {
   useDeleteProject,
   useLinkProduct,
   useUnlinkProduct,
+  useAddContributor,
+  useRemoveContributor,
+  useUpdateContributorRole,
+  useSetContributorPublic,
 } from './mutations';
-export type { UpdateProjectInput, ProjectVisibilityInput, ProductLinkInput } from './mutations';
+export type {
+  UpdateProjectInput,
+  ProjectVisibilityInput,
+  ProductLinkInput,
+  ContributorRoleInput,
+  ContributorVisibilityInput,
+} from './mutations';
 export type {
   Project,
   ProjectSummary,

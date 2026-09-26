@@ -37,6 +37,8 @@ export const profileKeys = {
   counts: (userId: string) => [...base.all, 'counts', userId] as const,
   /** Suggested accounts for one viewer. */
   suggestions: (userId: string) => [...base.all, 'suggestions', userId] as const,
+  /** Profiles found by handle, for a picker (ONE-42). */
+  search: (query: string) => [...base.all, 'search', query] as const,
 };
 
 /**

@@ -1,7 +1,7 @@
 // Read hooks for the profiles domain.
 
 import { useCallback, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useAuthUserId } from '../auth';
 import {
   fetchMyProfiles,
@@ -14,6 +14,7 @@ import {
   getFollowingCount,
   getFollowingList,
   getSmartUserSuggestions,
+  searchUsers,
 } from './api';
 import { activeProfileKeys, profileKeys } from './keys';
 import { chooseActiveProfile, readActiveProfileId } from './activeProfile';
@@ -250,4 +251,40 @@ export const useFollowState = (viewerId: ProfileId | undefined) => {
   );
 
   return { following: followed ?? [], isFollowing, query };
+};
+
+/** A profile a picker offers: either kind, found by its handle. */
+export interface ProfileSearchResult {
+  id: string;
+  username: string;
+  name: string;
+  avatarUrl: string | null;
+  isVerified: boolean;
+  profileType: 'individual' | 'business';
+}
+
+/** The fewest characters a profile search runs on, as sharing a post has it. */
+export const PROFILE_SEARCH_MIN_LENGTH = 2;
+
+/**
+ * Profiles by handle, through `searchUsers`, for a picker such as a project's
+ * contributors (ONE-42). Runs once the search has two characters; the last
+ * results stay up while the next search runs.
+ */
+export const useProfileSearchQuery = (query: string) => {
+  const term = query.trim();
+  return useQuery<ProfileSearchResult[]>({
+    queryKey: profileKeys.search(term),
+    queryFn: async () =>
+      (await searchUsers(term)).map((row: any) => ({
+        id: row.id,
+        username: row.username,
+        name: row.full_name || row.username,
+        avatarUrl: row.avatar_url ?? null,
+        isVerified: row.is_verified === true,
+        profileType: row.profile_type === 'business' ? 'business' : 'individual',
+      })),
+    enabled: term.length >= PROFILE_SEARCH_MIN_LENGTH,
+    placeholderData: keepPreviousData,
+  });
 };

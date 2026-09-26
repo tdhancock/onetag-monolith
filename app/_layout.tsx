@@ -171,6 +171,7 @@ function RootLayoutNav() {
       <Stack.Screen name="project/create" options={{ presentation: 'modal' }} />
       <Stack.Screen name="project/[id]/edit" options={{ presentation: 'modal' }} />
       <Stack.Screen name="project/[id]/link-product" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="project/[id]/add-contributor" options={{ presentation: 'modal' }} />
       <Stack.Screen name="story-viewer" options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="story-create" options={{ presentation: 'fullScreenModal' }} />
     </Stack>

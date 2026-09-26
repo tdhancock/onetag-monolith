@@ -455,10 +455,14 @@ export const checkUsernameExists = async (username: string): Promise<boolean> =>
 // =========================================================
 // Stories
 // =========================================================
+/**
+ * Profiles by handle, both kinds: Individual and Business. Each row carries
+ * its `profile_type`, so a picker can say which kind it is (ONE-42).
+ */
 export const searchUsers = async (query: string): Promise<any[]> => {
     const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, full_name, avatar_url, is_verified, bio')
+        .select('id, username, full_name, avatar_url, is_verified, bio, profile_type')
         .ilike('username', `%${query}%`)
         .limit(10);
     if (error) return [];

@@ -1,5 +1,5 @@
 // Pure Supabase access for Projects (ONE-41): projects, the products they
-// Link, and the contributors they list.
+// Link, and their Contributors (ONE-42).
 //
 // No React, no hooks, nothing from another feature's internals. A product as
 // a list shows it comes from services/productRows.ts, and a project as a list
@@ -262,4 +262,60 @@ export const unlinkProduct = async (projectId: string, productId: string): Promi
     .eq('project_id', projectId)
     .eq('product_id', productId);
   if (error) throw error;
+};
+
+// ─── Contributors (ONE-42) ──────────────────────────────────────────────
+//
+// Being named a Contributor is a public claim about someone else. The
+// project's owner adds, re-labels, hides and removes the link; the
+// contributor can always remove it. There is no invitation to accept: a link
+// is immediate, with that right of removal.
+
+export interface NewContributor {
+  projectId: string;
+  /** Any profile, business or individual — the owner's own included. */
+  profileId: string;
+  /** Free text, or null for none. */
+  role: string | null;
+}
+
+/**
+ * Link a profile to a project as a Contributor, visible to everyone who can
+ * see the project. A profile already Linked is refused by the unique
+ * constraint; the picker leaves those out, so reaching it is a race, and the
+ * link it wanted exists.
+ */
+export const addContributor = async ({ projectId, profileId, role }: NewContributor): Promise<void> => {
+  const { error } = await supabase
+    .from('contributors')
+    .insert({ project_id: projectId, contributor_profile_id: profileId, role });
+  if (error && (error as { code?: string }).code !== ALREADY_LINKED) throw error;
+};
+
+/**
+ * Remove a contributor link: the owner removing anyone, or a contributor
+ * removing themselves. RLS allows exactly those two, and filters anything
+ * else out silently, so an empty result is an error here.
+ */
+export const removeContributor = async (contributorId: string): Promise<void> => {
+  const { data, error } = await supabase.from('contributors').delete().eq('id', contributorId).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Contributor not found.');
+};
+
+/** What the owner may change about a link: its role, and who sees it. */
+export interface ContributorChanges {
+  role?: string | null;
+  isPublic?: boolean;
+}
+
+/** Change a contributor link. Only the project's owner may, and RLS holds it to that. */
+export const updateContributor = async (contributorId: string, changes: ContributorChanges): Promise<void> => {
+  const row: Record<string, unknown> = {};
+  if (changes.role !== undefined) row.role = changes.role;
+  if (changes.isPublic !== undefined) row.is_public = changes.isPublic;
+  if (Object.keys(row).length === 0) return;
+  const { data, error } = await supabase.from('contributors').update(row).eq('id', contributorId).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Contributor not found.');
 };

@@ -71,9 +71,11 @@ export {
   useFollowingUsernamesQuery,
   useFollowState,
   useUserSuggestionsQuery,
+  useProfileSearchQuery,
+  PROFILE_SEARCH_MIN_LENGTH,
   PLACEHOLDER_PROFILE,
 } from './queries';
-export type { FollowCounts, CurrentProfile, CurrentProfileStatus } from './queries';
+export type { FollowCounts, CurrentProfile, CurrentProfileStatus, ProfileSearchResult } from './queries';
 
 export {
   useToggleFollow,

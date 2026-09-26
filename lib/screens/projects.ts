@@ -2,7 +2,7 @@
 // who may do what, the create and edit form, and what each screen says. Kept
 // out of the screens so it is tested without mounting anything.
 
-import type { Project, ProjectEdits, ProjectFields } from '../../features/projects';
+import type { Contributor, Project, ProjectEdits, ProjectFields } from '../../features/projects';
 
 // ─── Routes ─────────────────────────────────────────────────────────────
 
@@ -13,6 +13,10 @@ export const projectEditRoute = (projectId: string): string => `/project/${encod
 /** The picker a project's owner Links products from. */
 export const projectLinkProductRoute = (projectId: string): string =>
   `/project/${encodeURIComponent(projectId)}/link-product`;
+
+/** The picker a project's owner adds Contributors from (ONE-42). */
+export const projectAddContributorRoute = (projectId: string): string =>
+  `/project/${encodeURIComponent(projectId)}/add-contributor`;
 
 export const PROJECT_CREATE_ROUTE = '/project/create';
 
@@ -181,3 +185,76 @@ export const unlinkProductConfirm = (productName: string) => ({
 
 export const PROJECT_SAVE_FAILED = "Couldn't save the project. Nothing you entered was lost; try again.";
 export const PROJECT_PHOTO_FAILED = "The cover couldn't be uploaded, so nothing was saved. Try again.";
+
+// ─── Contributors (ONE-42) ──────────────────────────────────────────────
+//
+// A Contributor is "added as a Contributor", never "tagged": a Tag is a
+// portal to a Destination, and the two must not blur.
+
+export const CONTRIBUTOR_ROLE_MAX_LENGTH = 60;
+
+/** What a hidden link says, to the only two who can see it: the owner and that contributor. */
+export const HIDDEN_FROM_VISITORS = 'Hidden from visitors';
+
+/** A role as stored: trimmed, or null for none. */
+export const contributorRoleOrNull = (value: string): string | null => value.trim() || null;
+
+/** "Hidden from visitors · Supplied the tile · Business" — what a contributor row says under the name. */
+export const contributorSubtitle = (contributor: Pick<Contributor, 'role' | 'isPublic' | 'profile'>): string =>
+  [
+    contributor.isPublic ? null : HIDDEN_FROM_VISITORS,
+    contributor.role,
+    contributor.profile?.profileType === 'business' ? 'Business' : 'Individual',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+/**
+ * The active profile's own link to a project, when it is a contributor there
+ * but not its owner — the case that gets "Remove me from this project".
+ */
+export const ownContributorLink = (
+  profileId: string | undefined,
+  project: Pick<Project, 'ownerProfileId'>,
+  contributors: Contributor[] | undefined,
+): Contributor | null =>
+  profileId && project.ownerProfileId !== profileId
+    ? contributors?.find((contributor) => contributor.profileId === profileId) ?? null
+    : null;
+
+/**
+ * Who the picker offers: everyone the search found except profiles already
+ * Linked — hidden links included — so the unique constraint is never the
+ * thing that says no. The owner's own profile stays: an owner may add
+ * themselves, a business that both ran and supplied a job.
+ */
+export const contributorCandidates = <T extends { id: string }>(
+  results: T[] | undefined,
+  contributors: Pick<Contributor, 'profileId'>[] | undefined,
+): T[] => {
+  const linked = new Set((contributors ?? []).map((contributor) => contributor.profileId));
+  return (results ?? []).filter((result) => !linked.has(result.id));
+};
+
+/** Said before a contributor removes themselves: what it does, and that only the owner can undo it. */
+export const removeSelfConfirm = (project: Pick<Project, 'name' | 'isPublic'>) => ({
+  title: `Remove yourself from ${project.name}?`,
+  body:
+    "You'll no longer be listed as a contributor, and it leaves your profile's projects. " +
+    (project.isPublic ? '' : "It's private, so you'll no longer be able to see it. ") +
+    "Only the project's owner can add you back.",
+  confirm: 'Remove me',
+});
+
+/** Said before the owner removes a contributor. */
+export const removeContributorConfirm = (name: string) => ({
+  title: `Remove ${name}?`,
+  body: 'They will no longer be listed on this project, and it leaves their profile. You can add them again later.',
+  confirm: 'Remove',
+});
+
+/** The visibility row in a contributor's options, either way. */
+export const contributorVisibilityAction = (isPublic: boolean) =>
+  isPublic
+    ? { label: 'Hide from visitors', hint: 'Only you and they will see them listed.' }
+    : { label: 'Show to visitors', hint: 'Everyone who can see the project will see them listed.' };

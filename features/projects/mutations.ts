@@ -1,4 +1,4 @@
-// Write hooks for Projects (ONE-41).
+// Write hooks for Projects (ONE-41) and their Contributors (ONE-42).
 //
 // None is optimistic: a project is created and edited on a form, deleted
 // behind a confirmation, and a product is Linked from a picker that closes on
@@ -6,18 +6,22 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  addContributor,
   createProject,
   deleteProject,
   linkProduct,
+  removeContributor,
   saveProjectEdits,
   unlinkProduct,
+  updateContributor,
   updateProject,
+  type NewContributor,
   type NewProjectInput,
   type ProjectEdits,
 } from './api';
 import { projectKeys } from './keys';
 import { saveKeys } from '../saves';
-import type { Project } from './types';
+import type { Contributor, Project } from './types';
 import type { AuthUserId } from '../../types';
 
 const signedIn = (authUserId: AuthUserId | undefined): AuthUserId => {
@@ -122,5 +126,75 @@ export const useUnlinkProduct = () => {
   return useMutation({
     mutationFn: ({ projectId, productId }: ProductLinkInput) => unlinkProduct(projectId, productId),
     onSettled: (_data, _error, input) => invalidateLink(queryClient, input),
+  });
+};
+
+// ─── Contributors (ONE-42) ──────────────────────────────────────────────
+
+/**
+ * Re-read both directions of a contributor link: the project's contributors,
+ * and the profile's contributed projects. The project itself too, since a
+ * contributor who leaves a private one can no longer see it.
+ */
+const invalidateContributor = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  { projectId, profileId }: { projectId: string; profileId: string },
+) =>
+  Promise.all([
+    queryClient.invalidateQueries({ queryKey: projectKeys.contributors(projectId) }),
+    queryClient.invalidateQueries({ queryKey: projectKeys.contributed(profileId) }),
+    queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) }),
+  ]);
+
+/** Link a profile to a project as a Contributor, with an optional role. */
+export const useAddContributor = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: NewContributor) => addContributor(input),
+    onSettled: (_data, _error, input) => invalidateContributor(queryClient, input),
+  });
+};
+
+/**
+ * Remove a contributor link — the owner removing anyone, or a contributor
+ * removing themselves ("Remove me from this project").
+ */
+export const useRemoveContributor = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (contributor: Pick<Contributor, 'id' | 'projectId' | 'profileId'>) => removeContributor(contributor.id),
+    onSettled: (_data, _error, contributor) => invalidateContributor(queryClient, contributor),
+  });
+};
+
+export interface ContributorRoleInput {
+  contributor: Pick<Contributor, 'id' | 'projectId' | 'profileId'>;
+  role: string | null;
+}
+
+/** Change a contributor's free-text role. */
+export const useUpdateContributorRole = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ contributor, role }: ContributorRoleInput) => updateContributor(contributor.id, { role }),
+    onSettled: (_data, _error, { contributor }) => invalidateContributor(queryClient, contributor),
+  });
+};
+
+export interface ContributorVisibilityInput {
+  contributor: Pick<Contributor, 'id' | 'projectId' | 'profileId'>;
+  isPublic: boolean;
+}
+
+/**
+ * Show a contributor link to everyone who can see the project, or hide it
+ * from all but the owner and that contributor.
+ */
+export const useSetContributorPublic = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ contributor, isPublic }: ContributorVisibilityInput) =>
+      updateContributor(contributor.id, { isPublic }),
+    onSettled: (_data, _error, { contributor }) => invalidateContributor(queryClient, contributor),
   });
 };

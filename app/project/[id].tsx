@@ -31,6 +31,7 @@ import {
   PRIVATE_LABEL,
   PROJECT_NOT_FOUND,
   productsEmptyState,
+  projectAddContributorRoute,
   projectEditRoute,
   projectKindLabel,
   projectLinkProductRoute,
@@ -144,6 +145,10 @@ function ProjectDetail({
   const owner = project.owner;
 
   const openProfile = (username: string) => router.push(`/user/${encodeURIComponent(username)}`);
+  const addContributor = () => router.push(projectAddContributorRoute(project.id));
+  // Leaving a private project takes away the right to see it: go back rather
+  // than land on its not-found state.
+  const leftPrivateProject = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/profile'));
   const stats =
     contributors.data && products.data
       ? projectStats({
@@ -227,12 +232,27 @@ function ProjectDetail({
         {project.description ? <Text style={styles.description}>{project.description}</Text> : null}
       </View>
 
-      <DetailSection title="Contributors">
+      <DetailSection
+        title="Contributors"
+        trailing={
+          isOwner && (contributors.data ?? []).length > 0 ? (
+            <Button variant="outline" size="sm" onPress={addContributor} accessibilityLabel="Add a contributor">
+              Add
+            </Button>
+          ) : null
+        }
+      >
         <ProjectContributors
+          project={project}
           contributors={contributors.data}
           isPending={contributors.isPending}
+          isError={contributors.isError}
+          onRetry={() => void contributors.refetch()}
           isOwner={isOwner}
+          profileId={profileId}
           onOpenProfile={openProfile}
+          onAdd={addContributor}
+          onLeftPrivateProject={leftPrivateProject}
         />
       </DetailSection>
 
