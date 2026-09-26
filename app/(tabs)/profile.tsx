@@ -21,6 +21,7 @@ import {
   PROFILE_GRID_COLUMNS,
   type ProfileTab,
 } from '../../lib/screens/profile';
+import { tagCreateRoute } from '../../lib/screens/tags';
 import { color, space } from '../../theme/tokens';
 import type { Post } from '../../types';
 
@@ -161,12 +162,19 @@ export default function ProfileScreen() {
         onPressFollowers={() => router.push({ pathname: '/user-list', params: { type: 'followers', userId: profileId, title: 'Followers' } })}
         onPressFollowing={() => router.push({ pathname: '/user-list', params: { type: 'following', userId: profileId, title: 'Following' } })}
         // Share waits for profile links in M4 (ONE-68 allows hiding it until
-        // then), so Edit profile has the row to itself.
+        // then). A business profile creates tags from its own view (ONE-32).
         actions={
           editButton.isEnabled ? (
-            <Button variant="outline" size="sm" fullWidth onPress={() => router.push(editButton.target)}>
-              {editButton.label}
-            </Button>
+            <View style={styles.actions}>
+              <Button variant="outline" size="sm" onPress={() => router.push(editButton.target)} style={styles.action}>
+                {editButton.label}
+              </Button>
+              {userProfile.profileType === 'business' ? (
+                <Button variant="outline" size="sm" onPress={() => router.push(tagCreateRoute())} style={styles.action}>
+                  Create tag
+                </Button>
+              ) : null}
+            </View>
           ) : null
         }
       />
@@ -222,6 +230,13 @@ const styles = StyleSheet.create({
   list: {
     flexGrow: 1,
     backgroundColor: color.bg,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: space.sm,
+  },
+  action: {
+    flex: 1,
   },
   topBar: {
     flexDirection: 'row',

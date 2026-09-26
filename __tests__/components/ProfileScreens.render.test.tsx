@@ -257,6 +257,16 @@ describe('Your profile', () => {
     expect(button(el, 'studio news')).not.toBeNull();
   });
 
+  it('offers Create tag on a business profile, and not on an individual one (ONE-32)', async () => {
+    const individual = await mount(<OwnProfileScreen />);
+    expect(buttonByText(individual, 'Create tag')).toBeUndefined();
+
+    state.me = ME_BUSINESS;
+    await rerender(<OwnProfileScreen />);
+    act(() => buttonByText(individual, 'Create tag')!.click());
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/tags/create', params: {} });
+  });
+
   it('invites your first post when you have none', async () => {
     state.posts = [];
     const el = await mount(<OwnProfileScreen />);
