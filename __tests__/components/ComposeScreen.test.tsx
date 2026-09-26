@@ -80,6 +80,41 @@ jest.mock('../../features/posts', () => ({
   useCreatePost: () => ({ mutateAsync: mockMutateAsync }),
 }));
 
+// Embedded Tags (ONE-46). The picture's content rect is fixed — jsdom lays
+// nothing out — as the 16:9 photo drawn 400×225; the preview overlay reports
+// the tags it was given; the picker offers one product and one profile.
+const mockCreateTags = jest.fn();
+jest.mock('../../features/tags', () => ({
+  useCreateEmbeddedTags: () => ({ mutateAsync: mockCreateTags }),
+}));
+jest.mock('../../components/native/EmbeddedTags', () => {
+  const React = require('react');
+  return {
+    __esModule: true,
+    default: (props: { tags: unknown[]; interactive?: boolean }) =>
+      React.createElement('div', { 'data-embedded-tags': String(props.tags.length), 'data-interactive': String(props.interactive) }),
+    useImageContentRect: () => ({ contentRect: { x: 0, y: 0, width: 400, height: 225 }, onLayout: () => {}, onLoad: () => {} }),
+  };
+});
+jest.mock('../../components/native/TagDestinationPicker', () => {
+  const React = require('react');
+  const LAMP = { kind: 'product', productId: 'pd-1', name: 'Lamp', imageUrl: null };
+  const STUDIO = { kind: 'profile', profileId: 'p-other', username: 'studio', profileType: 'business', name: 'Studio', imageUrl: null };
+  return {
+    __esModule: true,
+    default: (props: { visible: boolean; onPick: (d: unknown) => void; onClose: () => void }) =>
+      props.visible
+        ? React.createElement(
+            'div',
+            { 'data-picker': 'true' },
+            React.createElement('button', { onClick: () => props.onPick(LAMP) }, 'Pick Lamp'),
+            React.createElement('button', { onClick: () => props.onPick(STUDIO) }, 'Pick Studio'),
+            React.createElement('button', { onClick: props.onClose }, 'Close picker'),
+          )
+        : null,
+  };
+});
+
 jest.mock('../../services/mediaUpload', () => {
   class MediaUploadError extends Error {}
   return { MediaUploadError };
@@ -95,7 +130,9 @@ jest.mock('../../services/mediaPicker', () => ({
     media ? { media: media.uri, media_type: 'image' } : { media_type: 'text' },
 }));
 
+import { Alert } from 'react-native';
 import ComposeScreen from '../../app/compose';
+import { TAG_LIMIT_MESSAGE, TAGS_FAILED_TITLE } from '../../lib/screens/composeTags';
 import { MediaUploadError } from '../../services/mediaUpload';
 import { UPLOAD_FAILED_NOTE } from '../../components/native/ComposeMedia';
 import { POST_MAX_CHARS } from '../../lib/screens/compose';
@@ -120,6 +157,8 @@ beforeEach(() => {
   mockBack.mockClear();
   mockToast.mockClear();
   mockMutateAsync.mockReset();
+  mockCreateTags.mockReset();
+  (Alert.alert as jest.Mock).mockClear();
 });
 
 afterEach(() => {
@@ -303,5 +342,151 @@ describe('Compose — publishing', () => {
     expect(note).toBeDefined();
     expect(note.style.color).toBe(rgb(color.heart));
     expect(mockToast).toHaveBeenCalledWith(expect.stringContaining('could not be uploaded'), 'error');
+  });
+});
+
+// ─── 8. Embedded Tags (ONE-46) ──────────────────────────────────────────
+
+const button = (el: HTMLElement, text: string) =>
+  Array.from(el.querySelectorAll('button')).find(b => b.textContent === text) as HTMLButtonElement | undefined;
+
+function tapPhoto(el: HTMLElement, x: number, y: number) {
+  const surface = el.querySelector('[data-testid="tag-placer-surface"]') as HTMLElement;
+  const event = new MouseEvent('click', { bubbles: true });
+  Object.defineProperty(event, 'locationX', { value: x });
+  Object.defineProperty(event, 'locationY', { value: y });
+  act(() => { surface.dispatchEvent(event); });
+}
+
+/** Open tagging if it isn't, tap the photo, and pick a destination. */
+function tagAt(el: HTMLElement, x: number, y: number, pick = 'Pick Lamp') {
+  if (!el.querySelector('[data-testid="tag-placer-surface"]')) act(() => button(el, 'Tag')!.click());
+  tapPhoto(el, x, y);
+  act(() => button(el, pick)!.click());
+}
+
+describe('Compose — tagging', () => {
+  it('offers no tagging step on a text-only post', () => {
+    const el = mount();
+    type(el, 'just words');
+    expect(button(el, 'Tag')).toBeUndefined();
+  });
+
+  it('places a tag where the photo is tapped and opens the picker', () => {
+    mockParams.current = { mediaUri: 'file:///photo.jpg' };
+    const el = mount();
+    act(() => button(el, 'Tag')!.click());
+    tapPhoto(el, 200, 112.5);
+
+    expect(el.querySelector('[data-picker]')).not.toBeNull();
+    act(() => button(el, 'Pick Lamp')!.click());
+    expect(el.querySelector('[data-picker]')).toBeNull();
+    expect(el.textContent).toContain('Lamp');
+    expect(el.textContent).toContain('1 / 10 TAGGED');
+  });
+
+  it('drops a newly placed tag when its picker closes without a choice', () => {
+    mockParams.current = { mediaUri: 'file:///photo.jpg' };
+    const el = mount();
+    act(() => button(el, 'Tag')!.click());
+    tapPhoto(el, 10, 10);
+    act(() => button(el, 'Close picker')!.click());
+    expect(el.textContent).toContain('0 / 10 TAGGED');
+  });
+
+  it('previews the tags through the same overlay viewers get, without taps', () => {
+    mockParams.current = { mediaUri: 'file:///photo.jpg' };
+    const el = mount();
+    tagAt(el, 100, 100);
+    tagAt(el, 300, 50, 'Pick Studio');
+    act(() => button(el, 'Done')!.click());
+
+    const preview = el.querySelector('[data-embedded-tags]') as HTMLElement;
+    expect(preview.getAttribute('data-embedded-tags')).toBe('2');
+    expect(preview.getAttribute('data-interactive')).toBe('false');
+  });
+
+  it('prevents an eleventh tag, and says why', () => {
+    mockParams.current = { mediaUri: 'file:///photo.jpg' };
+    const el = mount();
+    for (let i = 0; i < 10; i += 1) tagAt(el, 20 * i, 20);
+    tapPhoto(el, 390, 200);
+
+    expect(el.querySelector('[data-picker]')).toBeNull();
+    expect(Alert.alert).toHaveBeenCalledWith(expect.any(String), TAG_LIMIT_MESSAGE);
+    expect(el.textContent).toContain('10 / 10 TAGGED');
+  });
+
+  it('publishes the post, then its tags against the new post id, as the author', async () => {
+    mockParams.current = { mediaUri: 'file:///photo.jpg' };
+    mockMutateAsync.mockResolvedValue({ id: 'post-1' });
+    mockCreateTags.mockResolvedValue(undefined);
+    const el = mount();
+    tagAt(el, 200, 112.5);
+    tagAt(el, 0, 0, 'Pick Studio');
+    tagAt(el, 400, 225);
+
+    await act(async () => { postButton(el).click(); });
+    act(() => { jest.runAllTimers(); });
+
+    expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+    expect(mockCreateTags).toHaveBeenCalledTimes(1);
+    expect(mockCreateTags).toHaveBeenCalledWith({
+      hostPostId: 'post-1',
+      ownerProfileId: 'p-me',
+      tags: [
+        { destination: { kind: 'product', id: 'pd-1' }, xPct: 50, yPct: 50 },
+        { destination: { kind: 'profile', id: 'p-other' }, xPct: 0, yPct: 0 },
+        { destination: { kind: 'product', id: 'pd-1' }, xPct: 100, yPct: 100 },
+      ],
+    });
+    expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('keeps the post when its tags fail, says so, and retries', async () => {
+    mockParams.current = { mediaUri: 'file:///photo.jpg' };
+    mockMutateAsync.mockResolvedValue({ id: 'post-1' });
+    mockCreateTags.mockRejectedValueOnce(new Error('rls')).mockResolvedValueOnce(undefined);
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const el = mount();
+    tagAt(el, 200, 112.5);
+
+    await act(async () => { postButton(el).click(); });
+
+    // Told the post is up and its tags aren't — never "nothing was posted".
+    const [title, , buttons] = (Alert.alert as jest.Mock).mock.calls[0];
+    expect(title).toBe(TAGS_FAILED_TITLE);
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+    expect(mockBack).not.toHaveBeenCalled();
+
+    const retry = (buttons as { text: string; onPress: () => void }[]).find(b => b.text === 'Try again')!;
+    await act(async () => { retry.onPress(); });
+    act(() => { jest.runAllTimers(); });
+
+    expect(mockCreateTags).toHaveBeenCalledTimes(2);
+    expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+    expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('publishes a photo post with no tags exactly as before', async () => {
+    mockParams.current = { mediaUri: 'file:///photo.jpg' };
+    mockMutateAsync.mockResolvedValue({ id: 'post-1' });
+    const el = mount();
+    await act(async () => { postButton(el).click(); });
+    act(() => { jest.runAllTimers(); });
+
+    expect(mockCreateTags).not.toHaveBeenCalled();
+    expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('forgets the tags when the photo is removed', () => {
+    mockParams.current = { mediaUri: 'file:///photo.jpg' };
+    const el = mount();
+    tagAt(el, 200, 112.5);
+    act(() => button(el, 'Done')!.click());
+    act(() => (el.querySelector('button[aria-label="Remove photo"]') as HTMLButtonElement).click());
+    expect(button(el, 'Tag')).toBeUndefined();
+    expect(el.querySelector('[data-embedded-tags]')).toBeNull();
   });
 });

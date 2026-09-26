@@ -96,6 +96,26 @@ export const fetchProject = async (projectId: string): Promise<Project | null> =
   return data ? mapProjectRow(data as unknown as ProjectRow) : null;
 };
 
+/** How many projects a picker search returns. */
+export const PROJECT_SEARCH_LIMIT = 25;
+
+/**
+ * Public projects by name, from every account — for tagging a project in a
+ * post's photo (ONE-46), which may point at anyone's public project but never
+ * a private one, even the author's own (ONE-44's insert policy refuses it).
+ * An empty search lists the newest. `*` and `%` are taken out of what was
+ * typed, as searchProducts does.
+ */
+export const searchPublicProjects = async (query: string): Promise<ProjectSummary[]> => {
+  let request = supabase.from('projects').select(PROJECT_SUMMARY_SELECT).eq('is_public', true);
+  const term = query.replace(/[%*]/g, '').trim();
+  if (term) request = request.ilike('name', `%${term}%`);
+
+  const { data, error } = await request.order('created_at', { ascending: false }).limit(PROJECT_SEARCH_LIMIT);
+  if (error) throw error;
+  return ((data ?? []) as unknown as ProjectSummaryRow[]).map(mapProjectSummaryRow);
+};
+
 /** The projects a profile owns that the viewer may see, newest first. */
 export const fetchOwnedProjects = async (ownerProfileId: string): Promise<ProjectSummary[]> => {
   const { data, error } = await supabase

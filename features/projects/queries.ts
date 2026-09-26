@@ -1,6 +1,6 @@
 // Read hooks for Projects (ONE-41).
 
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   fetchContributedProjects,
   fetchContributors,
@@ -8,6 +8,7 @@ import {
   fetchProject,
   fetchProjectProducts,
   fetchProjectsUsingProduct,
+  searchPublicProjects,
 } from './api';
 import { projectKeys } from './keys';
 import type { Contributor, Project, ProjectProduct, ProjectSummary } from './types';
@@ -61,4 +62,15 @@ export const useProjectProductsQuery = (projectId: string | undefined) =>
     queryKey: projectKeys.products(projectId ?? ''),
     queryFn: () => fetchProjectProducts(projectId!),
     enabled: Boolean(projectId),
+  });
+
+/**
+ * Public projects by name from every account, for the composer's tag picker
+ * (ONE-46). The last results stay up while the next search runs.
+ */
+export const usePublicProjectSearchQuery = (query: string) =>
+  useQuery<ProjectSummary[]>({
+    queryKey: projectKeys.search(query.trim()),
+    queryFn: () => searchPublicProjects(query),
+    placeholderData: keepPreviousData,
   });
