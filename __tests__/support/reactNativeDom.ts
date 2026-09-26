@@ -24,13 +24,15 @@ export const flattenStyle = (style: unknown): Record<string, unknown> => {
 };
 
 const passthroughProps = (props: Record<string, unknown>) => {
-  // `accessible` is RN-only; dropping it keeps React's DOM warnings quiet.
+  // `accessible` and `selectable` are RN-only; dropping them keeps React's
+  // DOM warnings quiet.
   const {
     style,
     children,
     testID,
     className,
     accessible: _accessible,
+    selectable: _selectable,
     accessibilityLabel,
     ...rest
   } = props;
