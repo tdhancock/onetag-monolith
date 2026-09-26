@@ -1,31 +1,32 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { FlatList, RefreshControl, Alert, StyleSheet } from 'react-native';
+import { RefreshControl, Alert, ScrollView, StyleSheet } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../store/AppContext.native';
-import { useFollowState, useToggleFollow, useFollowCountsQuery, profileKeys, useCurrentProfile } from '../../features/profiles';
+import {
+  useFollowState,
+  useToggleFollow,
+  useFollowCountsQuery,
+  useProfilePostCountQuery,
+  profileKeys,
+  useCurrentProfile,
+} from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
-import { getUserProfile, getUserPosts, getUserReposts } from '../../features/profiles';
+import { getUserProfile } from '../../features/profiles';
 import { setUserVerified, useIsAdmin } from '../../features/admin';
 import { useAuthUserId } from '../../features/auth';
 import { reportUser } from '../../features/moderation';
 import { REPORT_REASONS } from '../../services/reportReasons';
 import ProfileHeader, { ProfileHeaderSkeleton } from '../../components/native/ProfileHeader';
 import ProfileTabs from '../../components/native/ProfileTabs';
-import ScanHistorySection from '../../components/native/ScanHistorySection';
-import { GridTile, ProfileGridSkeleton } from '../../components/native/ProfileGrid';
+import ProfileTabList from '../../components/native/ProfileTabList';
+import { ProfileGridSkeleton } from '../../components/native/ProfileGrid';
 import { Button, EmptyState, IconButton, Sheet, SheetRow } from '../../components/native/ui';
 import { BlockIcon, LockClosedIcon, DotsHorizontalIcon, ReportIcon, VerifiedIcon } from '../../components/native/Icons';
-import {
-  isProfileLocked,
-  profileEmptyState,
-  profileTabsFor,
-  PROFILE_GRID_COLUMNS,
-  type ProfileTab,
-} from '../../lib/screens/profile';
+import { isProfileLocked, profileTabsFor, type ProfileTab } from '../../lib/screens/profile';
 import { color } from '../../theme/tokens';
-import type { Post, UserProfile as UserProfileType } from '../../types';
+import type { UserProfile as UserProfileType } from '../../types';
 
 export default function UserProfileScreen() {
   const { username } = useLocalSearchParams<{ username: string }>();
@@ -47,16 +48,16 @@ export default function UserProfileScreen() {
   const follow = useToggleFollow(profileId);
 
   const [profile, setProfile] = useState<UserProfileType | null>(null);
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [reposts, setReposts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
+  const [selectedTab, setSelectedTab] = useState<ProfileTab | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   // The report reasons are the menu's second step, in the same sheet.
   const [showReport, setShowReport] = useState(false);
 
   const { data: followCounts } = useFollowCountsQuery(profile?.id || undefined);
+  // A count for the header, never the posts: the first tab may not be them.
+  const { data: postCount } = useProfilePostCountQuery(profile?.id || undefined);
   const isFollowing = isUserFollowing(username || '');
   const isBlocked = isUserBlocked(username || '');
   const isMyProfile = myProfile?.username === username;
@@ -71,19 +72,12 @@ export default function UserProfileScreen() {
     isAdmin,
   });
 
+  // The profile itself. Each tab reads its own content once it is opened
+  // (ONE-43), so nothing here fetches posts.
   const fetchData = useCallback(async () => {
     if (!username) return;
     try {
-      const profileData = await getUserProfile(username);
-      setProfile(profileData);
-      if (profileData) {
-        const [userPosts, userReposts] = await Promise.all([
-          getUserPosts(profileData.id),
-          getUserReposts(profileData.id),
-        ]);
-        setPosts(userPosts);
-        setReposts(userReposts);
-      }
+      setProfile(await getUserProfile(username));
     } catch (error) {
       console.error('Failed to load user profile', error);
     } finally {
@@ -95,14 +89,17 @@ export default function UserProfileScreen() {
     fetchData();
   }, [fetchData]);
 
-  // Following a private profile is what lets its posts through RLS, so the
-  // grid re-reads when follow state changes on one (ONE-58).
+  // Following a private profile is what lets its posts through RLS, so its
+  // posts — and their count, which sits beneath them — are read again when
+  // follow state changes on one (ONE-58).
   const wasFollowing = useRef(isFollowing);
   useEffect(() => {
     if (wasFollowing.current === isFollowing) return;
     wasFollowing.current = isFollowing;
-    if (profile?.isPrivate && !isMyProfile) fetchData();
-  }, [isFollowing, profile?.isPrivate, isMyProfile, fetchData]);
+    if (profile?.isPrivate && !isMyProfile) {
+      void queryClient.invalidateQueries({ queryKey: profileKeys.posts(profile.id) });
+    }
+  }, [isFollowing, profile?.isPrivate, profile?.id, isMyProfile, queryClient]);
 
   // Realtime follow counts, through the shared bridge (ONE-16). Two streams
   // rather than one subscription to every follow in the system: followers of
@@ -121,11 +118,23 @@ export default function UserProfileScreen() {
     enabled: Boolean(profile?.id),
   });
 
+  // What the header shows, re-read on pull to refresh: the profile and its
+  // counts. The open tab re-reads its own list.
+  const refreshHeader = useCallback(
+    () =>
+      Promise.all([
+        fetchData(),
+        profile ? queryClient.invalidateQueries({ queryKey: profileKeys.counts(profile.id) }) : undefined,
+        profile ? queryClient.invalidateQueries({ queryKey: profileKeys.postCount(profile.id) }) : undefined,
+      ]),
+    [fetchData, profile, queryClient],
+  );
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchData();
+    await refreshHeader();
     setRefreshing(false);
-  }, [fetchData]);
+  }, [refreshHeader]);
 
   const handleToggleFollow = useCallback(() => {
     if (!username || !profile?.id || isMyProfile) return;
@@ -184,15 +193,6 @@ export default function UserProfileScreen() {
       addToast('Error updating verification status.', 'error');
     }
   };
-
-  const handlePostPress = useCallback((post: Post) => {
-    router.push(`/post/${post.id}`);
-  }, [router]);
-
-  const currentData = activeTab === 'posts' ? posts : reposts;
-  const renderItem = useCallback(({ item, index }: { item: Post; index: number }) => (
-    <GridTile post={item} index={index} onPress={() => handlePostPress(item)} />
-  ), [handlePostPress]);
 
   const refreshControl = (
     <RefreshControl
@@ -258,20 +258,25 @@ export default function UserProfileScreen() {
     </>
   );
 
+  const tabs = profileTabsFor({
+    profileType: profile.profileType,
+    isOwnProfile: isMyProfile,
+    scanHistoryPublic: profile.scanHistoryPublic,
+  });
+  const tab = selectedTab && tabs.includes(selectedTab) ? selectedTab : tabs[0]!;
+  const showsTabs = !isBlocked && !isLocked;
+
   const header = (
     <>
       <ProfileHeader
         profile={profile}
-        stats={{ posts: posts.length, followers: followCounts?.followers, following: followCounts?.following }}
+        stats={{ posts: postCount, followers: followCounts?.followers, following: followCounts?.following }}
         onPressFollowers={() => router.push({ pathname: '/user-list', params: { type: 'followers', userId: profile.id, title: 'Followers' } })}
         onPressFollowing={() => router.push({ pathname: '/user-list', params: { type: 'following', userId: profile.id, title: 'Following' } })}
         actions={actions}
       />
-      {/* Their public scan history, only if they made it public (ONE-35);
-          absent otherwise, with no placeholder. */}
-      {isBlocked ? null : <ScanHistorySection profile={profile} />}
       {/* Blocked and private profiles show why there is nothing to see, in
-          place of the tabs and the grid. */}
+          place of the tabs and their content. */}
       {isBlocked ? (
         <EmptyState
           icon={<BlockIcon color={color.textMuted} size={40} strokeWidth={1.6} />}
@@ -285,12 +290,10 @@ export default function UserProfileScreen() {
           body={`Follow @${username} to see their posts.`}
         />
       ) : (
-        <ProfileTabs tabs={profileTabsFor(false)} selected={activeTab} onSelect={setActiveTab} />
+        <ProfileTabs tabs={tabs} selected={tab} onSelect={setSelectedTab} />
       )}
     </>
   );
-
-  const empty = profileEmptyState(activeTab, false);
 
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
@@ -309,22 +312,22 @@ export default function UserProfileScreen() {
         }}
       />
 
-      <FlatList
-        data={isBlocked || isLocked ? [] : currentData}
-        renderItem={renderItem}
-        keyExtractor={item => item.id}
-        numColumns={PROFILE_GRID_COLUMNS}
-        ListHeaderComponent={header}
-        ListEmptyComponent={
-          isBlocked || isLocked ? null : loading ? (
-            <ProfileGridSkeleton />
-          ) : (
-            <EmptyState title={empty.title} body={empty.body} />
-          )
-        }
-        refreshControl={refreshControl}
-        contentContainerStyle={styles.list}
-      />
+      {showsTabs ? (
+        // Their Scan History is a tab only while they made it public (ONE-35),
+        // and Saves never are one here: absent, not locked.
+        <ProfileTabList
+          key={profile.id}
+          tab={tab}
+          profile={profile}
+          isOwnProfile={isMyProfile}
+          header={header}
+          onRefreshHeader={refreshHeader}
+        />
+      ) : (
+        <ScrollView refreshControl={refreshControl} contentContainerStyle={styles.list}>
+          {header}
+        </ScrollView>
+      )}
 
       <Sheet
         visible={menuVisible}

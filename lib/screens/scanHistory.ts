@@ -66,10 +66,3 @@ export const SCAN_HISTORY_EMPTY_STATE = {
   title: 'No scans yet',
   body: 'Tags you scan with your camera show up here, with where they led.',
 } as const;
-
-/** The route to a profile's scan history: the active profile's, or someone's public one. */
-export const scanHistoryRoute = (profile?: { id: string; username: string }) =>
-  profile ? { pathname: '/scans' as const, params: { profile: profile.id, username: profile.username } } : '/scans';
-
-/** How many entries a profile screen shows before "See all". */
-export const PROFILE_SCAN_PREVIEW = 3;

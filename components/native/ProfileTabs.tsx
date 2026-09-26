@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Pressable } from './ui';
-import { GridIcon, RepostIcon, BookmarkIcon } from './Icons';
+import { MonoLabel, Pressable } from './ui';
 import { PROFILE_TAB_LABELS, type ProfileTab } from '../../lib/screens/profile';
 import { color } from '../../theme/tokens';
 
@@ -14,24 +13,12 @@ export interface ProfileTabsProps {
 /** The strip's height, in points. */
 export const PROFILE_TABS_HEIGHT = 44;
 
-const ICON_SIZE = 22;
-
-const iconFor = (tab: ProfileTab, active: boolean) => {
-  const tint = active ? color.text : color.textMuted;
-  switch (tab) {
-    case 'posts':
-      return <GridIcon color={tint} size={ICON_SIZE} strokeWidth={1.8} />;
-    case 'reposts':
-      return <RepostIcon color={tint} size={ICON_SIZE} strokeWidth={1.8} />;
-    case 'saved':
-      return <BookmarkIcon color={tint} size={ICON_SIZE} strokeWidth={1.8} />;
-  }
-};
-
 /**
- * Icon tabs over a profile's grid, with no text labels: the selected tab
- * carries a 1pt ink underline over the strip's `border` hairline. Screen
- * readers get each tab's name and its selected state.
+ * The tabs over a profile's content (ONE-43): each a mono micro-label, the
+ * selected one in ink with a 1pt ink underline over the strip's `border`
+ * hairline, the rest muted. Words rather than the icons the posts-only strip
+ * had (ONE-68): Products, Projects, Saves and Scans have no glyph a reader
+ * could be sure of. Screen readers get each tab's name and selected state.
  */
 const ProfileTabs: React.FC<ProfileTabsProps> = ({ tabs, selected, onSelect }) => (
   <View style={styles.strip} accessibilityRole="tablist">
@@ -46,7 +33,9 @@ const ProfileTabs: React.FC<ProfileTabsProps> = ({ tabs, selected, onSelect }) =
           accessibilityState={{ selected: active }}
           style={({ pressed }) => [styles.tab, pressed && styles.pressed]}
         >
-          {iconFor(tab, active)}
+          <MonoLabel color={active ? 'text' : 'textMuted'} numberOfLines={1}>
+            {PROFILE_TAB_LABELS[tab]}
+          </MonoLabel>
           {active ? <View style={styles.underline} /> : null}
         </Pressable>
       );

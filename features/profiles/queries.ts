@@ -7,6 +7,7 @@ import {
   fetchMyProfiles,
   getUserProfile,
   getUserPosts,
+  getUserPostCount,
   getUserReposts,
   getFollowerUsers,
   getFollowingUsers,
@@ -157,6 +158,14 @@ export const useProfilePostsQuery = (userId: string | undefined) =>
   useQuery<Post[]>({
     queryKey: profileKeys.posts(userId ?? ''),
     queryFn: () => getUserPosts(userId!),
+    enabled: Boolean(userId),
+  });
+
+/** How many posts a profile has, for its header's Posts figure. */
+export const useProfilePostCountQuery = (userId: string | undefined) =>
+  useQuery<number>({
+    queryKey: profileKeys.postCount(userId ?? ''),
+    queryFn: () => getUserPostCount(userId!),
     enabled: Boolean(userId),
   });
 

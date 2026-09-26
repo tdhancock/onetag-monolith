@@ -1,8 +1,8 @@
 //
 // target: __tests__/lib/profileRules.test.ts
-// The re-skinned profile's rules (ONE-68) — lib/screens/profile: which tabs
-// show, what an empty tab or list says, the grid's geometry, and when Edit
-// profile has something to save.
+// The profile's rules (ONE-68, ONE-43) — lib/screens/profile: which tabs
+// show for which profile and viewer, what an empty tab or list says, the
+// grid's geometry, and when Edit profile has something to save.
 
 import {
   firstLine,
@@ -17,14 +17,45 @@ import {
   usernameError,
 } from '../../lib/screens/profile';
 
-describe('profileTabsFor', () => {
-  it('shows Saved on your own profile only', () => {
-    expect(profileTabsFor(true)).toEqual(['posts', 'reposts', 'saved']);
-    expect(profileTabsFor(false)).toEqual(['posts', 'reposts']);
+describe('profileTabsFor (ONE-43)', () => {
+  it('gives a business Products, Projects and Media, whoever is looking', () => {
+    expect(profileTabsFor({ profileType: 'business', isOwnProfile: true })).toEqual(['products', 'projects', 'media']);
+    expect(profileTabsFor({ profileType: 'business', isOwnProfile: false, scanHistoryPublic: true })).toEqual([
+      'products',
+      'projects',
+      'media',
+    ]);
   });
 
-  it('names every tab for screen readers', () => {
-    expect(PROFILE_TAB_LABELS).toEqual({ posts: 'Posts', reposts: 'Reposts', saved: 'Saved' });
+  it('gives your own individual profile Posts, Saves, Projects and Scans', () => {
+    expect(profileTabsFor({ profileType: 'individual', isOwnProfile: true })).toEqual(['posts', 'saves', 'projects', 'scans']);
+  });
+
+  it('never gives a visitor Saves, and Scans only while the history is public', () => {
+    expect(profileTabsFor({ profileType: 'individual', isOwnProfile: false, scanHistoryPublic: false })).toEqual([
+      'posts',
+      'projects',
+    ]);
+    expect(profileTabsFor({ profileType: 'individual', isOwnProfile: false, scanHistoryPublic: true })).toEqual([
+      'posts',
+      'projects',
+      'scans',
+    ]);
+  });
+
+  it('decides by type, never by content: an unknown type reads as individual', () => {
+    expect(profileTabsFor({ isOwnProfile: false })).toEqual(['posts', 'projects']);
+  });
+
+  it('names every tab', () => {
+    expect(PROFILE_TAB_LABELS).toEqual({
+      posts: 'Posts',
+      media: 'Media',
+      products: 'Products',
+      projects: 'Projects',
+      saves: 'Saves',
+      scans: 'Scans',
+    });
   });
 });
 
@@ -37,13 +68,30 @@ describe('profileEmptyState', () => {
     });
   });
 
-  it('offers no action on someone else\'s', () => {
-    expect(profileEmptyState('posts', false).action).toBeUndefined();
-    expect(profileEmptyState('reposts', false).title).toBe('No reposts yet');
+  it("prompts the action on your own profile, and offers none on someone else's", () => {
+    const tabs = ['posts', 'media', 'products', 'projects', 'scans'] as const;
+    for (const tab of tabs) {
+      expect(profileEmptyState(tab, true).action).toBeDefined();
+      expect(profileEmptyState(tab, false).action).toBeUndefined();
+    }
+    expect(profileEmptyState('products', true).action).toEqual({ label: 'Add your first product', target: '/product/create' });
+    expect(profileEmptyState('products', false)).toEqual({
+      title: 'No products yet',
+      body: 'This business has not listed any products.',
+    });
   });
 
-  it('says "Nothing saved yet" for Saved', () => {
-    expect(profileEmptyState('saved', true).title).toBe('Nothing saved yet');
+  it('says what an empty contributed list means, with nothing to do about it', () => {
+    expect(profileEmptyState('projects', true, { projectsView: 'contributed' }).action).toBeUndefined();
+    expect(profileEmptyState('projects', true, { projectsView: 'owned' }).action).toEqual({
+      label: 'Start a project',
+      target: '/project/create',
+    });
+  });
+
+  it('says "Nothing saved yet" for Saves, and something narrower for a filtered one', () => {
+    expect(profileEmptyState('saves', true).title).toBe('Nothing saved yet');
+    expect(profileEmptyState('saves', true, { savesFilter: 'product' }).title).toBe('Nothing saved here');
   });
 });
 

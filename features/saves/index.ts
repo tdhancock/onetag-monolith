@@ -9,6 +9,7 @@ export {
   unsaveTarget,
   toggleSave,
   getSavedPosts,
+  fetchSavedItems,
   mapSaveRow,
   saveKeyOf,
   targetOfSaveKey,
@@ -16,7 +17,7 @@ export {
   SAVE_SELECT,
 } from './api';
 export { saveKeys } from './keys';
-export { useSavesQuery, useIsSaved } from './queries';
+export { useSavesQuery, useIsSaved, useSavedItemsQuery } from './queries';
 export { useToggleSave, saveToggleConfig, shouldSaveAfterFlip } from './mutations';
 export type { SaveToggle } from './mutations';
-export type { Save, SaveKind, SaveRow, SaveTarget } from './types';
+export type { Save, SaveKind, SaveRow, SaveTarget, SavedItem, SavedProfile } from './types';

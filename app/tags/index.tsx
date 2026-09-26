@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { FlatList, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
 import { useMyTagsQuery, useTagActiveToggle, type OwnedTag } from '../../features/tags';
-import { Button, EmptyState, IconButton, Skeleton } from '../../components/native/ui';
+import { EmptyState, IconButton, Skeleton } from '../../components/native/ui';
 import { PlusIcon } from '../../components/native/Icons';
+import FilterChips from '../../components/native/FilterChips';
 import TagRow from '../../components/native/TagRow';
 import {
   filterTags,
@@ -20,41 +21,6 @@ import {
   type TagTypeFilter,
 } from '../../lib/screens/tags';
 import { color, space } from '../../theme/tokens';
-
-/** One row of filter chips: the selected one solid, the rest outlined. */
-function FilterChips<T extends string>({
-  options,
-  selected,
-  onSelect,
-  label,
-}: {
-  options: { value: T; label: string }[];
-  selected: T;
-  onSelect: (value: T) => void;
-  label: string;
-}) {
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.chips}
-      accessibilityRole="radiogroup"
-      accessibilityLabel={label}
-    >
-      {options.map((option) => (
-        <Button
-          key={option.value}
-          size="sm"
-          variant={option.value === selected ? 'primary' : 'outline'}
-          onPress={() => onSelect(option.value)}
-          accessibilityLabel={`${label}: ${option.label}${option.value === selected ? ', selected' : ''}`}
-        >
-          {option.label}
-        </Button>
-      ))}
-    </ScrollView>
-  );
-}
 
 /**
  * The Tags dashboard (ONE-34): every tag the active profile owns, newest
@@ -210,10 +176,6 @@ const styles = StyleSheet.create({
     gap: space.sm,
     borderBottomWidth: 1,
     borderBottomColor: color.border,
-  },
-  chips: {
-    paddingHorizontal: space.lg,
-    gap: space.sm,
   },
   skeletons: {
     padding: space.lg,

@@ -137,6 +137,20 @@ export const getUserPosts = async (userId: string): Promise<Post[]> => {
     return (data || []).map(mapPostData);
 };
 
+/**
+ * How many posts a profile has, for the Posts figure in its header — a count,
+ * never the posts themselves, so a profile whose first tab is not its posts
+ * fetches none of them until that tab is opened (ONE-43). RLS counts only
+ * what the viewer may see, as the grid shows.
+ */
+export const getUserPostCount = async (userId: string): Promise<number> => {
+    const { count, error } = await supabase
+        .from('posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+    return error ? 0 : count || 0;
+};
+
 export const getUserReposts = async (userId: string): Promise<Post[]> => {
     try {
         const { data: repostIdsData, error: repostsError } = await supabase

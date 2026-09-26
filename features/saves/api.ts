@@ -6,8 +6,10 @@
 
 import { supabase } from '../../services/supabase.native';
 import { POST_SELECT_QUERY, mapPostData, scopePostsToViewer } from '../../services/postRows';
+import { mapProductSummaryRow, PRODUCT_SUMMARY_SELECT, type ProductSummaryRow } from '../../services/productRows';
+import { mapProjectSummaryRow, PROJECT_SUMMARY_SELECT, type ProjectSummaryRow } from '../../services/projectRows';
 import type { Post } from '../../types';
-import type { Save, SaveKind, SaveRow, SaveTarget } from './types';
+import type { Save, SavedItem, SavedProfile, SaveKind, SaveRow, SaveTarget } from './types';
 
 /** The column each kind of target is saved in. */
 export const SAVE_TARGET_COLUMN: Record<SaveKind, keyof SaveRow> = {
@@ -141,4 +143,76 @@ export const getSavedPosts = async (profileId: string): Promise<Post[]> => {
     console.error('Error fetching saved posts:', (error as Error).message || error);
     return [];
   }
+};
+
+// ─── Saved items, with what a list shows (ONE-43) ──────────────────────
+
+const PROFILE_SUMMARY_SELECT = 'id, username, full_name, avatar_url, is_verified, profile_type';
+
+type ProfileSummaryRow = {
+  id: string;
+  username: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  is_verified: boolean | null;
+  profile_type: 'individual' | 'business';
+};
+
+/** Rows of one table by id, as a map. Nothing to read reads nothing. */
+const byIds = async <TRow extends { id: string }>(table: string, select: string, ids: string[]): Promise<Map<string, TRow>> => {
+  if (ids.length === 0) return new Map();
+  const { data, error } = await supabase.from(table).select(select).in('id', ids);
+  if (error) throw error;
+  return new Map(((data ?? []) as unknown as TRow[]).map((row) => [row.id, row]));
+};
+
+/**
+ * Every save a profile has made, newest first, each with its target ready to
+ * list: a profile's Saves tab, mixing all four kinds (ONE-43).
+ *
+ * One read of the saves, then one read per kind that has any. Posts are
+ * scoped to the profile as viewer, as getSavedPosts scopes them. A target
+ * that does not come back — deleted, or no longer the viewer's to see — is
+ * left out rather than shown as a gap.
+ */
+export const fetchSavedItems = async (profileId: string): Promise<SavedItem[]> => {
+  const saves = await fetchSaves(profileId);
+  const ids = (kind: SaveKind) => saves.filter((save) => save.target.kind === kind).map((save) => save.target.id);
+
+  const postIds = ids('post');
+  const [posts, products, projects, profiles] = await Promise.all([
+    postIds.length === 0
+      ? Promise.resolve(new Map<string, Post>())
+      : scopePostsToViewer(supabase.from('posts').select(POST_SELECT_QUERY).in('id', postIds), profileId).then(
+          ({ data, error }) => {
+            if (error) throw error;
+            return new Map(((data ?? []) as { id: string }[]).map((row) => [row.id, mapPostData(row)]));
+          },
+        ),
+    byIds<ProductSummaryRow>('products', PRODUCT_SUMMARY_SELECT, ids('product')),
+    byIds<ProjectSummaryRow>('projects', PROJECT_SUMMARY_SELECT, ids('project')),
+    byIds<ProfileSummaryRow>('profiles', PROFILE_SUMMARY_SELECT, ids('profile')),
+  ]);
+
+  const items: SavedItem[] = [];
+  for (const save of saves) {
+    const base = { saveId: save.id, savedAt: save.savedAt };
+    const { kind, id } = save.target;
+    if (kind === 'post' && posts.has(id)) items.push({ ...base, kind, post: posts.get(id)! });
+    if (kind === 'product' && products.has(id)) items.push({ ...base, kind, product: mapProductSummaryRow(products.get(id)!) });
+    if (kind === 'project' && projects.has(id)) items.push({ ...base, kind, project: mapProjectSummaryRow(projects.get(id)!) });
+    if (kind === 'profile' && profiles.has(id)) {
+      const row = profiles.get(id)!;
+      const profile: SavedProfile = {
+        id: row.id,
+        username: row.username,
+        name: row.full_name || row.username,
+        avatarUrl: row.avatar_url,
+        isVerified: row.is_verified === true,
+        profileType: row.profile_type,
+      };
+      items.push({ ...base, kind, profile });
+    }
+  }
+  return items;
 };

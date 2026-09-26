@@ -19,6 +19,8 @@ export interface MockDb {
   tables: Record<string, Row[]>;
   /** Every write, in order: which table, what kind, the payload and filters. */
   writes: { table: string; kind: string; payload: unknown; filters: Filter[] }[];
+  /** Every read, in order: which table, what it selected, and whether it only counted. */
+  reads: { table: string; select: string; head: boolean }[];
   /** Every Storage upload, by bucket and path. */
   uploads: { bucket: string; path: string }[];
   /** Every RPC call, by name and arguments. */
@@ -43,6 +45,7 @@ type Filter = [op: 'eq' | 'in' | 'ilike' | 'not', column: string, value: unknown
 export const db: MockDb = {
   tables: {},
   writes: [],
+  reads: [],
   uploads: [],
   rpcs: [],
   rpcResults: {},
@@ -58,6 +61,7 @@ let nextId = 1;
 export const resetDb = (tables: Record<string, Row[]> = {}): void => {
   db.tables = Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, rows.map((row) => ({ ...row }))]));
   db.writes = [];
+  db.reads = [];
   db.uploads = [];
   db.rpcs = [];
   db.rpcResults = {};
@@ -73,8 +77,11 @@ export const canSee = (tableName: string, row: Row | null | undefined): boolean 
 
 const table = (name: string): Row[] => (db.tables[name] ??= []);
 
+// A filter on an embedded resource (`viewer_like.user_id`) narrows the embed,
+// never the parent row, so it is not applied to rows here.
 const matches = (row: Row, filters: Filter[]): boolean =>
   filters.every(([op, column, value]) => {
+    if (column.includes('.')) return true;
     if (op === 'eq') return row[column] === value;
     if (op === 'in') return (value as unknown[]).includes(row[column]);
     if (op === 'not') return row[column] !== null && row[column] !== undefined;
@@ -85,6 +92,8 @@ const matches = (row: Row, filters: Filter[]): boolean =>
 interface Op {
   kind: 'select' | 'insert' | 'update' | 'delete' | 'upsert';
   select: string;
+  /** `select(…, { head: true })`: count the rows, return none. */
+  head: boolean;
   payload: unknown;
   filters: Filter[];
   single: boolean;
@@ -93,7 +102,8 @@ interface Op {
 }
 
 const run = (name: string, op: Op): { data: unknown; error: unknown } => {
-  if (op.kind !== 'select') db.writes.push({ table: name, kind: op.kind, payload: op.payload, filters: op.filters });
+  if (op.kind === 'select') db.reads.push({ table: name, select: op.select, head: op.head });
+  else db.writes.push({ table: name, kind: op.kind, payload: op.payload, filters: op.filters });
   if (db.failNext && db.failNext.table === name && db.failNext.kind === op.kind) {
     const { error } = db.failNext;
     db.failNext = null;
@@ -116,6 +126,7 @@ const run = (name: string, op: Op): { data: unknown; error: unknown } => {
   }
 
   if (op.kind !== 'select' && !op.returning) return { data: null, error: null };
+  if (op.head) return { data: null, count: rows.length, error: null } as { data: unknown; error: unknown };
 
   const embed = db.embeds[name];
   const shaped = rows.map((row) => (embed ? embed(row, op.select) : { ...row }));
@@ -125,10 +136,11 @@ const run = (name: string, op: Op): { data: unknown; error: unknown } => {
 };
 
 const builder = (name: string) => {
-  const op: Op = { kind: 'select', select: '*', payload: undefined, filters: [], single: false, maybe: false, returning: false };
+  const op: Op = { kind: 'select', select: '*', head: false, payload: undefined, filters: [], single: false, maybe: false, returning: false };
   const chain: Record<string, unknown> = {
-    select: (columns = '*') => {
+    select: (columns = '*', options?: { head?: boolean }) => {
       op.select = columns;
+      op.head = options?.head === true;
       if (op.kind !== 'select') op.returning = true;
       return chain;
     },
