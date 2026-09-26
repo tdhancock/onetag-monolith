@@ -8,8 +8,9 @@
 //   1. This suite pins the *shape* of the migration — real destination
 //      foreign keys with an exactly-one check, a database-side short-code
 //      generator drawing from the same alphabet as lib/tagLinks.ts, and RLS
-//      that lets a stranger resolve a tag and record a scan but nothing more
-//      — so nobody loosens it later without the diff being obvious.
+//      that lets a stranger record a scan but read nothing, and a tag's owner
+//      see counts but never who scanned (ONE-82) — so nobody loosens it later
+//      without the diff being obvious.
 //   2. supabase/tests/tags_and_scans.test.sql pins the *behaviour* against a
 //      real database (`npm run db:test`, local stack), including the 10,000
 //      generated codes. This suite checks that file still carries each case.
@@ -143,14 +144,11 @@ describe('RLS on tags', () => {
     expect(sql).toContain('ALTER TABLE public.tags ENABLE ROW LEVEL SECURITY');
   });
 
-  it('lets anyone, signed in or not, read an active tag', () => {
-    const read = policies.find((p) => p.name === 'Active tags are viewable by everyone')!;
-    expect(read.body).toContain('FOR SELECT TO anon, authenticated USING (active)');
-  });
-
-  it('lets owners read their paused tags too', () => {
-    const own = policies.find((p) => p.name === 'Owners can view own tags')!;
-    expect(own.body).toContain('FOR SELECT TO authenticated USING ((SELECT public.owns_profile(owner_profile_id)))');
+  it('lets only a tag\'s owner read the table — everyone else goes through resolve_tag (ONE-82)', () => {
+    const reads = policies.filter((p) => commandOf(p.body) === 'SELECT');
+    expect(reads.map((p) => p.name)).toEqual(['Owners can view own tags']);
+    expect(reads[0].body).toContain('FOR SELECT TO authenticated USING ((SELECT public.owns_profile(owner_profile_id)))');
+    for (const { body } of policies) expect(body).not.toContain('anon');
   });
 
   it('gates every write on the ownership helper, for signed-in callers only', () => {
@@ -158,7 +156,6 @@ describe('RLS on tags', () => {
     expect(writes.map((p) => commandOf(p.body)).sort()).toEqual(['DELETE', 'INSERT', 'UPDATE']);
     for (const { body } of writes) {
       expect(body).toContain('TO authenticated');
-      expect(body).not.toContain('anon');
       expect(body).toContain('(SELECT public.owns_profile(owner_profile_id))');
     }
   });
@@ -179,25 +176,54 @@ describe('RLS on scans', () => {
     expect(sql).toContain('ALTER TABLE public.scans ENABLE ROW LEVEL SECURITY');
   });
 
-  it('lets anyone record a scan — attributed to nobody or to a profile they own, of a tag they can read', () => {
+  it('lets anyone record a scan of a live tag — attributed to nobody or to a profile they own', () => {
     const insert = policies.find((p) => commandOf(p.body) === 'INSERT')!;
     expect(insert.body).toContain('TO anon, authenticated');
     expect(insert.body).toContain('scans.scanner_profile_id IS NULL OR (SELECT public.owns_profile(scans.scanner_profile_id))');
-    expect(insert.body).toContain('EXISTS (SELECT 1 FROM public.tags t WHERE t.id = scans.tag_id)');
+    expect(insert.body).toContain('(SELECT public.tag_accepts_scans(scans.tag_id))');
   });
 
-  it('shows a scan to its scanner and to the tag\'s owner, and to nobody signed out', () => {
-    const reads = policies.filter((p) => commandOf(p.body) === 'SELECT');
-    expect(reads).toHaveLength(2);
-    for (const { body } of reads) expect(body).toContain('TO authenticated');
-    expect(reads.map((p) => p.body).join(' ')).toContain('(SELECT public.owns_profile(scanner_profile_id))');
-    expect(reads.map((p) => p.body).join(' ')).toContain(
-      'WHERE t.id = scans.tag_id AND (SELECT public.owns_profile(t.owner_profile_id))',
+  it('checks a tag takes scans through a helper, since a scanner cannot read the tags table', () => {
+    expect(sql).toMatch(
+      /FUNCTION public\.tag_accepts_scans\(p_tag_id UUID\) RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''/,
     );
+    expect(sql).toContain('SELECT EXISTS (SELECT 1 FROM public.tags WHERE id = p_tag_id AND active)');
+    expect(sql).toContain('GRANT EXECUTE ON FUNCTION public.tag_accepts_scans(UUID) TO anon, authenticated;');
+  });
+
+  it('shows a scan row to its scanner alone — a tag\'s owner never sees who scanned (ONE-82)', () => {
+    const reads = policies.filter((p) => commandOf(p.body) === 'SELECT');
+    expect(reads.map((p) => p.name)).toEqual(['Scanners can view own scans']);
+    expect(reads[0].body).toContain('TO authenticated USING ((SELECT public.owns_profile(scanner_profile_id)))');
+    expect(sql).not.toContain('t.owner_profile_id))');
   });
 
   it('is append-only: no update or delete policy', () => {
-    expect(policies.map((p) => commandOf(p.body)).sort()).toEqual(['INSERT', 'SELECT', 'SELECT']);
+    expect(policies.map((p) => commandOf(p.body)).sort()).toEqual(['INSERT', 'SELECT']);
+  });
+
+  it('stamps every scan with the time it is recorded, so none can be backdated', () => {
+    expect(sql).toContain('NEW.scanned_at := now();');
+    expect(sql).toContain('BEFORE INSERT ON public.scans FOR EACH ROW EXECUTE FUNCTION public.scans_set_scanned_at()');
+  });
+});
+
+describe('what a tag\'s owner sees (ONE-82)', () => {
+  it('is how many scans and when, per tag — never who', () => {
+    expect(sql).toMatch(
+      /FUNCTION public\.tag_scan_counts\(p_owner_profile_id UUID\) RETURNS TABLE \(tag_id UUID, scan_count BIGINT, last_scanned_at TIMESTAMPTZ\) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''/,
+    );
+    const body = sql.slice(sql.indexOf('FUNCTION public.tag_scan_counts'), sql.indexOf('REVOKE ALL ON FUNCTION public.tag_scan_counts'));
+    expect(body).not.toContain('scanner_profile_id');
+  });
+
+  it('answers only for a profile the caller owns', () => {
+    expect(sql).toContain('WHERE t.owner_profile_id = p_owner_profile_id AND public.owns_profile(p_owner_profile_id)');
+  });
+
+  it('is for signed-in callers only', () => {
+    expect(sql).toContain('REVOKE ALL ON FUNCTION public.tag_scan_counts(UUID) FROM PUBLIC, anon;');
+    expect(sql).toContain('GRANT EXECUTE ON FUNCTION public.tag_scan_counts(UUID) TO authenticated;');
   });
 });
 
@@ -207,16 +233,21 @@ describe('the behavioural suite', () => {
   it.each([
     'a tag inserted without a short_code gets an 8-character one',
     'each tag gets its own short code',
-    'an anonymous client can read an active tag by short_code',
+    'a stranger reads no tags from the table — resolution goes through resolve_tag',
     'an anonymous client can insert a scan with a null scanner_profile_id',
+    'nobody can record a scan of a paused tag',
     'an anonymous client cannot insert a tag',
     'a user cannot create a tag pointing at a profile they do not own',
     'a post is not a Destination (ONE-83)',
     'a tag cannot be re-pointed at a profile its owner does not own',
-    'a tag owner can see every scan of its tag, anonymous ones included',
-    'a tag owner sees scans of its own tags and no others',
+    'a scanner cannot read the tag it scanned',
+    'a tag owner reads no scan rows — never who scanned (ONE-82)',
+    'a tag owner gets how many scans its tag has had, anonymous ones included',
+    "the counts cover that profile''s own tags and no others",
+    'an unrelated user gets no counts for a profile it does not own',
     'an unrelated user cannot see scans of the tag',
     'nobody can forge a scan attributed to another profile',
+    'a scan is stamped when it is recorded — never backdated',
     'the destination check rejects zero destinations',
     '10,000 generated codes are all 8 characters',
     '10,000 generated codes contain none of 0, O, 1, I or l',

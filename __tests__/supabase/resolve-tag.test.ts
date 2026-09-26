@@ -3,7 +3,8 @@
 //
 // The resolve_tag function (ONE-30).
 //
-// It reads past the tags table's RLS, so it may say no more than resolution
+// It reads past the tags table's RLS — the only way anyone but a tag's owner
+// reads a tag (ONE-82) — so it may say no more than resolution
 // needs: this suite pins that a paused tag reveals only that it is paused,
 // and that anyone may call it. supabase/tests/resolve_tag.test.sql pins the
 // behaviour against a real database; this suite checks it carries each case.
@@ -56,7 +57,7 @@ describe('the behavioural suite', () => {
     'an unknown code resolves to nothing',
     'a paused tag resolves as inactive, distinct from an unknown code',
     'a paused tag reveals neither its id nor where it points',
-    'the table itself still hides the paused tag from a stranger',
+    'the table itself hides every tag from a stranger — resolve_tag is the only way in',
   ])('covers: %s', (description) => {
     expect(pgTap).toContain(description);
   });

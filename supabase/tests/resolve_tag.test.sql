@@ -55,8 +55,8 @@ SELECT is(
   'a paused tag reveals neither its id nor where it points');
 
 SELECT is(
-  (SELECT count(*)::int FROM public.tags WHERE short_code = 'Paused45'),
-  0, 'the table itself still hides the paused tag from a stranger');
+  (SELECT count(*)::int FROM public.tags),
+  0, 'the table itself hides every tag from a stranger — resolve_tag is the only way in');
 
 -- ─── As a signed-in account ───────────────────────────────────────────
 

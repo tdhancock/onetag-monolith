@@ -128,16 +128,16 @@ CREATE INDEX scans_tag_id_scanned_at ON public.scans (tag_id, scanned_at DESC);
 CREATE INDEX scans_scanner_profile_id_scanned_at ON public.scans (scanner_profile_id, scanned_at DESC);
 
 -- ─── RLS: tags ────────────────────────────────────────────────────────
+--
+-- Only a tag's owner reads the table (ONE-82). Everyone else — a stranger
+-- scanning a sticker included — reads a tag through public.resolve_tag(),
+-- which returns only what routing needs. Direct reads would hand anyone
+-- every live tag's note and owner, and let them list every tag there is.
+-- M6's Embedded Tags (ONE-44) get a read of their own, following the post
+-- they sit in.
 
 ALTER TABLE public.tags ENABLE ROW LEVEL SECURITY;
 
--- Anonymous read is the whole point: a Physical Tag scanned by someone
--- without an account must resolve.
-CREATE POLICY "Active tags are viewable by everyone" ON public.tags
-    FOR SELECT TO anon, authenticated
-    USING (active);
-
--- Owners also see the tags they have paused.
 CREATE POLICY "Owners can view own tags" ON public.tags
     FOR SELECT TO authenticated
     USING ((SELECT public.owns_profile(owner_profile_id)));
@@ -168,34 +168,88 @@ CREATE POLICY "Users can delete own tags" ON public.tags
     FOR DELETE TO authenticated
     USING ((SELECT public.owns_profile(owner_profile_id)));
 
+-- ─── Scans: what may be recorded ──────────────────────────────────────
+
+-- Whether a tag takes scans: it exists and is active. SECURITY DEFINER
+-- because the scan insert policy runs as the scanner, who cannot read the
+-- tags table (above). It answers yes or no about one tag id — an id only
+-- resolve_tag hands out, and only for an active tag.
+CREATE OR REPLACE FUNCTION public.tag_accepts_scans(p_tag_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (SELECT 1 FROM public.tags WHERE id = p_tag_id AND active);
+$$;
+
+REVOKE ALL ON FUNCTION public.tag_accepts_scans(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.tag_accepts_scans(UUID) TO anon, authenticated;
+
+-- A scan happens when it is recorded. The client never says when, so no
+-- scan can be backdated into someone's history or an owner's counts.
+CREATE OR REPLACE FUNCTION public.scans_set_scanned_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  NEW.scanned_at := now();
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER scans_set_scanned_at
+    BEFORE INSERT ON public.scans
+    FOR EACH ROW EXECUTE FUNCTION public.scans_set_scanned_at();
+
 -- ─── RLS: scans ───────────────────────────────────────────────────────
 
 ALTER TABLE public.scans ENABLE ROW LEVEL SECURITY;
 
 -- Anonymous scans must record. A scan is attributed to nobody or to a profile
--- the caller owns — never forged onto someone else. And it must be of a tag
--- the caller can read: an active tag, or one of its own, so nobody fills the
--- log with scans of tags that could never have resolved.
+-- the caller owns — never forged onto someone else — and it must be of a
+-- live tag, so nobody fills the log with scans of tags that could never have
+-- resolved.
 --
 -- Clients insert without RETURNING: anon has no SELECT on scans.
 CREATE POLICY "Anyone can record a scan" ON public.scans
     FOR INSERT TO anon, authenticated
     WITH CHECK (
         (scans.scanner_profile_id IS NULL OR (SELECT public.owns_profile(scans.scanner_profile_id)))
-        AND EXISTS (SELECT 1 FROM public.tags t WHERE t.id = scans.tag_id)
+        AND (SELECT public.tag_accepts_scans(scans.tag_id))
     );
 
--- The scanner's own history (Scan History, ONE-35).
+-- A scan row is readable by its scanner alone: it is the scanner's own
+-- history (Scan History, ONE-35). A tag's owner sees how many scans and
+-- when, never who — see tag_scan_counts below (ONE-82).
 CREATE POLICY "Scanners can view own scans" ON public.scans
     FOR SELECT TO authenticated
     USING ((SELECT public.owns_profile(scanner_profile_id)));
 
--- A tag's owner sees every scan of it.
-CREATE POLICY "Tag owners can view scans of their tags" ON public.scans
-    FOR SELECT TO authenticated
-    USING (EXISTS (
-        SELECT 1 FROM public.tags t
-        WHERE t.id = scans.tag_id AND (SELECT public.owns_profile(t.owner_profile_id))
-    ));
-
 -- No UPDATE or DELETE policies: scans are an append-only log.
+
+-- ─── What a tag's owner sees: how many, and when ──────────────────────
+--
+-- Per tag, for one profile's tags: how many scans it has had and when it was
+-- last scanned. Never who — a scan records where someone has been, and Scan
+-- History is private by default (ONE-82). The caller must own the profile;
+-- for anyone else this returns nothing.
+CREATE OR REPLACE FUNCTION public.tag_scan_counts(p_owner_profile_id UUID)
+RETURNS TABLE (tag_id UUID, scan_count BIGINT, last_scanned_at TIMESTAMPTZ)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT t.id, count(s.id), max(s.scanned_at)
+  FROM public.tags t
+  LEFT JOIN public.scans s ON s.tag_id = t.id
+  WHERE t.owner_profile_id = p_owner_profile_id
+    AND public.owns_profile(p_owner_profile_id)
+  GROUP BY t.id;
+$$;
+
+REVOKE ALL ON FUNCTION public.tag_scan_counts(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.tag_scan_counts(UUID) TO authenticated;

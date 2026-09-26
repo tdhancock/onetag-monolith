@@ -1,4 +1,5 @@
--- Tags and Scans (ONE-27). Runs against a real database:
+-- Tags and Scans (ONE-27, with ONE-82's read model and ONE-83's
+-- destinations). Runs against a real database:
 --
 --   npm run db:test      (npx supabase test db — the LOCAL stack)
 --
@@ -9,10 +10,10 @@
 -- Account C: individual profile CA. Unrelated to both.
 --
 -- Tag T1 (active) and T2 (paused) belong to A and point at AA. Tag T3 belongs
--- to B, with one scan already, so "no others" has something to exclude.
+-- to B, with one scan already, so "its own tags only" has something to exclude.
 
 BEGIN;
-SELECT plan(36);
+SELECT plan(42);
 
 -- ─── Fixtures (as the database owner) ─────────────────────────────────
 
@@ -27,12 +28,13 @@ SELECT
   (SELECT id FROM public.profiles WHERE username = 'one27_b') AS ba,
   (SELECT id FROM public.profiles WHERE username = 'one27_c') AS ca,
   'dddddddd-0000-0000-0000-000000000001'::uuid AS t1,
-  'dddddddd-0000-0000-0000-000000000002'::uuid AS t2;
+  'dddddddd-0000-0000-0000-000000000002'::uuid AS t2,
+  'dddddddd-0000-0000-0000-000000000003'::uuid AS t3;
 GRANT SELECT ON ids TO authenticated, anon;
 
 INSERT INTO public.tags (id, owner_profile_id, tag_type, format, dest_profile_id)
-VALUES ('dddddddd-0000-0000-0000-000000000003', (SELECT ba FROM ids), 'physical', 'qr', (SELECT ba FROM ids));
-INSERT INTO public.scans (tag_id) VALUES ('dddddddd-0000-0000-0000-000000000003');
+VALUES ((SELECT t3 FROM ids), (SELECT ba FROM ids), 'physical', 'qr', (SELECT ba FROM ids));
+INSERT INTO public.scans (tag_id) VALUES ((SELECT t3 FROM ids));
 
 -- ─── 1. Creating tags, as account A ───────────────────────────────────
 
@@ -91,23 +93,18 @@ SELECT throws_ok(
   '42501', NULL, 'a tag cannot be re-pointed at a profile its owner does not own');
 
 SELECT is(
-  (SELECT count(*)::int FROM public.tags WHERE id = (SELECT t2 FROM ids)),
-  1, 'the owner sees its own paused tag');
+  (SELECT count(*)::int FROM public.tags WHERE id IN ((SELECT t1 FROM ids), (SELECT t2 FROM ids))),
+  2, 'the owner reads its own tags, paused ones included');
 
--- ─── 2. Anonymous: resolve and record ─────────────────────────────────
+-- ─── 2. Anonymous: record, but never read ─────────────────────────────
 
 RESET ROLE;
 SET LOCAL ROLE anon;
 SELECT set_config('request.jwt.claims', '{"role":"anon"}', true);
 
 SELECT is(
-  (SELECT dest_profile_id FROM public.tags
-   WHERE short_code = (SELECT short_code FROM public.tags WHERE id = (SELECT t1 FROM ids))),
-  (SELECT aa FROM ids), 'an anonymous client can read an active tag by short_code');
-
-SELECT is(
-  (SELECT count(*)::int FROM public.tags WHERE id = (SELECT t2 FROM ids)),
-  0, 'an anonymous client cannot read a paused tag');
+  (SELECT count(*)::int FROM public.tags),
+  0, 'a stranger reads no tags from the table — resolution goes through resolve_tag');
 
 SELECT lives_ok(
   $$INSERT INTO public.scans (tag_id) VALUES ((SELECT t1 FROM ids))$$,
@@ -119,7 +116,7 @@ SELECT throws_ok(
 
 SELECT throws_ok(
   $$INSERT INTO public.scans (tag_id) VALUES ((SELECT t2 FROM ids))$$,
-  '42501', NULL, 'nobody can record a scan of a tag they cannot read');
+  '42501', NULL, 'nobody can record a scan of a paused tag');
 
 SELECT throws_ok(
   $$INSERT INTO public.tags (owner_profile_id, tag_type, dest_profile_id)
@@ -136,8 +133,10 @@ RESET ROLE;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims', '{"sub":"bbbbbbbb-0000-0000-0000-000000000027","role":"authenticated"}', true);
 
+-- Sent with a month-old time, which the trigger replaces.
 SELECT lives_ok(
-  $$INSERT INTO public.scans (tag_id, scanner_profile_id) VALUES ((SELECT t1 FROM ids), (SELECT ba FROM ids))$$,
+  $$INSERT INTO public.scans (tag_id, scanner_profile_id, scanned_at)
+    VALUES ((SELECT t1 FROM ids), (SELECT ba FROM ids), now() - interval '30 days')$$,
   'a signed-in scanner records a scan against its own profile');
 
 SELECT throws_ok(
@@ -148,6 +147,16 @@ SELECT is(
   (SELECT count(*)::int FROM public.scans WHERE tag_id = (SELECT t1 FROM ids)),
   1, 'the scanner sees its own scan, and not the anonymous one');
 
+SELECT is(
+  (SELECT count(*)::int FROM public.tags WHERE id = (SELECT t1 FROM ids)),
+  0, 'a scanner cannot read the tag it scanned');
+
+WITH u AS (UPDATE public.scans SET scanned_at = now() - interval '1 day' RETURNING 1)
+SELECT is((SELECT count(*)::int FROM u), 0, 'scans cannot be updated — the log is append-only');
+
+WITH d AS (DELETE FROM public.scans RETURNING 1)
+SELECT is((SELECT count(*)::int FROM d), 0, 'scans cannot be deleted — the log is append-only');
+
 -- ─── 4. Account C, unrelated ──────────────────────────────────────────
 
 SELECT set_config('request.jwt.claims', '{"sub":"cccccccc-0000-0000-0000-000000000027","role":"authenticated"}', true);
@@ -155,6 +164,10 @@ SELECT set_config('request.jwt.claims', '{"sub":"cccccccc-0000-0000-0000-0000000
 SELECT is(
   (SELECT count(*)::int FROM public.scans WHERE tag_id = (SELECT t1 FROM ids)),
   0, 'an unrelated user cannot see scans of the tag');
+
+SELECT is(
+  (SELECT count(*)::int FROM public.tag_scan_counts((SELECT aa FROM ids))),
+  0, 'an unrelated user gets no counts for a profile it does not own');
 
 WITH u AS (UPDATE public.tags SET name = 'hijacked' WHERE id = (SELECT t1 FROM ids) RETURNING 1)
 SELECT is((SELECT count(*)::int FROM u), 0, 'an unrelated user cannot update the tag');
@@ -167,25 +180,44 @@ SELECT is((SELECT count(*)::int FROM d), 0, 'an unrelated user cannot delete the
 SELECT set_config('request.jwt.claims', '{"sub":"aaaaaaaa-0000-0000-0000-000000000027","role":"authenticated"}', true);
 
 SELECT is(
-  (SELECT count(*)::int FROM public.scans WHERE tag_id = (SELECT t1 FROM ids)),
-  2, 'a tag owner can see every scan of its tag, anonymous ones included');
+  (SELECT count(*)::int FROM public.scans),
+  0, 'a tag owner reads no scan rows — never who scanned (ONE-82)');
 
 SELECT is(
-  (SELECT count(*)::int FROM public.scans WHERE tag_id <> (SELECT t1 FROM ids)),
-  0, 'a tag owner sees scans of its own tags and no others');
+  (SELECT scan_count FROM public.tag_scan_counts((SELECT aa FROM ids)) WHERE tag_id = (SELECT t1 FROM ids)),
+  2::bigint, 'a tag owner gets how many scans its tag has had, anonymous ones included');
 
-WITH u AS (UPDATE public.scans SET scanned_at = now() - interval '1 day' RETURNING 1)
-SELECT is((SELECT count(*)::int FROM u), 0, 'scans cannot be updated — the log is append-only');
+SELECT ok(
+  (SELECT last_scanned_at FROM public.tag_scan_counts((SELECT aa FROM ids)) WHERE tag_id = (SELECT t1 FROM ids)) IS NOT NULL,
+  'and when it was last scanned');
 
-WITH d AS (DELETE FROM public.scans RETURNING 1)
-SELECT is((SELECT count(*)::int FROM d), 0, 'scans cannot be deleted — the log is append-only');
+SELECT is(
+  (SELECT array_agg(tag_id ORDER BY tag_id) FROM public.tag_scan_counts((SELECT aa FROM ids))),
+  ARRAY[(SELECT t1 FROM ids), (SELECT t2 FROM ids)],
+  'the counts cover that profile''s own tags and no others');
 
 WITH u AS (UPDATE public.tags SET active = false, name = 'Back door' WHERE id = (SELECT t1 FROM ids) RETURNING 1)
 SELECT is((SELECT count(*)::int FROM u), 1, 'the owner can pause and rename its tag');
 
--- ─── 6. Short codes, as the database owner ────────────────────────────
+-- ─── 6. As the database owner ─────────────────────────────────────────
 
 RESET ROLE;
+
+SELECT is(
+  (SELECT count(*)::int FROM public.scans WHERE scanner_profile_id IS NULL AND tag_id = (SELECT t1 FROM ids)),
+  1, 'the anonymous scan was recorded with a null scanner_profile_id');
+
+SELECT is(
+  (SELECT scanned_at FROM public.scans WHERE scanner_profile_id = (SELECT ba FROM ids)),
+  now(), 'a scan is stamped when it is recorded — never backdated');
+
+SELECT ok(
+  NOT has_function_privilege('anon', 'public.tag_scan_counts(uuid)', 'EXECUTE'),
+  'anon cannot read scan counts');
+
+SELECT ok(
+  has_function_privilege('anon', 'public.tag_accepts_scans(uuid)', 'EXECUTE'),
+  'anon can check whether a tag takes scans — its insert policy needs to');
 
 CREATE TEMP TABLE codes ON COMMIT DROP AS
 SELECT public.gen_short_code() AS code FROM generate_series(1, 10000);
@@ -210,10 +242,6 @@ SELECT is(
 SELECT ok(
   NOT has_function_privilege('anon', 'public.gen_short_code()', 'EXECUTE'),
   'anon cannot generate short codes');
-
-SELECT is(
-  (SELECT count(*)::int FROM public.scans WHERE scanner_profile_id IS NULL AND tag_id = (SELECT t1 FROM ids)),
-  1, 'the anonymous scan was recorded with a null scanner_profile_id');
 
 SELECT * FROM finish();
 ROLLBACK;
