@@ -69,12 +69,18 @@ jest.mock('react-native-svg', () => {
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
+const mockReplace = jest.fn();
+/** Whether there is a screen under this one: false for a cold-start link (ONE-90). */
+const mockStack = { canGoBack: true };
 const mockParams: { current: Record<string, string> } = { current: {} };
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: mockBack }),
+  useRouter: () => ({ push: mockPush, back: mockBack, replace: mockReplace, canGoBack: () => mockStack.canGoBack }),
   useLocalSearchParams: () => mockParams.current,
-  Stack: { Screen: () => null },
+  // The header's left slot renders inline, so a Back that goes home is reachable.
+  Stack: { Screen: (p: { options?: { headerLeft?: () => unknown } }) => (p.options?.headerLeft ? p.options.headerLeft() : null) },
 }));
+const mockAuth = { status: 'signed-in' };
+jest.mock('../../features/auth', () => ({ useAuthStatus: () => mockAuth.status }));
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
@@ -146,7 +152,9 @@ beforeEach(() => {
   state.likes = {};
   state.post.data = { id: 'post-1', username: 'ana', replies: 5, content: 'x', media_type: 'text' };
   state.post.isPending = false;
-  [mockPush, mockBack, mockAdd, mockDelete, mockToggleLike].forEach(m => m.mockClear());
+  [mockPush, mockBack, mockReplace, mockAdd, mockDelete, mockToggleLike].forEach(m => m.mockClear());
+  mockStack.canGoBack = true;
+  mockAuth.status = 'signed-in';
 });
 
 afterEach(() => {
@@ -199,6 +207,19 @@ describe('Post detail', () => {
     expect(el.textContent).toContain("This post isn't available");
     act(() => Array.from(el.querySelectorAll('button')).find(b => b.textContent === 'Back')!.click());
     expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('leaves Back to the native header when there is a screen to go back to (ONE-90)', () => {
+    const el = mount(<PostDetailScreen />);
+    expect(button(el, 'Back')).toBeNull();
+  });
+
+  it('goes home from Back when it is the first screen, as after a notification on a cold start (ONE-90)', () => {
+    mockStack.canGoBack = false;
+    const el = mount(<PostDetailScreen />);
+    act(() => button(el, 'Back')!.click());
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockBack).not.toHaveBeenCalled();
   });
 });
 

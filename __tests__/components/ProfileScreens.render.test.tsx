@@ -64,15 +64,22 @@ jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
+const mockReplace = jest.fn();
+/** Whether there is a screen under this one: false for a cold-start link (ONE-90). */
+const mockStack = { canGoBack: true };
 const mockParams: { current: Record<string, string> } = { current: {} };
-jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: mockBack }),
-  useLocalSearchParams: () => mockParams.current,
-  // The header's right slot is rendered inline, so the ⋯ button is reachable.
-  Stack: {
-    Screen: (p: { options?: { headerRight?: () => unknown } }) => (p.options?.headerRight ? p.options.headerRight() : null),
-  },
-}));
+jest.mock('expo-router', () => {
+  const React = require('react');
+  return {
+    useRouter: () => ({ push: mockPush, back: mockBack, replace: mockReplace, canGoBack: () => mockStack.canGoBack }),
+    useLocalSearchParams: () => mockParams.current,
+    // The header's slots are rendered inline, so its buttons are reachable.
+    Stack: {
+      Screen: (p: { options?: { headerLeft?: () => unknown; headerRight?: () => unknown } }) =>
+        React.createElement(React.Fragment, null, p.options?.headerLeft?.() ?? null, p.options?.headerRight?.() ?? null),
+    },
+  };
+});
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
@@ -186,7 +193,7 @@ jest.mock('../../features/posts', () => ({
   getPostReposters: () => Promise.resolve([]),
 }));
 jest.mock('../../features/admin', () => ({ setUserVerified: jest.fn(), useIsAdmin: () => state.isAdmin }));
-jest.mock('../../features/auth', () => ({ useAuthUserId: () => 'a-me' }));
+jest.mock('../../features/auth', () => ({ useAuthUserId: () => 'a-me', useAuthStatus: () => 'signed-in' }));
 jest.mock('../../features/moderation', () => ({ reportUser: jest.fn(() => Promise.resolve(true)) }));
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: jest.fn(() => Promise.resolve()) }),
@@ -234,7 +241,8 @@ beforeEach(() => {
   state.saved = [];
   mockAsked.mockClear();
   mockParams.current = {};
-  [mockPush, mockBack, mockFollowToggle, mockUpdateProfile, mockUpdateBusiness, mockOpenURL, mockSetActive].forEach(m => m.mockClear());
+  [mockPush, mockBack, mockReplace, mockFollowToggle, mockUpdateProfile, mockUpdateBusiness, mockOpenURL, mockSetActive].forEach(m => m.mockClear());
+  mockStack.canGoBack = true;
 });
 
 afterEach(() => {
@@ -506,6 +514,18 @@ describe('Another profile', () => {
 
     act(() => button(el, 'Report User')!.click());
     for (const reason of REPORT_REASONS) expect(button(el, reason)).not.toBeNull();
+  });
+
+  it('leaves Back to the native header when there is a screen to go back to (ONE-90)', async () => {
+    const el = await mount(<UserProfileScreen />);
+    expect(button(el, 'Back')).toBeNull();
+  });
+
+  it('goes home from Back when a tag opened it alone on the stack (ONE-90)', async () => {
+    mockStack.canGoBack = false;
+    const el = await mount(<UserProfileScreen />);
+    act(() => button(el, 'Back')!.click());
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)');
   });
 
   it('keeps Verify out of the sheet for everyone else', async () => {

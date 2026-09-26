@@ -10,6 +10,8 @@ import PostCard from '../../components/native/PostCard';
 import PostSkeleton from '../../components/native/PostSkeleton';
 import CommentRow from '../../components/native/CommentRow';
 import { EmptyState } from '../../components/native/ui';
+import { homeBackHeaderLeft } from '../../components/native/HomeBackButton';
+import { useBackOrHome } from '../../lib/useBackOrHome';
 import { commentsLinkLabel } from '../../lib/screens/postCard';
 import { color, space, type } from '../../theme/tokens';
 
@@ -47,7 +49,10 @@ export default function PostDetailScreen() {
     }
   };
 
-  const header = <Stack.Screen options={{ headerShown: true, title: 'Post' }} />;
+  // A post can be the first screen, opened from a notification on a cold
+  // start: Back then goes home rather than nowhere (ONE-90).
+  const back = useBackOrHome();
+  const header = <Stack.Screen options={{ headerShown: true, title: 'Post', headerLeft: homeBackHeaderLeft(back) }} />;
 
   if (loading) {
     return (
@@ -67,7 +72,7 @@ export default function PostDetailScreen() {
         <EmptyState
           title="This post isn't available"
           body="It may have been deleted."
-          action={{ label: 'Back', onPress: () => router.back() }}
+          action={{ label: 'Back', onPress: back.goBack }}
         />
       </SafeAreaView>
     );

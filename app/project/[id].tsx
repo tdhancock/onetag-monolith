@@ -20,6 +20,8 @@ import { useDestinationScanCountQuery } from '../../features/tags';
 import DestinationActions from '../../components/native/DestinationActions';
 import DetailSection from '../../components/native/DetailSection';
 import ProjectContributors from '../../components/native/ProjectContributors';
+import { homeBackHeaderLeft } from '../../components/native/HomeBackButton';
+import { useBackOrHome } from '../../lib/useBackOrHome';
 import { RowSkeletons, SectionError } from '../../components/native/SectionStates';
 import { Button, EmptyState, IconButton, ListRow, MonoLabel, Pressable, Sheet, SheetRow, Skeleton } from '../../components/native/ui';
 import { DotsHorizontalIcon, XIcon } from '../../components/native/Icons';
@@ -60,6 +62,8 @@ export default function ProjectScreen() {
   const { data: project, isPending, isError, refetch } = useProjectQuery(projectId);
   const [menuOpen, setMenuOpen] = useState(false);
   const deleteProject = useDeleteProject();
+  // A project tag lands here alone on the stack: Back then goes home (ONE-90).
+  const back = useBackOrHome();
 
   const isOwner = canManageProject(profileId, project);
 
@@ -68,6 +72,7 @@ export default function ProjectScreen() {
       options={{
         headerShown: true,
         title: project?.name ?? 'Project',
+        headerLeft: homeBackHeaderLeft(back),
         headerRight: isOwner
           ? () => (
               <IconButton
@@ -114,13 +119,14 @@ export default function ProjectScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
       {header}
-      <ProjectDetail project={project} isOwner={isOwner} onRefreshProject={refetch} />
+      <ProjectDetail project={project} isOwner={isOwner} onRefreshProject={refetch} onLeave={back.goBack} />
       {isOwner ? (
         <OwnerMenu
           project={project}
           visible={menuOpen}
           onClose={() => setMenuOpen(false)}
           onDelete={() => deleteProject.mutateAsync(project)}
+          onDeleted={back.goBack}
         />
       ) : null}
     </SafeAreaView>
@@ -131,10 +137,13 @@ function ProjectDetail({
   project,
   isOwner,
   onRefreshProject,
+  onLeave,
 }: {
   project: Project;
   isOwner: boolean;
   onRefreshProject: () => Promise<unknown>;
+  /** Back, or home if there is nowhere back to go. */
+  onLeave: () => void;
 }) {
   const router = useRouter();
   const { profileId } = useCurrentProfile();
@@ -148,7 +157,7 @@ function ProjectDetail({
   const addContributor = () => router.push(projectAddContributorRoute(project.id));
   // Leaving a private project takes away the right to see it: go back rather
   // than land on its not-found state.
-  const leftPrivateProject = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/profile'));
+  const leftPrivateProject = onLeave;
   const stats =
     contributors.data && products.data
       ? projectStats({
@@ -379,11 +388,14 @@ function OwnerMenu({
   visible,
   onClose,
   onDelete,
+  onDeleted,
 }: {
   project: Project;
   visible: boolean;
   onClose: () => void;
   onDelete: () => Promise<void>;
+  /** Where to go once it is gone: back, or home if there is nowhere back to go. */
+  onDeleted: () => void;
 }) {
   const router = useRouter();
   const { addToast } = useApp();
@@ -412,8 +424,7 @@ function OwnerMenu({
           onDelete().then(
             () => {
               addToast('Project deleted.', 'info');
-              if (router.canGoBack()) router.back();
-              else router.replace('/(tabs)/profile');
+              onDeleted();
             },
             () => addToast("Couldn't delete the project. It's still there.", 'error'),
           ),

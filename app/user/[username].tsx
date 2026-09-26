@@ -23,6 +23,8 @@ import ProfileTabs from '../../components/native/ProfileTabs';
 import ProfileTabList from '../../components/native/ProfileTabList';
 import { ProfileGridSkeleton } from '../../components/native/ProfileGrid';
 import { Button, EmptyState, IconButton, Sheet, SheetRow } from '../../components/native/ui';
+import { homeBackHeaderLeft } from '../../components/native/HomeBackButton';
+import { useBackOrHome } from '../../lib/useBackOrHome';
 import { BlockIcon, LockClosedIcon, DotsHorizontalIcon, ReportIcon, VerifiedIcon } from '../../components/native/Icons';
 import { isProfileLocked, profileTabsFor, type ProfileTab } from '../../lib/screens/profile';
 import { color } from '../../theme/tokens';
@@ -38,6 +40,10 @@ export default function UserProfileScreen() {
     addToast,
   } = useApp();
   const { profile: myProfile, profileId } = useCurrentProfile();
+  // A tag for a profile lands here alone on the stack: Back then goes home
+  // rather than nowhere (ONE-90).
+  const back = useBackOrHome();
+  const headerLeft = homeBackHeaderLeft(back);
   // Admin is a property of the account, read from `is_admin()` (ONE-20).
   const isAdmin = useIsAdmin(useAuthUserId());
 
@@ -212,7 +218,7 @@ export default function UserProfileScreen() {
   if (loading && !profile) {
     return (
       <SafeAreaView style={styles.screen} edges={['bottom']}>
-        <Stack.Screen options={{ headerShown: true, title: `@${username}` }} />
+        <Stack.Screen options={{ headerShown: true, title: `@${username}`, headerLeft }} />
         <ProfileHeaderSkeleton />
         <ProfileGridSkeleton />
       </SafeAreaView>
@@ -222,11 +228,11 @@ export default function UserProfileScreen() {
   if (!profile) {
     return (
       <SafeAreaView style={styles.screen} edges={['bottom']}>
-        <Stack.Screen options={{ headerShown: true, title: 'Profile' }} />
+        <Stack.Screen options={{ headerShown: true, title: 'Profile', headerLeft }} />
         <EmptyState
           title="This profile doesn't exist"
           body={`There's no one called @${username}.`}
-          action={{ label: 'Back', onPress: () => router.back() }}
+          action={{ label: 'Back', onPress: back.goBack }}
         />
       </SafeAreaView>
     );
@@ -301,6 +307,7 @@ export default function UserProfileScreen() {
         options={{
           headerShown: true,
           title: `@${username}`,
+          headerLeft,
           headerRight: () =>
             !isMyProfile ? (
               <IconButton

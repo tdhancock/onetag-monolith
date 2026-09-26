@@ -11,6 +11,8 @@ import { useProjectsUsingProductQuery, type ProjectSummary } from '../../feature
 import DestinationActions from '../../components/native/DestinationActions';
 import DetailSection from '../../components/native/DetailSection';
 import ProductGallery from '../../components/native/ProductGallery';
+import { homeBackHeaderLeft } from '../../components/native/HomeBackButton';
+import { useBackOrHome } from '../../lib/useBackOrHome';
 import { RowSkeletons, SectionError } from '../../components/native/SectionStates';
 import { EmptyState, IconButton, ListRow, MonoLabel, Sheet, SheetRow, Skeleton } from '../../components/native/ui';
 import { DotsHorizontalIcon } from '../../components/native/Icons';
@@ -48,6 +50,8 @@ export default function ProductScreen() {
   const { data: product, isPending, isError, refetch } = useProductQuery(productId);
   const [menuOpen, setMenuOpen] = useState(false);
   const deleteProduct = useDeleteProduct();
+  // A product tag lands here alone on the stack: Back then goes home (ONE-90).
+  const back = useBackOrHome();
 
   const isOwner = canManageProduct(profileId, product);
 
@@ -56,6 +60,7 @@ export default function ProductScreen() {
       options={{
         headerShown: true,
         title: product?.name ?? 'Product',
+        headerLeft: homeBackHeaderLeft(back),
         headerRight: isOwner
           ? () => (
               <IconButton
@@ -109,6 +114,7 @@ export default function ProductScreen() {
           visible={menuOpen}
           onClose={() => setMenuOpen(false)}
           onDelete={() => deleteProduct.mutateAsync(product)}
+          onDeleted={back.goBack}
         />
       ) : null}
     </SafeAreaView>
@@ -250,11 +256,14 @@ function OwnerMenu({
   visible,
   onClose,
   onDelete,
+  onDeleted,
 }: {
   product: Product;
   visible: boolean;
   onClose: () => void;
   onDelete: () => Promise<void>;
+  /** Where to go once it is gone: back, or home if there is nowhere back to go. */
+  onDeleted: () => void;
 }) {
   const router = useRouter();
   const { addToast } = useApp();
@@ -283,8 +292,7 @@ function OwnerMenu({
           onDelete().then(
             () => {
               addToast('Product deleted.', 'info');
-              if (router.canGoBack()) router.back();
-              else router.replace('/(tabs)/profile');
+              onDeleted();
             },
             () => addToast("Couldn't delete the product. It's still there.", 'error'),
           ),

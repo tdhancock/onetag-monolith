@@ -67,9 +67,10 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams.current,
   // The header's right slot renders inline, so the owner's ⋯ is reachable.
   Stack: {
-    Screen: (p: { options?: { title?: string; headerRight?: () => unknown } }) => {
+    Screen: (p: { options?: { title?: string; headerLeft?: () => unknown; headerRight?: () => unknown } }) => {
       mockHeader.title = p.options?.title;
-      return p.options?.headerRight ? p.options.headerRight() : null;
+      const React = require('react');
+      return React.createElement(React.Fragment, null, p.options?.headerLeft?.() ?? null, p.options?.headerRight?.() ?? null);
     },
   },
 }));
@@ -529,6 +530,29 @@ describe('the product page', () => {
     expect(mockRouter.replace).toHaveBeenCalledWith('/(tabs)');
   });
 
+  it('goes home from Back when a tag opened it alone on the stack: the tabs, or sign-up (ONE-90)', async () => {
+    mockRouter.canGoBack.mockReturnValue(false);
+    const el = await mount(<ProductScreen />);
+    await click(byLabel(el, 'Back'));
+    expect(mockRouter.replace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockRouter.back).not.toHaveBeenCalled();
+
+    act(() => root!.unmount());
+    root = null;
+    mockRouter.replace.mockClear();
+    mockActing.profileId = undefined;
+    mockActing.status = 'signed-out';
+    mockAuth.status = 'signed-out';
+    const stranger = await mount(<ProductScreen />);
+    await click(byLabel(stranger, 'Back'));
+    expect(mockRouter.replace).toHaveBeenCalledWith('/(auth)/signup');
+  });
+
+  it('leaves Back to the native header when there is a screen to go back to (ONE-90)', async () => {
+    const el = await mount(<ProductScreen />);
+    expect(byLabel(el, 'Back')).toBeNull();
+  });
+
   it('saves it as the active profile', async () => {
     const el = await mount(<ProductScreen />);
     await click(byText(el, 'Save'));
@@ -574,6 +598,17 @@ describe('managing a product', () => {
     await settle();
     expect(db.tables.products).toHaveLength(0);
     expect(mockRouter.back).toHaveBeenCalled();
+  });
+
+  it('goes home after deleting a product it was opened on alone (ONE-90)', async () => {
+    mockRouter.canGoBack.mockReturnValue(false);
+    const el = await mount(<ProductScreen />);
+    await click(byLabel(el, 'Manage product'));
+    await click(byText(el, 'Delete product'));
+    const actions = (Alert.alert as jest.Mock).mock.calls[0][2] as { text: string; onPress?: () => void }[];
+    await act(async () => actions.find((a) => a.text === 'Delete permanently')!.onPress!());
+    await settle();
+    expect(mockRouter.replace).toHaveBeenCalledWith('/(tabs)');
   });
 
   it('marks it unavailable, the softer alternative', async () => {

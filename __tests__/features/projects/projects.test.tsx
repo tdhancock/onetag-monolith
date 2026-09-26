@@ -89,9 +89,10 @@ jest.mock('expo-router', () => ({
   useRouter: () => mockRouter,
   useLocalSearchParams: () => mockParams.current,
   Stack: {
-    Screen: (p: { options?: { title?: string; headerRight?: () => unknown } }) => {
+    Screen: (p: { options?: { title?: string; headerLeft?: () => unknown; headerRight?: () => unknown } }) => {
       mockHeader.title = p.options?.title;
-      return p.options?.headerRight ? p.options.headerRight() : null;
+      const React = require('react');
+      return React.createElement(React.Fragment, null, p.options?.headerLeft?.() ?? null, p.options?.headerRight?.() ?? null);
     },
   },
 }));
@@ -410,6 +411,20 @@ describe('the project page', () => {
     expect(byLabel(el, 'Products used')!.textContent).not.toContain('No products Linked');
     await click(byText(byLabel(el, 'Products used')!, 'Try again'));
     expect(byLabel(el, 'Products used')!.textContent).toContain('Zellige tile');
+  });
+
+  it('goes home from Back when a tag opened it alone on the stack (ONE-90)', async () => {
+    actAs(null);
+    mockRouter.canGoBack.mockReturnValue(false);
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Back'));
+    expect(mockRouter.replace).toHaveBeenCalledWith('/(auth)/signup');
+    expect(mockRouter.back).not.toHaveBeenCalled();
+  });
+
+  it('leaves Back to the native header when there is a screen to go back to (ONE-90)', async () => {
+    const el = await mount(<ProjectScreen />);
+    expect(byLabel(el, 'Back')).toBeNull();
   });
 
   it('saves it as the active profile', async () => {
