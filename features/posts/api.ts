@@ -14,7 +14,7 @@ import {
   isLocalMediaUri,
   uploadMedia,
 } from '../../services/mediaUpload';
-import { POST_SELECT_QUERY, mapPostData } from '../../services/postRows';
+import { POST_SELECT_QUERY, mapPostData, scopePostsToViewer } from '../../services/postRows';
 import type { Post } from './types';
 import type { ProfileId, SimpleUser } from '../../types';
 
@@ -27,34 +27,8 @@ export { POST_SELECT_QUERY, mapPostData };
 /** Posts requested per feed page. */
 export const FEED_PAGE_SIZE = 20;
 
-/**
- * Restrict the viewer-scoped embeds to one user's rows.
- *
- * `likes:likes(count)` and `viewer_like:likes(user_id)` are separate aliases
- * over the same table, so filtering the alias leaves the total count alone —
- * verified against a local stack: a post liked by two people, one of them the
- * viewer, comes back with `likes: [{count: 2}]` and a one-row `viewer_like`.
- * The embeds are left joins, so a post the viewer has not touched still
- * appears, with an empty array.
- *
- * Signed out there is no viewer, and an impossible id is cheaper than
- * branching the select: every embed comes back empty, which is the truth.
- */
-const NO_VIEWER = '00000000-0000-0000-0000-000000000000';
-
-const scopeToViewer = <T>(query: T, viewerId: string | undefined): T => {
-  // Cast through a minimal shape: chaining three `.eq()` calls on the
-  // PostgREST builder's own generics makes tsc give up with "type
-  // instantiation is excessively deep". The runtime chain is the ordinary
-  // one; only the types are being stepped around.
-  const viewer = viewerId || NO_VIEWER;
-  const builder = query as unknown as { eq: (column: string, value: string) => typeof builder };
-
-  return builder
-    .eq('viewer_like.user_id', viewer)
-    .eq('viewer_repost.user_id', viewer)
-    .eq('viewer_save.user_id', viewer) as unknown as T;
-};
+/** Restrict the viewer-scoped embeds to one profile's rows (services/postRows.ts). */
+const scopeToViewer = scopePostsToViewer;
 
 /** The author ids whose posts make up a user's feed: everyone they follow, plus themselves. */
 export const getFeedUserIds = async (userId: string): Promise<string[]> => {
@@ -178,13 +152,14 @@ export const fetchTrendingPosts = async (viewerId?: string): Promise<Post[]> => 
 // Toggles
 // ---------------------------------------------------------------------------
 //
-// Like, Repost and Save are one operation over three join tables: read the
-// viewer's row, delete it if it is there, insert it if it is not. The
-// optimistic cache work that wraps them is generic and lives in
-// `lib/optimisticToggle.ts`; what varies is only the table and, for two of
-// them, the notification.
+// Like and Repost are one operation over two join tables: read the viewer's
+// row, delete it if it is there, insert it if it is not. The optimistic cache
+// work that wraps them is generic and lives in `lib/optimisticToggle.ts`;
+// what varies is only the table and the notification. Save, the third, is a
+// save of a post in features/saves (ONE-39), where posts, products, projects
+// and profiles are all saved the same way.
 
-type JoinTable = 'likes' | 'reposts' | 'saved_posts';
+type JoinTable = 'likes' | 'reposts';
 
 /**
  * Flip the viewer's row in a join table. Resolves to the state it left
@@ -237,15 +212,6 @@ export const toggleRepost = async (postId: string, userId: string): Promise<bool
   if (isOn) await notifyPostAuthor(postId, userId, 'repost');
   return isOn;
 };
-
-/**
- * Save or unsave a post as `userId`.
- *
- * No notification: a Save is private to the person who made it, unlike a Like
- * or a Repost.
- */
-export const toggleSavePost = async (postId: string, userId: string): Promise<boolean> =>
-  toggleJoinRow('saved_posts', postId, userId);
 
 // ---------------------------------------------------------------------------
 // Publishing, editing and deleting
@@ -370,46 +336,11 @@ export const updatePost = async (post: Post): Promise<Post | null> => {
 };
 
 // ---------------------------------------------------------------------------
-// Lists derived from a post: who saved, liked or reposted
+// Lists derived from a post: who liked or reposted
 // ---------------------------------------------------------------------------
 //
-// Moved out of the old shared service module in ONE-20, unchanged. `getSavedPosts`
-// moves on again to features/saves when Saves reach beyond posts (ONE-39).
-
-/** A user's saved posts, most recently saved first. Empty on error. */
-export const getSavedPosts = async (userId: string): Promise<Post[]> => {
-  try {
-    const { data: savedIdsData, error: savedError } = await supabase
-      .from('saved_posts')
-      .select('post_id, created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-
-    if (savedError) throw savedError;
-    if (!savedIdsData || savedIdsData.length === 0) return [];
-
-    const postIds = savedIdsData.map((r: { post_id: string }) => r.post_id);
-
-    const { data: postsData, error: postsError } = await supabase
-      .from('posts')
-      .select(POST_SELECT_QUERY)
-      .in('id', postIds);
-
-    if (postsError) throw postsError;
-    if (!postsData) return [];
-
-    // Order by when they were saved, not when they were posted.
-    const savedAt = new Map<string, number>(
-      savedIdsData.map((r: { post_id: string; created_at: string }) => [r.post_id, new Date(r.created_at).getTime()]),
-    );
-    return [...postsData]
-      .sort((a: { id: string }, b: { id: string }) => (savedAt.get(b.id) ?? 0) - (savedAt.get(a.id) ?? 0))
-      .map(mapPostData);
-  } catch (error) {
-    console.error('Error fetching saved posts:', (error as Error).message || error);
-    return [];
-  }
-};
+// Moved out of the old shared service module in ONE-20, unchanged. A
+// profile's saved posts moved on to features/saves (ONE-39).
 
 /** The distinct profiles behind a post's likes or reposts. */
 const profilesOnPost = async (table: 'likes' | 'reposts', postId: string): Promise<SimpleUser[]> => {

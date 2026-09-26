@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(14);
+SELECT plan(17);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -43,6 +43,8 @@ SELECT ok(has_function_privilege('anon', 'public.resolve_tag(text)', 'EXECUTE'),
   'anon can execute resolve_tag(): a stranger resolving a scanned tag');
 SELECT ok(has_function_privilege('anon', 'public.tag_accepts_scans(uuid)', 'EXECUTE'),
   'anon can execute tag_accepts_scans(): the scan insert policy evaluates it for anonymous scans');
+SELECT ok(has_function_privilege('anon', 'public.scan_history(uuid)', 'EXECUTE'),
+  'anon can execute scan_history(): a public history is public, and it answers nothing for a private one (ONE-35)');
 
 -- ─── Revoked by name elsewhere, and still so ──────────────────────────
 
@@ -50,6 +52,10 @@ SELECT ok(NOT has_function_privilege('anon', 'public.create_profile(text, text, 
   'anon cannot execute create_profile() (ONE-80)');
 SELECT ok(NOT has_function_privilege('anon', 'public.tag_scan_counts(uuid)', 'EXECUTE'),
   'anon cannot execute tag_scan_counts() (ONE-82)');
+SELECT ok(NOT has_function_privilege('anon', 'public.is_project_contributor(uuid)', 'EXECUTE'),
+  'anon cannot execute is_project_contributor() (ONE-38)');
+SELECT ok(has_function_privilege('authenticated', 'public.is_project_contributor(uuid)', 'EXECUTE'),
+  'authenticated can execute is_project_contributor(): the private-project read policy calls it');
 
 SELECT * FROM finish();
 ROLLBACK;

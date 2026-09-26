@@ -7,7 +7,7 @@ import { useApp } from '../../store/AppContext.native';
 import { useFollowCountsQuery, profileKeys, useCurrentProfile } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
 import { getUserPosts, getUserReposts } from '../../features/profiles';
-import { getSavedPosts } from '../../features/posts';
+import { getSavedPosts } from '../../features/saves';
 import ProfileHeader, { ProfileHeaderSkeleton } from '../../components/native/ProfileHeader';
 import ProfileTabs from '../../components/native/ProfileTabs';
 import ProfileSwitcher, { ProfileSwitcherButton } from '../../components/native/ProfileSwitcher';

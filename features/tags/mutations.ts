@@ -6,6 +6,7 @@ import { tagKeys } from './keys';
 import type { NewTag, OwnedTag, TagUpdates } from './types';
 import type { ProfileId } from '../../types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
+import { scanKeys } from '../scans';
 
 export interface RecordScanInput {
   tagId: string;
@@ -20,13 +21,21 @@ export interface RecordScanInput {
  * prevent anyone reaching the Destination. Its errors are swallowed here —
  * there is no one to tell, and nothing they could do — and it is not retried,
  * so one resolution can never write two rows.
+ *
+ * A recorded scan marks the scanner's history stale (ONE-35), so it is there
+ * the next time they open it.
  */
-export const useRecordScan = () =>
-  useMutation<void, unknown, RecordScanInput>({
+export const useRecordScan = () => {
+  const queryClient = useQueryClient();
+  return useMutation<void, unknown, RecordScanInput>({
     mutationFn: ({ tagId, scannerProfileId }) => recordScan(tagId, scannerProfileId),
     retry: 0,
+    onSuccess: (_data, { scannerProfileId }) => {
+      if (scannerProfileId) void queryClient.invalidateQueries({ queryKey: scanKeys.history(scannerProfileId) });
+    },
     onError: () => undefined,
   });
+};
 
 /**
  * Create a Physical or Digital tag (ONE-32).

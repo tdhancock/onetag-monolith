@@ -95,6 +95,8 @@ const state = {
   /** Per-profile post requests a test controls the timing of. */
   postsFor: {} as Partial<Record<string, Promise<unknown[]>>>,
   users: [] as unknown[],
+  /** Their scan history, as scan_history would return it (ONE-35). */
+  scans: [] as unknown[],
 };
 
 const mockApp = {
@@ -128,8 +130,18 @@ jest.mock('../../features/profiles', () => ({
   useUploadAvatar: () => ({ mutateAsync: jest.fn() }),
 }));
 jest.mock('../../lib/realtimeBridge', () => ({ useRealtimeSync: jest.fn() }));
-jest.mock('../../features/posts', () => ({
+const mockScanHistoryAsked = jest.fn();
+jest.mock('../../features/scans', () => ({
+  // Answers only when asked for a public history, as the screen should ask.
+  useProfileScanHistoryQuery: (profileId: string, isPublic: boolean) => {
+    if (isPublic) mockScanHistoryAsked(profileId);
+    return { data: isPublic ? state.scans : undefined };
+  },
+}));
+jest.mock('../../features/saves', () => ({
   getSavedPosts: () => Promise.resolve([]),
+}));
+jest.mock('../../features/posts', () => ({
   getPostLikers: () => Promise.resolve([]),
   getPostReposters: () => Promise.resolve([]),
 }));
@@ -172,6 +184,8 @@ beforeEach(() => {
   state.profile = { id: 'p-ana', username: 'ana', name: 'Ana Reyes', bio: 'Hi.', profilePicture: null, isVerified: false, isPrivate: false };
   state.posts = [{ id: 'post-1', content: 'first line\nsecond', media_type: 'text' }];
   state.users = [];
+  state.scans = [];
+  mockScanHistoryAsked.mockClear();
   state.postsFor = {};
   mockParams.current = {};
   [mockPush, mockBack, mockFollowToggle, mockUpdateProfile, mockUpdateBusiness, mockOpenURL, mockSetActive].forEach(m => m.mockClear());
@@ -347,6 +361,36 @@ describe('Another profile', () => {
     await rerender(<UserProfileScreen />);
     expect(buttonByText(el, 'Following')).toBeDefined();
     expect(button(el, '11 Followers')).not.toBeNull();
+  });
+
+  it('has no scans section at all when their scan history is private, and asks for none (ONE-35)', async () => {
+    state.scans = [{ key: 'profile:p-x', kind: 'profile', destinationId: 'p-x', name: 'Xavi', username: 'xavi', scanCount: 2, lastScannedAt: new Date().toISOString() }];
+    const el = await mount(<UserProfileScreen />);
+    expect(el.querySelector('[aria-label="Scans"]')).toBeNull();
+    expect(el.textContent).not.toMatch(/scan/i);
+    expect(mockScanHistoryAsked).not.toHaveBeenCalled();
+  });
+
+  it('shows their recent scans when their history is public, each routing to its destination', async () => {
+    state.profile = { ...state.profile!, scanHistoryPublic: true };
+    state.scans = [
+      { key: 'profile:p-x', kind: 'profile', destinationId: 'p-x', name: 'Xavi', username: 'xavi', scanCount: 10, lastScannedAt: new Date().toISOString() },
+      { key: 'product:pd-1', kind: 'product', destinationId: 'pd-1', name: 'Oak door', username: null, scanCount: 1, lastScannedAt: new Date().toISOString() },
+    ];
+    const el = await mount(<UserProfileScreen />);
+    const section = el.querySelector('[aria-label="Scans"]')!;
+    expect(section).not.toBeNull();
+    expect(section.textContent).toContain('Xavi');
+    expect(section.textContent).toContain('Profile · Scanned 10 times');
+    expect(section.textContent).toContain('Oak door');
+    expect(mockScanHistoryAsked).toHaveBeenCalledWith('p-ana');
+
+    const row = Array.from(section.querySelectorAll('button')).find((b) => b.textContent?.includes('Scanned 10 times'))!;
+    act(() => row.click());
+    expect(mockPush).toHaveBeenCalledWith('/user/xavi');
+
+    act(() => button(el, "See all of @ana's scans")!.click());
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/scans', params: { profile: 'p-ana', username: 'ana' } });
   });
 
   it('shows the header and a locked state in place of the grid when private', async () => {

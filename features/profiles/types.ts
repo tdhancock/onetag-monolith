@@ -27,6 +27,8 @@ export type ProfileRow = {
     avatar_url: string | null;
     is_verified: boolean;
     is_private: boolean;
+    /** Private unless opted in (ONE-35). Absent from rows read before the column existed. */
+    scan_history_public?: boolean;
     user_id: string;
     profile_type: import('../../types').ProfileType;
     /**
@@ -47,7 +49,7 @@ export type BusinessProfileRow = {
 
 /** The inverse of `mapProfileRow`: client field names → `profiles` columns. */
 export type ProfileUpdates = Partial<
-    Pick<import('../../types').UserProfile, 'name' | 'username' | 'bio' | 'profilePicture' | 'isPrivate'>
+    Pick<import('../../types').UserProfile, 'name' | 'username' | 'bio' | 'profilePicture' | 'isPrivate' | 'scanHistoryPublic'>
 >;
 
 /** Edits to a business profile's own fields, in client field names. */

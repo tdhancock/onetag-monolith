@@ -53,6 +53,7 @@ type Node = React.ReactElement<{
 type RowElement = React.ReactElement<{
   style: unknown;
   onPress?: () => void;
+  accessible?: boolean;
   accessibilityRole?: string;
   accessibilityLabel?: string;
   children: React.ReactElement<{ children: [Node, Node, Node | null] }>;
@@ -170,6 +171,20 @@ describe('ListRow — size and divider', () => {
 describe('ListRow — press behaviour', () => {
   it('is a plain view with no onPress', () => {
     expect((render({ title: 'x' }).type as { displayName?: string }).displayName).toBe('div');
+  });
+
+  it('keeps its label as a plain view, read as one element (ONE-87)', () => {
+    const el = render({ title: 'Oak door', subtitle: 'Product · Scanned once', accessibilityLabel: 'Oak door, Product' });
+    expect((el.type as { displayName?: string }).displayName).toBe('div');
+    expect(el.props.accessible).toBe(true);
+    expect(el.props.accessibilityLabel).toBe('Oak door, Product');
+    expect(el.props.accessibilityRole).toBeUndefined();
+  });
+
+  it('leaves an unnamed plain view\'s parts to be read on their own', () => {
+    const el = render({ title: 'x' });
+    expect(el.props.accessible).toBeUndefined();
+    expect(el.props.accessibilityLabel).toBeUndefined();
   });
 
   it('becomes a labelled button with onPress, and fires it', () => {

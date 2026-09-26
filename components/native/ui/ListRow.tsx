@@ -83,7 +83,18 @@ const ListRow: React.FC<ListRowProps> = ({
   const base: StyleProp<ViewStyle> = [styles.row, divider && styles.divider, style];
 
   if (!onPress) {
-    return <View style={base}>{content}</View>;
+    // Named by its caller, a static row reads as one element — not as its
+    // avatar initials, title and subtitle in turn (ONE-87). Unnamed, its parts
+    // are left to be read on their own.
+    return (
+      <View
+        style={base}
+        accessible={accessibilityLabel ? true : undefined}
+        accessibilityLabel={accessibilityLabel}
+      >
+        {content}
+      </View>
+    );
   }
 
   return (
