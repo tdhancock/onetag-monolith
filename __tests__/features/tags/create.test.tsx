@@ -8,7 +8,8 @@
 // tags feature and a real query client — only the Supabase client, the
 // router, the account's profiles and the share sheet are faked:
 //
-//   * the destination picker lists only the account's own profiles;
+//   * the destination picker lists only what the account owns: its profiles,
+//     its business profile's products and its profiles' projects (ONE-89);
 //   * a Physical Tag is inserted with format qr and no short code, and ends
 //     on its QR and the way to export it; a Digital Tag ends on its link,
 //     which is exactly buildTagUrl(shortCode), with copy and share;
@@ -59,6 +60,25 @@ const STUDIO = { id: 'p-studio', username: 'ana_studio', name: 'Ana Studio', pro
 jest.mock('../../../features/profiles', () => ({
   useCurrentProfile: () => ({ profileId: 'p-studio', authUserId: 'auth-1' }),
   useMyProfilesQuery: () => ({ data: [ANA, STUDIO] }),
+}));
+
+// What the account owns beyond its profiles (ONE-89): the business's products,
+// and each profile's projects. A query with no profile to ask about is idle.
+const mockOwned = {
+  products: [] as { id: string; name: string; category: string | null; imageUrl: string | null }[],
+  projects: {} as Record<string, { id: string; name: string; projectType: string | null; coverUrl: string | null; isPublic: boolean }[]>,
+};
+jest.mock('../../../features/products', () => ({
+  useBusinessProductsQuery: (businessProfileId?: string) => ({
+    data: businessProfileId === 'p-studio' ? mockOwned.products : undefined,
+    isLoading: false,
+  }),
+}));
+jest.mock('../../../features/projects', () => ({
+  useOwnedProjectsQuery: (ownerProfileId?: string) => ({
+    data: ownerProfileId ? mockOwned.projects[ownerProfileId] ?? [] : undefined,
+    isLoading: false,
+  }),
 }));
 
 const mockCopy = jest.fn(() => Promise.resolve());
@@ -172,6 +192,8 @@ beforeEach(() => {
     (m) => m.mockClear(),
   );
   mockSingle.mockReset();
+  mockOwned.products = [];
+  mockOwned.projects = {};
 });
 
 afterEach(() => {
@@ -332,6 +354,63 @@ describe('a replacement', () => {
     const el = mount();
     expect(el.textContent).toContain('Where does it go?');
     expect(buttons(el).some((b) => b.getAttribute('aria-label')?.endsWith(', selected'))).toBe(false);
+  });
+});
+
+describe('products and projects as destinations (ONE-89)', () => {
+  beforeEach(() => {
+    mockOwned.products = [{ id: 'pd-1', name: 'Oak door', category: 'Doors', imageUrl: null }];
+    mockOwned.projects = {
+      'p-ana': [{ id: 'pj-home', name: 'Our kitchen', projectType: 'Renovation', coverUrl: null, isPublic: true }],
+      'p-studio': [{ id: 'pj-barn', name: 'Barn conversion', projectType: null, coverUrl: null, isPublic: false }],
+    };
+  });
+
+  it("offers the business's products and every profile's projects, each in its own section", () => {
+    const el = mount();
+    click(containing(el, 'Physical Tag'));
+    click(byText(el, 'Continue'));
+    const text = el.textContent ?? '';
+    expect(text).toContain('Your profiles');
+    expect(text).toContain('Your products');
+    expect(text).toContain('Your projects');
+    expect(byLabel(el, 'Oak door')).not.toBeNull();
+    expect(byLabel(el, 'Our kitchen')).not.toBeNull();
+    expect(byLabel(el, 'Barn conversion')).not.toBeNull();
+  });
+
+  it('points the tag at a product through dest_product_id alone', async () => {
+    const answer = deferInsert();
+    const el = mount();
+    click(containing(el, 'Digital Tag'));
+    click(byText(el, 'Continue'));
+    click(byLabel(el, 'Oak door'));
+    click(byText(el, 'Continue'));
+    click(byText(el, 'Continue'));
+    expect(el.textContent).toContain('Oak door');
+    click(byText(el, 'Create tag'));
+    await act(async () => answer().resolve());
+
+    const inserted = mockInsert.mock.calls.at(-1)![0] as Record<string, unknown>;
+    expect(inserted.dest_product_id).toBe('pd-1');
+    expect(Object.keys(inserted).filter((key) => key.startsWith('dest_'))).toEqual(['dest_product_id']);
+  });
+
+  it("opens from a product's page with that product chosen", () => {
+    mockParams.current = { destination: 'pd-1', kind: 'product' };
+    const el = mount();
+    expect(el.textContent).toContain('What kind of tag?');
+    click(containing(el, 'Physical Tag'));
+    click(byText(el, 'Continue'));
+    expect(byLabel(el, 'Oak door, selected')).not.toBeNull();
+  });
+
+  it('replaces a project tag with the project carried over', () => {
+    mockParams.current = { type: 'physical', destination: 'pj-barn', kind: 'project' };
+    const el = mount();
+    expect(el.textContent).toContain('Name it');
+    click(byText(el, 'Back'));
+    expect(byLabel(el, 'Barn conversion, selected')).not.toBeNull();
   });
 });
 

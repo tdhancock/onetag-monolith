@@ -10,12 +10,14 @@ import type { ProfileId } from '../../types';
  *
  * One member per destination kind the app can route to. A Destination is one
  * of four kinds — Business Profile, Individual Profile, Product, Project —
- * and both profile kinds are the one member here. M5 adds Products and
- * Projects (ONE-40, ONE-41), each alongside a column in `resolve_tag` and a
- * route in `lib/screens/tagResolution.ts`. A post is not a Destination
- * (ONE-83).
+ * and both profile kinds are the one member here. Each kind has a column in
+ * `resolve_tag` and a route in `lib/screens/tagResolution.ts`. A post is not
+ * a Destination (ONE-83).
  */
-export type TagDestination = { kind: 'profile'; profileId: string; username: string };
+export type TagDestination =
+  | { kind: 'profile'; profileId: string; username: string }
+  | { kind: 'product'; productId: string }
+  | { kind: 'project'; projectId: string };
 
 export type TagDestinationKind = TagDestination['kind'];
 
@@ -38,6 +40,9 @@ export interface ResolveTagRow {
   active: boolean;
   dest_profile_id: string | null;
   dest_profile_username: string | null;
+  dest_product_id: string | null;
+  /** Returned for a private project too: the project screen decides who sees it (ONE-41). */
+  dest_project_id: string | null;
 }
 
 /** Why a resolution could not be read, in terms a screen can say something about. */
@@ -58,19 +63,26 @@ export type TagType = 'physical' | 'digital' | 'embedded';
 export type TagFormat = 'qr';
 
 /**
- * Where an owner's tag points, with enough to show it.
- *
- * One member per destination kind, like `TagDestination`: M5 adds Products and
- * Projects (ONE-40, ONE-41) as members here and as sections in the create
- * flow's picker.
+ * Where an owner's tag points, with enough to show it: one member per
+ * destination kind, like `TagDestination` — a profile, a product or a project
+ * (ONE-89).
  */
-export type OwnedTagDestination = {
-  kind: 'profile';
-  profileId: string;
-  username: string;
-  name: string;
-  profileType: 'individual' | 'business';
-};
+export type OwnedTagDestination =
+  | {
+      kind: 'profile';
+      profileId: string;
+      username: string;
+      name: string;
+      profileType: 'individual' | 'business';
+    }
+  | { kind: 'product'; productId: string; name: string }
+  | { kind: 'project'; projectId: string; name: string };
+
+/** A destination by kind and id, as a new tag is pointed at one. */
+export interface TagDestinationRef {
+  kind: TagDestinationKind;
+  id: string;
+}
 
 /**
  * A Tag, as its owner reads it: the row, its destination, and how often it has
@@ -98,8 +110,8 @@ export interface NewTag {
   /** The active profile: the tag is attributed to it, never to the account. */
   ownerProfileId: ProfileId;
   tagType: Exclude<TagType, 'embedded'>;
-  /** A profile the same account owns. RLS refuses any other. */
-  destinationProfileId: string;
+  /** A profile, product or project the same account owns. RLS refuses any other. */
+  destination: TagDestinationRef;
   name: string | null;
   note: string | null;
 }
@@ -122,8 +134,18 @@ export interface TagRow {
   active: boolean;
   created_at: string;
   dest_profile_id: string | null;
+  dest_product_id?: string | null;
+  dest_project_id?: string | null;
   /** A one-to-one embed arrives as an object; an older server or a mock may hand back an array. */
   dest_profile?: DestinationProfileRow | DestinationProfileRow[] | null;
+  dest_product?: DestinationNamedRow | DestinationNamedRow[] | null;
+  dest_project?: DestinationNamedRow | DestinationNamedRow[] | null;
+}
+
+/** A product or project a tag points at, as much of it as the owner's list shows. */
+export interface DestinationNamedRow {
+  id: string;
+  name: string;
 }
 
 export interface DestinationProfileRow {

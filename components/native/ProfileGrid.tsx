@@ -10,6 +10,7 @@ import {
 } from '../../lib/screens/profile';
 import { color, space, type } from '../../theme/tokens';
 import type { Post } from '../../types';
+import type { ProductSummary } from '../../features/products';
 
 interface GridTileProps {
   post: Post;
@@ -58,6 +59,42 @@ export const GridTile: React.FC<GridTileProps> = React.memo(({ post, index, onPr
           contentFit="cover"
           transition={200}
         />
+      )}
+    </Pressable>
+  );
+});
+
+interface ProductTileProps {
+  product: ProductSummary;
+  /** The tile's position, so the last column drops its trailing gap. */
+  index: number;
+  onPress: () => void;
+}
+
+/**
+ * One square in a business's Products grid (ONE-43): its representative image
+ * cropped to cover, or its name on `bgPanel` when it has none — as a text
+ * post's tile does.
+ */
+export const ProductTile: React.FC<ProductTileProps> = React.memo(({ product, index, onPress }) => {
+  const { width } = useWindowDimensions();
+  const size = profileGridTileSize(width);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={product.name}
+      style={({ pressed }) => [{ width: size, height: size }, tileSpacing(index), pressed && styles.pressed]}
+    >
+      {product.imageUrl ? (
+        <Image source={{ uri: product.imageUrl }} style={styles.image} contentFit="cover" transition={200} />
+      ) : (
+        <View style={styles.textTile}>
+          <Text style={styles.textTileCopy} numberOfLines={4}>
+            {product.name}
+          </Text>
+        </View>
       )}
     </Pressable>
   );

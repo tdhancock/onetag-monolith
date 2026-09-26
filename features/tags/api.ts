@@ -6,6 +6,7 @@ import { supabase } from '../../services/supabase.native';
 import { isValidShortCode } from '../../lib/tagLinks';
 import type { ProfileId } from '../../types';
 import type {
+  DestinationNamedRow,
   DestinationProfileRow,
   NewTag,
   OwnedTag,
@@ -34,8 +35,10 @@ const destinationOf = (row: ResolveTagRow): TagDestination | null => {
       ? { kind: 'profile', profileId: row.dest_profile_id, username: row.dest_profile_username }
       : null;
   }
-  // A destination column this build does not read yet (M5's products and
-  // projects, before the app ships support for them).
+  if (row.dest_product_id) return { kind: 'product', productId: row.dest_product_id };
+  // A private project is routed like any other: its screen shows not-found to
+  // anyone who may not see it, so nothing here special-cases it (ONE-41).
+  if (row.dest_project_id) return { kind: 'project', projectId: row.dest_project_id };
   return null;
 };
 
@@ -88,13 +91,16 @@ export const recordScan = async (tagId: string, scannerProfileId: ProfileId | nu
 // as the owner, and RLS refuses it for anyone else.
 
 /**
- * The columns an owner reads, with the destination profile embedded. `tags`
- * has two foreign keys to `profiles` — its owner and its destination — so the
- * embed names the column it follows.
+ * The columns an owner reads, with the destination embedded — a profile, a
+ * product or a project (ONE-89). `tags` has two foreign keys to `profiles` —
+ * its owner and its destination — so each embed names the column it follows.
  */
 export const TAG_SELECT =
-  'id, owner_profile_id, tag_type, format, name, note, short_code, active, created_at, dest_profile_id, ' +
-  'dest_profile:profiles!dest_profile_id(id, username, full_name, profile_type)';
+  'id, owner_profile_id, tag_type, format, name, note, short_code, active, created_at, ' +
+  'dest_profile_id, dest_product_id, dest_project_id, ' +
+  'dest_profile:profiles!dest_profile_id(id, username, full_name, profile_type), ' +
+  'dest_product:products!dest_product_id(id, name), ' +
+  'dest_project:projects!dest_project_id(id, name)';
 
 const one = <T>(embed: T | T[] | null | undefined): T | null =>
   Array.isArray(embed) ? embed[0] ?? null : embed ?? null;
@@ -110,8 +116,11 @@ const destinationFromRow = (row: TagRow): OwnedTagDestination | null => {
       profileType: profile.profile_type,
     };
   }
-  // A destination column this build does not read yet (M5's products and
-  // projects), or a profile the owner can no longer see.
+  const product: DestinationNamedRow | null = one(row.dest_product);
+  if (row.dest_product_id && product) return { kind: 'product', productId: product.id, name: product.name };
+  const project: DestinationNamedRow | null = one(row.dest_project);
+  if (row.dest_project_id && project) return { kind: 'project', projectId: project.id, name: project.name };
+  // A destination that is gone, or one the owner can no longer see.
   return null;
 };
 
@@ -155,6 +164,37 @@ export const fetchMyTags = async (ownerProfileId: ProfileId): Promise<OwnedTag[]
   return ((tags.data ?? []) as unknown as TagRow[]).map((row) => mapTagRow(row, byTag.get(row.id)));
 };
 
+/** The `tags` column each destination kind is stored in. */
+const DESTINATION_COLUMN = {
+  profile: 'dest_profile_id',
+  product: 'dest_product_id',
+  project: 'dest_project_id',
+} as const;
+
+/**
+ * How many times an owner's tags pointing at one destination have been
+ * scanned, all together — the scan count a project's owner sees on its page
+ * (ONE-41). Never who scanned (ONE-82): it reads the owner's own tags and
+ * `tag_scan_counts`, and never a scan row. For anyone but the owner both
+ * come back empty, so the count is 0.
+ */
+export const fetchDestinationScanCount = async (
+  ownerProfileId: ProfileId,
+  destination: { kind: keyof typeof DESTINATION_COLUMN; id: string },
+): Promise<number> => {
+  const [tags, counts] = await Promise.all([
+    supabase.from('tags').select('id').eq('owner_profile_id', ownerProfileId).eq(DESTINATION_COLUMN[destination.kind], destination.id),
+    supabase.rpc('tag_scan_counts', { p_owner_profile_id: ownerProfileId }),
+  ]);
+  if (tags.error) throw tags.error;
+  if (counts.error) throw counts.error;
+
+  const pointing = new Set(((tags.data ?? []) as { id: string }[]).map((tag) => tag.id));
+  return ((counts.data ?? []) as TagScanCountRow[])
+    .filter((row) => pointing.has(row.tag_id))
+    .reduce((total, row) => total + (Number(row.scan_count) || 0), 0);
+};
+
 /**
  * Create a tag and read it back.
  *
@@ -172,7 +212,8 @@ export const createTag = async (tag: NewTag): Promise<OwnedTag> => {
       format: tag.tagType === 'physical' ? 'qr' : null,
       name: tag.name,
       note: tag.note,
-      dest_profile_id: tag.destinationProfileId,
+      // Exactly one destination column, the one for its kind (ONE-89).
+      [DESTINATION_COLUMN[tag.destination.kind]]: tag.destination.id,
     })
     .select(TAG_SELECT)
     .single();

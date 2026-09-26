@@ -1,9 +1,9 @@
 // Read hooks for Saves.
 
 import { useQuery } from '@tanstack/react-query';
-import { fetchSaves, saveKeyOf } from './api';
+import { fetchSavedItems, fetchSaves, saveKeyOf } from './api';
 import { saveKeys } from './keys';
-import type { Save, SaveTarget } from './types';
+import type { Save, SavedItem, SaveTarget } from './types';
 
 /**
  * Every save a profile has made, newest first (ONE-39). Keyed by the profile,
@@ -30,3 +30,14 @@ export const useIsSaved = (profileId: string | undefined, target: SaveTarget): b
   });
   return data === true;
 };
+
+/**
+ * A profile's saves with their targets ready to list, newest first — its
+ * Saves tab (ONE-43). Private to the profile, so only its own screen asks.
+ */
+export const useSavedItemsQuery = (profileId: string | undefined) =>
+  useQuery<SavedItem[]>({
+    queryKey: saveKeys.items(profileId ?? ''),
+    queryFn: () => fetchSavedItems(profileId!),
+    enabled: Boolean(profileId),
+  });

@@ -17,18 +17,18 @@ export const SCAN_DESTINATION_LABEL: Record<ScanHistoryEntry['kind'], string> = 
  * An entry's destination, in the terms Tag Resolution routes by — so a
  * history row goes exactly where scanning the tag again would.
  *
- * Only profiles today. M5's product and project screens (ONE-40, ONE-41) add
- * their members to TagDestination; each adds its line here too, and until
- * then those entries show without routing anywhere.
+ * A profile entry needs its handle to route by; one whose profile is gone has
+ * none, and shows without routing anywhere.
  */
 export const destinationOfEntry = (entry: ScanHistoryEntry): TagDestination | null => {
-  if (entry.kind === 'profile' && entry.username) {
-    return { kind: 'profile', profileId: entry.destinationId, username: entry.username };
+  if (entry.kind === 'profile') {
+    return entry.username ? { kind: 'profile', profileId: entry.destinationId, username: entry.username } : null;
   }
-  return null;
+  if (entry.kind === 'product') return { kind: 'product', productId: entry.destinationId };
+  return { kind: 'project', projectId: entry.destinationId };
 };
 
-/** Where tapping an entry goes, or null while its kind has no screen. */
+/** Where tapping an entry goes, or null when it has nowhere to go. */
 export const routeForEntry = (entry: ScanHistoryEntry): string | null => {
   const destination = destinationOfEntry(entry);
   return destination ? routeForDestination(destination) : null;
@@ -66,10 +66,3 @@ export const SCAN_HISTORY_EMPTY_STATE = {
   title: 'No scans yet',
   body: 'Tags you scan with your camera show up here, with where they led.',
 } as const;
-
-/** The route to a profile's scan history: the active profile's, or someone's public one. */
-export const scanHistoryRoute = (profile?: { id: string; username: string }) =>
-  profile ? { pathname: '/scans' as const, params: { profile: profile.id, username: profile.username } } : '/scans';
-
-/** How many entries a profile screen shows before "See all". */
-export const PROFILE_SCAN_PREVIEW = 3;

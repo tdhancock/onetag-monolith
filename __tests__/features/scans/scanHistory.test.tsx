@@ -96,6 +96,14 @@ const PRODUCT_ROW: ScanHistoryRow = {
   scan_count: 1,
   last_scanned_at: TWO_HOURS_AGO,
 };
+const PROJECT_ROW: ScanHistoryRow = {
+  dest_kind: 'project',
+  dest_id: 'pj-1',
+  dest_name: 'Barn conversion',
+  dest_username: null,
+  scan_count: 2,
+  last_scanned_at: TWO_HOURS_AGO,
+};
 
 // ─── 1. Entries ─────────────────────────────────────────────────────────
 
@@ -121,9 +129,16 @@ describe('a history entry', () => {
     expect(routeForEntry(mapScanHistoryRow(PROFILE_ROW))).toBe('/user/xavi');
   });
 
-  it('does not route a product or project until their screens exist (ONE-40, ONE-41)', () => {
-    expect(routeForEntry(mapScanHistoryRow(PRODUCT_ROW))).toBeNull();
-    expect(routeForEntry(mapScanHistoryRow({ ...PRODUCT_ROW, dest_kind: 'project' }))).toBeNull();
+  it('routes a product to its page, as scanning the tag again would (ONE-40)', () => {
+    expect(routeForEntry(mapScanHistoryRow(PRODUCT_ROW))).toBe('/product/pd-1');
+  });
+
+  it('routes a project to its page (ONE-41)', () => {
+    expect(routeForEntry(mapScanHistoryRow(PROJECT_ROW))).toBe('/project/pj-1');
+  });
+
+  it('does not route a profile whose handle is gone', () => {
+    expect(routeForEntry(mapScanHistoryRow({ ...PROFILE_ROW, dest_username: null }))).toBeNull();
   });
 
   it('is keyed per profile, so a switch reads the other profile\'s history', () => {
@@ -163,7 +178,7 @@ beforeEach(() => {
   mockActing.profile.scanHistoryPublic = false;
   mockPush.mockClear();
   mockRpc.mockReset();
-  mockRpc.mockResolvedValue({ data: [PRODUCT_ROW, PROFILE_ROW], error: null });
+  mockRpc.mockResolvedValue({ data: [PRODUCT_ROW, PROFILE_ROW, PROJECT_ROW], error: null });
 });
 
 afterEach(() => {
@@ -186,18 +201,30 @@ describe('your scan history', () => {
     expect(text).toContain('Oak doorProduct · Scanned once · 2h');
     expect(text).toContain('Xavi OrtizProfile · Scanned 10 times · 2h');
     expect(text.indexOf('Oak door')).toBeLessThan(text.indexOf('Xavi Ortiz'));
-    // A product has no screen yet (ONE-40), so its row is not a button — but
-    // it still reads as one labelled element (ONE-87).
-    const product = rowFor(el, 'Oak door')!;
-    expect(product.getAttribute('aria-label')).toBe('Oak door, Product, Scanned once · 2h');
-    expect(product.tagName).not.toBe('BUTTON');
+    // Every kind now has a screen, so every row is a button, named as one.
+    const project = rowFor(el, 'Barn conversion')!;
+    expect(project.getAttribute('aria-label')).toBe('Barn conversion, Project, Scanned 2 times · 2h');
+    expect(project.tagName).toBe('BUTTON');
     expect(rowFor(el, 'Xavi Ortiz')!.tagName).toBe('BUTTON');
+    expect(rowFor(el, 'Oak door')!.tagName).toBe('BUTTON');
+  });
+
+  it('reads a row with nowhere to go as one labelled element, not a button (ONE-87)', async () => {
+    mockRpc.mockResolvedValue({ data: [{ ...PROFILE_ROW, dest_name: 'Gone', dest_username: null }], error: null });
+    const el = await mount();
+    const gone = rowFor(el, 'Gone')!;
+    expect(gone.getAttribute('aria-label')).toBe('Gone, Profile, Scanned 10 times · 2h');
+    expect(gone.tagName).not.toBe('BUTTON');
   });
 
   it('routes a row to its destination', async () => {
     const el = await mount();
     act(() => rowFor(el, 'Xavi Ortiz')!.click());
     expect(mockPush).toHaveBeenCalledWith('/user/xavi');
+    act(() => rowFor(el, 'Oak door')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/product/pd-1');
+    act(() => rowFor(el, 'Barn conversion')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/project/pj-1');
   });
 
   it('says who can see it, and leads to the setting', async () => {

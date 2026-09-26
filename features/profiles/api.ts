@@ -137,6 +137,20 @@ export const getUserPosts = async (userId: string): Promise<Post[]> => {
     return (data || []).map(mapPostData);
 };
 
+/**
+ * How many posts a profile has, for the Posts figure in its header — a count,
+ * never the posts themselves, so a profile whose first tab is not its posts
+ * fetches none of them until that tab is opened (ONE-43). RLS counts only
+ * what the viewer may see, as the grid shows.
+ */
+export const getUserPostCount = async (userId: string): Promise<number> => {
+    const { count, error } = await supabase
+        .from('posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+    return error ? 0 : count || 0;
+};
+
 export const getUserReposts = async (userId: string): Promise<Post[]> => {
     try {
         const { data: repostIdsData, error: repostsError } = await supabase
@@ -455,10 +469,14 @@ export const checkUsernameExists = async (username: string): Promise<boolean> =>
 // =========================================================
 // Stories
 // =========================================================
+/**
+ * Profiles by handle, both kinds: Individual and Business. Each row carries
+ * its `profile_type`, so a picker can say which kind it is (ONE-42).
+ */
 export const searchUsers = async (query: string): Promise<any[]> => {
     const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, full_name, avatar_url, is_verified, bio')
+        .select('id, username, full_name, avatar_url, is_verified, bio, profile_type')
         .ilike('username', `%${query}%`)
         .limit(10);
     if (error) return [];

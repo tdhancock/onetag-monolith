@@ -8,6 +8,7 @@ export {
   mapProfileUpdatesToRow,
   getUserProfile,
   getUserPosts,
+  getUserPostCount,
   getUserReposts,
   updateUserProfileData,
   uploadAvatar,
@@ -64,6 +65,7 @@ export {
   resolveCurrentProfile,
   useProfileQuery,
   useProfilePostsQuery,
+  useProfilePostCountQuery,
   useProfileRepostsQuery,
   useFollowersQuery,
   useFollowingQuery,
@@ -71,9 +73,11 @@ export {
   useFollowingUsernamesQuery,
   useFollowState,
   useUserSuggestionsQuery,
+  useProfileSearchQuery,
+  PROFILE_SEARCH_MIN_LENGTH,
   PLACEHOLDER_PROFILE,
 } from './queries';
-export type { FollowCounts, CurrentProfile, CurrentProfileStatus } from './queries';
+export type { FollowCounts, CurrentProfile, CurrentProfileStatus, ProfileSearchResult } from './queries';
 
 export {
   useToggleFollow,

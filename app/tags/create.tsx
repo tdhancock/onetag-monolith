@@ -2,8 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile, useMyProfilesQuery } from '../../features/profiles';
+import { useBusinessProductsQuery } from '../../features/products';
+import { useOwnedProjectsQuery } from '../../features/projects';
 import { useCreateTag, type OwnedTag } from '../../features/tags';
 import { Button, Card, ListRow, MonoLabel, TextField } from '../../components/native/ui';
 import { CheckIcon } from '../../components/native/Icons';
@@ -55,13 +58,34 @@ const param = (value: string | string[] | undefined): string | undefined =>
 export default function CreateTagScreen() {
   const router = useRouter();
   const { addToast } = useApp();
-  const params = useLocalSearchParams<{ type?: string | string[]; destination?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    type?: string | string[];
+    destination?: string | string[];
+    kind?: string | string[];
+  }>();
   const { profileId, authUserId } = useCurrentProfile();
   const { data: profiles } = useMyProfilesQuery(authUserId);
   const createTag = useCreateTag();
 
-  // Only the account's own profiles: a destination RLS would refuse is never offered.
-  const sections = useMemo(() => destinationSections(profiles ?? []), [profiles]);
+  // What the account owns and so may point a tag at (ONE-89): its profiles,
+  // its business profile's products, and every project its profiles own.
+  const business = profiles?.find((profile) => profile.profileType === 'business');
+  const individual = profiles?.find((profile) => profile.profileType !== 'business');
+  const products = useBusinessProductsQuery(business?.id);
+  const businessProjects = useOwnedProjectsQuery(business?.id);
+  const individualProjects = useOwnedProjectsQuery(individual?.id);
+  // A query with no profile to ask about never runs, so it is not waited on.
+  const loaded = Boolean(profiles) && !products.isLoading && !businessProjects.isLoading && !individualProjects.isLoading;
+
+  // Only destinations the account owns: one RLS would refuse is never offered.
+  const sections = useMemo(
+    () =>
+      destinationSections(profiles ?? [], products.data ?? [], [
+        ...(businessProjects.data ?? []),
+        ...(individualProjects.data ?? []),
+      ]),
+    [profiles, products.data, businessProjects.data, individualProjects.data],
+  );
 
   const [draft, setDraft] = useState<TagDraft>(EMPTY_TAG_DRAFT);
   const [step, setStep] = useState<TagCreateStep>('type');
@@ -69,17 +93,19 @@ export default function CreateTagScreen() {
   const [failed, setFailed] = useState(false);
   const [created, setCreated] = useState<OwnedTag | null>(null);
 
-  // Apply a replacement's pre-fill once the account's profiles are known, so
-  // a destination it doesn't own is dropped rather than offered.
+  // Apply a pre-fill — a replacement's, or a product's or project's own page
+  // (ONE-89) — once everything the account owns is known, so a destination
+  // it doesn't own is dropped rather than offered.
   const prefillType = param(params.type);
   const prefillDestination = param(params.destination);
+  const prefillKind = param(params.kind);
   useEffect(() => {
-    if (started || !profiles) return;
-    const initial = initialTagCreate({ type: prefillType, destination: prefillDestination }, sections);
+    if (started || !loaded) return;
+    const initial = initialTagCreate({ type: prefillType, destination: prefillDestination, kind: prefillKind }, sections);
     setDraft(initial.draft);
     setStep(initial.step);
     setStarted(true);
-  }, [started, profiles, sections, prefillType, prefillDestination]);
+  }, [started, loaded, sections, prefillType, prefillDestination, prefillKind]);
 
   const update = (patch: Partial<TagDraft>) => setDraft((current) => ({ ...current, ...patch }));
 
@@ -190,6 +216,16 @@ export default function CreateTagScreen() {
                         title={option.title}
                         subtitle={option.subtitle}
                         avatarUri={option.avatarUri}
+                        // A product's or project's picture is square; a profile's avatar round.
+                        leading={
+                          option.imageUri !== undefined ? (
+                            option.imageUri ? (
+                              <Image source={{ uri: option.imageUri }} style={styles.thumb} contentFit="cover" />
+                            ) : (
+                              <View style={styles.thumb} />
+                            )
+                          ) : undefined
+                        }
                         divider={index < section.options.length - 1}
                         onPress={() => update({ destination: option.destination })}
                         accessibilityLabel={`${option.title}${selected ? ', selected' : ''}`}
@@ -364,6 +400,11 @@ function CreatedTag({
 }
 
 const styles = StyleSheet.create({
+  thumb: {
+    width: 40,
+    height: 40,
+    backgroundColor: color.bgPanel,
+  },
   screen: {
     flex: 1,
     backgroundColor: color.bg,

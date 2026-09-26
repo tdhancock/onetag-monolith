@@ -65,6 +65,7 @@ import ForgotPasswordScreen from '../../app/(auth)/forgot-password';
 import { Alert } from 'react-native';
 import {
   loginFormValid,
+  opensWithoutSession,
   signupFormValid,
   signupPasswordErrors,
   usernameAvailabilityLabel,
@@ -306,6 +307,16 @@ describe('auth rules', () => {
     confirmPassword: 'secret1',
     birthday: '2000-01-01',
   };
+
+  it('lets someone without an account be launched into tag resolution, a product or a project, and nothing else', () => {
+    // A scanned sticker (ONE-30), and a shared or scanned product or project (ONE-40, ONE-41).
+    expect(opensWithoutSession('t')).toBe(true);
+    expect(opensWithoutSession('product')).toBe(true);
+    expect(opensWithoutSession('project')).toBe(true);
+    expect(opensWithoutSession('(tabs)')).toBe(false);
+    expect(opensWithoutSession('messages')).toBe(false);
+    expect(opensWithoutSession(undefined)).toBe(false);
+  });
 
   it('needs both sign-in fields', () => {
     expect(loginFormValid('', 'x')).toBe(false);

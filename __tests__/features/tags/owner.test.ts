@@ -129,8 +129,29 @@ describe('fetchMyTags', () => {
       lastScannedAt: null,
     });
     // A one-element array embed reads the same; a missing one is no destination.
-    expect(mapTagRow({ ...ROW, dest_profile: [ROW.dest_profile as never] }).destination?.username).toBe('ana_studio');
+    expect(mapTagRow({ ...ROW, dest_profile: [ROW.dest_profile as never] }).destination).toMatchObject({ username: 'ana_studio' });
     expect(mapTagRow({ ...ROW, dest_profile: null }).destination).toBeNull();
+  });
+
+  it('maps a product or project destination by its name (ONE-89)', () => {
+    const noProfile = { ...ROW, dest_profile_id: null, dest_profile: null };
+    expect(mapTagRow({ ...noProfile, dest_product_id: 'pd-1', dest_product: { id: 'pd-1', name: 'Oak door' } }).destination).toEqual({
+      kind: 'product',
+      productId: 'pd-1',
+      name: 'Oak door',
+    });
+    expect(mapTagRow({ ...noProfile, dest_project_id: 'pj-1', dest_project: [{ id: 'pj-1', name: 'Barn' }] }).destination).toEqual({
+      kind: 'project',
+      projectId: 'pj-1',
+      name: 'Barn',
+    });
+    // Gone, or no longer the owner's to see: no destination, never a wrong one.
+    expect(mapTagRow({ ...noProfile, dest_product_id: 'pd-1', dest_product: null }).destination).toBeNull();
+  });
+
+  it('reads every destination kind in the one request', () => {
+    expect(TAG_SELECT).toContain('dest_product:products!dest_product_id(id, name)');
+    expect(TAG_SELECT).toContain('dest_project:projects!dest_project_id(id, name)');
   });
 
   it('keys each profile its own list', () => {
@@ -149,7 +170,7 @@ describe('createTag', () => {
     const created = await createTag({
       ownerProfileId: asProfileId('p-studio'),
       tagType: 'physical',
-      destinationProfileId: 'p-studio',
+      destination: { kind: 'profile', id: 'p-studio' },
       name: 'Front door',
       note: null,
     });
@@ -177,17 +198,29 @@ describe('createTag', () => {
     await createTag({
       ownerProfileId: asProfileId('p-studio'),
       tagType: 'digital',
-      destinationProfileId: 'p-ana',
+      destination: { kind: 'profile', id: 'p-ana' },
       name: null,
       note: null,
     });
     expect(insert.calls.insert![0]![0]).toMatchObject({ tag_type: 'digital', format: null, dest_profile_id: 'p-ana' });
   });
 
+  it.each([
+    ['product', 'dest_product_id'],
+    ['project', 'dest_project_id'],
+  ] as const)('points a tag at a %s through its own column, and no other (ONE-89)', async (kind, column) => {
+    const insert = builder({ data: ROW, error: null });
+    mockFrom.mockReturnValue(insert.chain);
+    await createTag({ ownerProfileId: asProfileId('p-studio'), tagType: 'digital', destination: { kind, id: 'x-1' }, name: null, note: null });
+    const row = insert.calls.insert![0]![0] as Record<string, unknown>;
+    expect(row[column]).toBe('x-1');
+    expect(Object.keys(row).filter((key) => key.startsWith('dest_'))).toEqual([column]);
+  });
+
   it('throws what the database refused', async () => {
     mockFrom.mockReturnValue(builder({ data: null, error: new Error('new row violates row-level security') }).chain);
     await expect(
-      createTag({ ownerProfileId: asProfileId('p'), tagType: 'digital', destinationProfileId: 'x', name: null, note: null }),
+      createTag({ ownerProfileId: asProfileId('p'), tagType: 'digital', destination: { kind: 'profile', id: 'x' }, name: null, note: null }),
     ).rejects.toThrow('row-level security');
   });
 });

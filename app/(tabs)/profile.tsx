@@ -1,97 +1,65 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, FlatList, RefreshControl, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { useApp } from '../../store/AppContext.native';
-import { useFollowCountsQuery, profileKeys, useCurrentProfile } from '../../features/profiles';
+import {
+  useFollowCountsQuery,
+  useProfilePostCountQuery,
+  profileKeys,
+  useCurrentProfile,
+} from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
-import { getUserPosts, getUserReposts } from '../../features/profiles';
-import { getSavedPosts } from '../../features/saves';
 import ProfileHeader, { ProfileHeaderSkeleton } from '../../components/native/ProfileHeader';
 import ProfileTabs from '../../components/native/ProfileTabs';
+import ProfileTabList from '../../components/native/ProfileTabList';
 import ProfileSwitcher, { ProfileSwitcherButton } from '../../components/native/ProfileSwitcher';
-import { GridTile, ProfileGridSkeleton } from '../../components/native/ProfileGrid';
-import { Button, EmptyState, IconButton } from '../../components/native/ui';
-import { MenuIcon, TagIcon } from '../../components/native/Icons';
-import {
-  getEditButtonProps,
-  profileEmptyState,
-  profileTabsFor,
-  PROFILE_GRID_COLUMNS,
-  type ProfileTab,
-} from '../../lib/screens/profile';
+import { ProfileGridSkeleton } from '../../components/native/ProfileGrid';
+import { Button, IconButton, Sheet, SheetRow } from '../../components/native/ui';
+import { MenuIcon, PlusIcon, TagIcon } from '../../components/native/Icons';
+import { getEditButtonProps, profileTabsFor, type ProfileTab } from '../../lib/screens/profile';
 import { tagCreateRoute, TAGS_DASHBOARD_ROUTE } from '../../lib/screens/tags';
+import { canCreateProduct, PRODUCT_CREATE_ROUTE } from '../../lib/screens/products';
+import { PROJECT_CREATE_ROUTE } from '../../lib/screens/projects';
 import { color, space } from '../../theme/tokens';
-import type { Post } from '../../types';
 
 // ─── Profile Screen ──────────────────────────────
 
+/**
+ * Your own profile: the header, then the tabs your profile's type has
+ * (ONE-43) — Products, Projects and Media for a business; Posts, Saves,
+ * Projects and Scans for an individual. Each tab fetches only once it is
+ * opened.
+ */
 export default function ProfileScreen() {
-  const { addToast } = useApp();
   const { profile: userProfile, profileId } = useCurrentProfile();
   const queryClient = useQueryClient();
 
   // Follow counts come from the query the follow toggle moves optimistically
   // (ONE-15), so following someone updates this screen without a refetch.
   const { data: followCounts } = useFollowCountsQuery(profileId);
+  // A count for the header, never the posts: the first tab may not be them.
+  const { data: postCount } = useProfilePostCountQuery(profileId);
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [reposts, setReposts] = useState<Post[]>([]);
-  // The posts on the Saved tab, not the viewer's set of saved ids — that
-  // moved onto the cached post as `isSaved` in ONE-13.
-  const [savedTabPosts, setSavedTabPosts] = useState<Post[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const tabs = profileTabsFor({
+    profileType: userProfile.profileType,
+    isOwnProfile: true,
+    scanHistoryPublic: userProfile.scanHistoryPublic,
+  });
+  const [selectedTab, setSelectedTab] = useState<ProfileTab>(tabs[0]!);
+  // A switch to a profile of the other type lands on its first tab.
+  const tab = tabs.includes(selectedTab) ? selectedTab : tabs[0]!;
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
-  // The profile these lists were asked for. A switch mid-fetch must not let
-  // the previous profile's answer land under the new one's header.
-  const requestedFor = useRef(profileId);
-
-  const fetchAll = useCallback(async () => {
-    if (!profileId) return;
-    requestedFor.current = profileId;
-    try {
-      const [userPosts, userReposts, userSaved] = await Promise.all([
-        getUserPosts(profileId),
-        getUserReposts(profileId),
-        getSavedPosts(profileId),
-      ]);
-      if (requestedFor.current !== profileId) return;
-      setPosts(userPosts);
-      setReposts(userReposts);
-      setSavedTabPosts(userSaved);
-    } catch (error) {
-      console.error('Profile fetch error:', error);
-      addToast('Failed to load profile data', 'error');
-    } finally {
-      if (requestedFor.current === profileId) setIsLoading(false);
-    }
-  }, [profileId]);
-
-  // A new identity — the first load, or a switch in the profile switcher —
-  // starts from the loading state rather than showing the previous profile's
-  // grid under the new header (ONE-25).
-  useEffect(() => {
-    setIsLoading(true);
-    setPosts([]);
-    setReposts([]);
-    setSavedTabPosts([]);
-    fetchAll();
-  }, [fetchAll]);
-
-  // Realtime, through the shared bridge (ONE-16).
+  // Realtime, through the shared bridge (ONE-16). A change to the profile's
+  // posts re-reads them and their count, which sits beneath them.
   useRealtimeSync({
     table: 'posts',
     filter: `user_id=eq.${profileId ?? ''}`,
     queryKey: profileKeys.posts(profileId ?? ''),
     enabled: Boolean(profileId),
-    onInsert: () => { fetchAll(); return true; },
-    onUpdate: () => { fetchAll(); return true; },
-    onDelete: () => { fetchAll(); return true; },
   });
 
   // Two streams rather than one client-side check over every follow in the
@@ -110,43 +78,29 @@ export default function ProfileScreen() {
     enabled: Boolean(profileId),
   });
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      // Pull-to-refresh re-reads this screen's lists and everything cached
-      // about profiles — the header, the counts, follow state. It used to go
-      // through a refresh-everything call on AppContext, which re-synced the session
-      // and invalidated every query in the app (ONE-20).
-      await Promise.all([
-        fetchAll(),
-        queryClient.invalidateQueries({ queryKey: profileKeys.all }),
-      ]);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [fetchAll, queryClient]);
-
-  const currentData = activeTab === 'posts' ? posts : activeTab === 'reposts' ? reposts : savedTabPosts;
-
-  const handlePostPress = useCallback((post: Post) => {
-    router.push(`/post/${post.id}`);
-  }, [router]);
-
-  const renderItem = useCallback(({ item, index }: { item: Post; index: number }) => (
-    <GridTile post={item} index={index} onPress={() => handlePostPress(item)} />
-  ), [handlePostPress]);
-
-  if (!userProfile) return null;
+  // Pull to refresh re-reads everything cached about profiles — the header,
+  // the counts, follow state — and the open tab re-reads its own list.
+  const refreshHeader = () => queryClient.invalidateQueries({ queryKey: profileKeys.all });
 
   const editButton = getEditButtonProps(userProfile);
-  const empty = profileEmptyState(activeTab, true);
+
+  // What this profile can create from here: a project, whatever its type
+  // (ONE-41), and a product only if it is a business (ONE-40) — an
+  // individual profile is never offered one.
+  const canAddProduct = canCreateProduct(userProfile);
 
   // A bar of its own above the header: the profile you are acting as, which
-  // opens the switcher (ONE-25), its Tags (ONE-34), and Settings.
+  // opens the switcher (ONE-25), what it can create, its Tags (ONE-34), and
+  // Settings.
   const topBar = (
     <View style={styles.topBar}>
       <ProfileSwitcherButton profile={userProfile} onPress={() => setSwitcherOpen(true)} />
       <View style={styles.topBarActions}>
+        <IconButton
+          icon={<PlusIcon color={color.text} size={24} strokeWidth={1.8} />}
+          accessibilityLabel="Create"
+          onPress={() => setCreateOpen(true)}
+        />
         <IconButton
           icon={<TagIcon color={color.text} size={24} strokeWidth={1.8} />}
           accessibilityLabel="Tags"
@@ -165,7 +119,7 @@ export default function ProfileScreen() {
     <View>
       <ProfileHeader
         profile={userProfile}
-        stats={{ posts: posts.length, followers: followCounts?.followers, following: followCounts?.following }}
+        stats={{ posts: postCount, followers: followCounts?.followers, following: followCounts?.following }}
         onPressFollowers={() => router.push({ pathname: '/user-list', params: { type: 'followers', userId: profileId, title: 'Followers' } })}
         onPressFollowing={() => router.push({ pathname: '/user-list', params: { type: 'following', userId: profileId, title: 'Following' } })}
         // Share waits for profile links in M4 (ONE-68 allows hiding it until
@@ -185,46 +139,57 @@ export default function ProfileScreen() {
           ) : null
         }
       />
-      <ProfileTabs tabs={profileTabsFor(true)} selected={activeTab} onSelect={setActiveTab} />
+      <ProfileTabs tabs={tabs} selected={tab} onSelect={setSelectedTab} />
     </View>
   );
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       {topBar}
-      <FlatList
-        data={isLoading ? [] : currentData}
-        renderItem={renderItem}
-        keyExtractor={item => item.id}
-        numColumns={PROFILE_GRID_COLUMNS}
-        ListHeaderComponent={isLoading ? <ProfileHeaderSkeleton /> : header}
-        ListEmptyComponent={
-          isLoading ? (
-            <ProfileGridSkeleton />
-          ) : (
-            <EmptyState
-              title={empty.title}
-              body={empty.body}
-              action={empty.action ? { label: empty.action.label, onPress: () => router.push(empty.action!.target) } : undefined}
-            />
-          )
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={color.textMuted}
-            colors={[color.textMuted]}
-          />
-        }
-        contentContainerStyle={styles.list}
-      />
+      {profileId ? (
+        // Keyed by the profile: a switch starts every tab afresh, with none of
+        // the previous profile's content under the new one's header (ONE-25).
+        <ProfileTabList
+          key={profileId}
+          tab={tab}
+          profile={{ id: profileId, username: userProfile.username, scanHistoryPublic: userProfile.scanHistoryPublic }}
+          isOwnProfile
+          header={header}
+          onRefreshHeader={refreshHeader}
+        />
+      ) : (
+        <ScrollView contentContainerStyle={styles.list}>
+          <ProfileHeaderSkeleton />
+          <ProfileGridSkeleton />
+        </ScrollView>
+      )}
 
       <ProfileSwitcher
         visible={switcherOpen}
         onClose={() => setSwitcherOpen(false)}
         onAddProfile={() => router.push('/create-profile')}
       />
+
+      <Sheet visible={createOpen} onClose={() => setCreateOpen(false)} title="Create">
+        <SheetRow
+          label="New project"
+          hint="A build, install or finished job, with the people and products behind it."
+          onPress={() => {
+            setCreateOpen(false);
+            router.push(PROJECT_CREATE_ROUTE);
+          }}
+        />
+        {canAddProduct ? (
+          <SheetRow
+            label="Add a product"
+            hint="A catalog item people can save and projects can Link."
+            onPress={() => {
+              setCreateOpen(false);
+              router.push(PRODUCT_CREATE_ROUTE);
+            }}
+          />
+        ) : null}
+      </Sheet>
     </SafeAreaView>
   );
 }

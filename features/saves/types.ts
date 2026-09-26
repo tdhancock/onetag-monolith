@@ -20,6 +20,28 @@ export interface Save {
   savedAt: string;
 }
 
+/** A saved profile, as a list shows it. */
+export interface SavedProfile {
+  id: string;
+  username: string;
+  name: string;
+  avatarUrl: string | null;
+  isVerified: boolean;
+  profileType: 'individual' | 'business';
+}
+
+/**
+ * A save with what a list needs to show its target (ONE-43): the post, the
+ * product or project summary, or the profile. A target the viewer can no
+ * longer read — deleted, or a project made private — is simply not there.
+ */
+export type SavedItem = { saveId: string; savedAt: string } & (
+  | { kind: 'post'; post: import('../../types').Post }
+  | { kind: 'product'; product: import('../../services/productRows').ProductSummary }
+  | { kind: 'project'; project: import('../../services/projectRows').ProjectSummary }
+  | { kind: 'profile'; profile: SavedProfile }
+);
+
 /** A row of `public.saves`: exactly one target column is set. */
 export interface SaveRow {
   id: string;

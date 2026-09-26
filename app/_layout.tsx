@@ -27,6 +27,7 @@ import {
 import ToastContainer from '../components/native/Toast';
 import { color, type } from '../theme/tokens';
 import QueryProvider from '../lib/QueryProvider';
+import { opensWithoutSession } from '../lib/screens/auth';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -60,9 +61,10 @@ function RootLayoutNav() {
       const inAuthGroup = segments[0] === '(auth)';
       // Tag Resolution never needs an account (ONE-30): a stranger who
       // opens a scanned sticker's link must land on its Destination, not on
-      // the sign-in screen.
-      const resolvingTag = segments[0] === 't';
-      if (!session && !inAuthGroup && !resolvingTag) {
+      // the sign-in screen. Nor does a product or project page opened from a
+      // shared link (ONE-40, ONE-41).
+      const publicRoute = opensWithoutSession(segments[0]);
+      if (!session && !inAuthGroup && !publicRoute) {
         router.replace('/(auth)/login');
       } else if (session && inAuthGroup) {
         router.replace('/(tabs)');
@@ -164,6 +166,12 @@ function RootLayoutNav() {
       <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
       <Stack.Screen name="create-profile" options={{ presentation: 'modal' }} />
       <Stack.Screen name="tags/create" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="product/create" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="product/[id]/edit" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="project/create" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="project/[id]/edit" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="project/[id]/link-product" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="project/[id]/add-contributor" options={{ presentation: 'modal' }} />
       <Stack.Screen name="story-viewer" options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="story-create" options={{ presentation: 'fullScreenModal' }} />
     </Stack>

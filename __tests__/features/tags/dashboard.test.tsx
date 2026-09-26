@@ -449,7 +449,7 @@ describe("a tag's detail", () => {
     click(buttons(el).find((b) => b.textContent?.startsWith('Create a replacement')));
     expect(mockRouter.push).toHaveBeenCalledWith({
       pathname: '/tags/create',
-      params: { type: 'physical', destination: 'p-studio' },
+      params: { type: 'physical', destination: 'p-studio', kind: 'profile' },
     });
     expect(mockWrites).not.toHaveBeenCalled();
     expect(client.getQueryData<{ id: string }[]>(tagKeys.mine('p-studio'))!.map((t) => t.id)).toContain('t1');

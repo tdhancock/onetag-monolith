@@ -24,6 +24,9 @@ export interface ProfileScreenProfile {
     isVerified?: boolean;
 }
 
+import { PRODUCT_CREATE_ROUTE } from './products';
+import { PROJECT_CREATE_ROUTE } from './projects';
+
 // ---------------------------------------------------------------------------
 // 1. Avatar rendering
 // ---------------------------------------------------------------------------
@@ -250,46 +253,141 @@ export const isProfileLocked = ({
 }: ProfileVisibility): boolean => Boolean(isPrivate) && !isOwnProfile && !isFollowing && !isAdmin;
 
 // ---------------------------------------------------------------------------
-// Tabs, grid and empty states (ONE-68)
+// Tabs, grid and empty states (ONE-68, ONE-43)
 // ---------------------------------------------------------------------------
 
-export type ProfileTab = 'posts' | 'reposts' | 'saved';
+/**
+ * A profile's tabs (ONE-43). A Business Profile shows what it makes and what
+ * it has built: Products, Projects, Media (its posts). An Individual Profile
+ * shows Posts, Saves, Projects and Scans.
+ */
+export type ProfileTab = 'posts' | 'media' | 'products' | 'projects' | 'saves' | 'scans';
 
-/** The tabs a profile shows: Saved is yours alone. */
-export const profileTabsFor = (isOwnProfile: boolean): ProfileTab[] =>
-  isOwnProfile ? ['posts', 'reposts', 'saved'] : ['posts', 'reposts'];
+export interface ProfileTabContext {
+  profileType?: 'individual' | 'business';
+  /** The viewer is looking at a profile they are acting as. */
+  isOwnProfile: boolean;
+  /** `profiles.scan_history_public` on the profile shown (ONE-35). */
+  scanHistoryPublic?: boolean;
+}
 
-/** Each tab's accessibility label; the tabs themselves are icons. */
+/**
+ * The tabs a profile shows, decided by its type — never by which of them
+ * happen to have content: an empty Products tab on a business is right, and a
+ * Products tab on an individual is not.
+ *
+ * Saves are private to the profile, and a Scan History is private unless it
+ * was made public, so a visitor gets neither tab — not disabled, not locked,
+ * simply absent, so its absence says nothing about what is there.
+ */
+export const profileTabsFor = ({ profileType, isOwnProfile, scanHistoryPublic }: ProfileTabContext): ProfileTab[] => {
+  if (profileType === 'business') return ['products', 'projects', 'media'];
+  const tabs: ProfileTab[] = ['posts'];
+  if (isOwnProfile) tabs.push('saves');
+  tabs.push('projects');
+  if (isOwnProfile || scanHistoryPublic === true) tabs.push('scans');
+  return tabs;
+};
+
+/** Each tab's label, shown in the strip and read by a screen reader. */
 export const PROFILE_TAB_LABELS: Record<ProfileTab, string> = {
   posts: 'Posts',
-  reposts: 'Reposts',
-  saved: 'Saved',
+  media: 'Media',
+  products: 'Products',
+  projects: 'Projects',
+  saves: 'Saves',
+  scans: 'Scans',
 };
+
+/** Which of a profile's projects its Projects tab lists (ONE-43). */
+export type ProfileProjectsView = 'owned' | 'contributed';
+
+export const PROFILE_PROJECT_VIEWS: { value: ProfileProjectsView; label: string }[] = [
+  { value: 'owned', label: 'Owned' },
+  { value: 'contributed', label: 'Contributed' },
+];
+
+/** What a Saves tab lists: everything, or one kind. */
+export type SavesFilter = 'all' | 'post' | 'product' | 'project' | 'profile';
+
+export const SAVES_FILTERS: { value: SavesFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'post', label: 'Posts' },
+  { value: 'product', label: 'Products' },
+  { value: 'project', label: 'Projects' },
+  { value: 'profile', label: 'Profiles' },
+];
+
+/** The saved items a filter leaves, in the order they came. */
+export const filterSavedItems = <T extends { kind: string }>(items: T[], filter: SavesFilter): T[] =>
+  filter === 'all' ? items : items.filter((item) => item.kind === filter);
 
 export interface ProfileEmptyState {
   title: string;
   body: string;
-  /** Your own empty Posts tab offers a way to fill it. */
+  /** On your own profile, the action that fills the tab. Never on someone else's. */
   action?: { label: string; target: string };
 }
 
-/** What an empty tab says, which differs between your profile and someone else's. */
-export const profileEmptyState = (tab: ProfileTab, isOwnProfile: boolean): ProfileEmptyState => {
+/** What both post tabs offer your own empty profile. */
+const CREATE_POST = { label: 'Create your first post', target: '/compose' };
+
+/**
+ * What an empty tab says. On your own profile it prompts the action that
+ * would fill it; on someone else's it only says there is nothing yet, with no
+ * call to action they could not perform.
+ */
+export const profileEmptyState = (
+  tab: ProfileTab,
+  isOwnProfile: boolean,
+  options: { projectsView?: ProfileProjectsView; savesFilter?: SavesFilter } = {},
+): ProfileEmptyState => {
   switch (tab) {
     case 'posts':
       return isOwnProfile
-        ? {
-            title: 'No posts yet',
-            body: 'Share a photo or a thought.',
-            action: { label: 'Create your first post', target: '/compose' },
-          }
+        ? { title: 'No posts yet', body: 'Share a photo or a thought.', action: CREATE_POST }
         : { title: 'No posts yet', body: 'Nothing has been posted here.' };
-    case 'reposts':
+    case 'media':
       return isOwnProfile
-        ? { title: 'No reposts yet', body: 'Posts you repost show up here.' }
-        : { title: 'No reposts yet', body: 'Nothing has been reposted here.' };
-    case 'saved':
-      return { title: 'Nothing saved yet', body: 'Save posts to find them again here.' };
+        ? { title: 'No posts yet', body: 'Share photos of your work. Every post shows here.', action: CREATE_POST }
+        : { title: 'No posts yet', body: 'Nothing has been posted here.' };
+    case 'products':
+      return isOwnProfile
+        ? {
+            title: 'No products yet',
+            body: 'List what your business makes or supplies, for people to save and projects to Link.',
+            action: { label: 'Add your first product', target: PRODUCT_CREATE_ROUTE },
+          }
+        : { title: 'No products yet', body: 'This business has not listed any products.' };
+    case 'projects':
+      if (options.projectsView === 'contributed') {
+        return isOwnProfile
+          ? { title: 'Not on any projects yet', body: 'When someone adds you as a contributor to their project, it shows here.' }
+          : { title: 'Not on any projects yet', body: 'They have not been added to any projects.' };
+      }
+      return isOwnProfile
+        ? {
+            title: 'No projects yet',
+            body: 'Show a build, an install or a finished job, with the people and products behind it.',
+            action: { label: 'Start a project', target: PROJECT_CREATE_ROUTE },
+          }
+        : { title: 'No projects yet', body: 'There are no projects here yet.' };
+    case 'saves':
+      return options.savesFilter && options.savesFilter !== 'all'
+        ? { title: 'Nothing saved here', body: 'You have not saved any of these yet.' }
+        : {
+            title: 'Nothing saved yet',
+            body: 'Save posts, products, projects and profiles to find them again here.',
+            action: { label: 'Explore', target: '/(tabs)/search' },
+          };
+    case 'scans':
+      return isOwnProfile
+        ? {
+            title: 'No scans yet',
+            body: 'Tags you scan with your camera show up here, with where they led.',
+            action: { label: 'Scan a tag', target: '/(tabs)/camera' },
+          }
+        : { title: 'No scans yet', body: 'Nothing has been scanned yet.' };
   }
 };
 

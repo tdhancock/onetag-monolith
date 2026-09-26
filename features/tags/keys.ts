@@ -14,4 +14,7 @@ export const tagKeys = {
    * from any of them updates the rest.
    */
   mine: (ownerProfileId: string) => base.list({ ownerProfileId }),
+  /** How often one owner's tags pointing at one destination were scanned (ONE-41). */
+  destinationScans: (ownerProfileId: string, kind: string, destinationId: string) =>
+    [...base.all, 'destination-scans', ownerProfileId, kind, destinationId] as const,
 };
