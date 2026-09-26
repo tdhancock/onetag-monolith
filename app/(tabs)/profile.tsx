@@ -13,7 +13,7 @@ import ProfileTabs from '../../components/native/ProfileTabs';
 import ProfileSwitcher, { ProfileSwitcherButton } from '../../components/native/ProfileSwitcher';
 import { GridTile, ProfileGridSkeleton } from '../../components/native/ProfileGrid';
 import { Button, EmptyState, IconButton } from '../../components/native/ui';
-import { MenuIcon } from '../../components/native/Icons';
+import { MenuIcon, TagIcon } from '../../components/native/Icons';
 import {
   getEditButtonProps,
   profileEmptyState,
@@ -21,7 +21,7 @@ import {
   PROFILE_GRID_COLUMNS,
   type ProfileTab,
 } from '../../lib/screens/profile';
-import { tagCreateRoute } from '../../lib/screens/tags';
+import { tagCreateRoute, TAGS_DASHBOARD_ROUTE } from '../../lib/screens/tags';
 import { color, space } from '../../theme/tokens';
 import type { Post } from '../../types';
 
@@ -142,15 +142,22 @@ export default function ProfileScreen() {
   const empty = profileEmptyState(activeTab, true);
 
   // A bar of its own above the header: the profile you are acting as, which
-  // opens the switcher (ONE-25), and Settings.
+  // opens the switcher (ONE-25), its Tags (ONE-34), and Settings.
   const topBar = (
     <View style={styles.topBar}>
       <ProfileSwitcherButton profile={userProfile} onPress={() => setSwitcherOpen(true)} />
-      <IconButton
-        icon={<MenuIcon color={color.text} size={24} strokeWidth={1.8} />}
-        accessibilityLabel="Settings"
-        onPress={() => router.push('/settings')}
-      />
+      <View style={styles.topBarActions}>
+        <IconButton
+          icon={<TagIcon color={color.text} size={24} strokeWidth={1.8} />}
+          accessibilityLabel="Tags"
+          onPress={() => router.push(TAGS_DASHBOARD_ROUTE)}
+        />
+        <IconButton
+          icon={<MenuIcon color={color.text} size={24} strokeWidth={1.8} />}
+          accessibilityLabel="Settings"
+          onPress={() => router.push('/settings')}
+        />
+      </View>
     </View>
   );
 
@@ -230,6 +237,10 @@ const styles = StyleSheet.create({
   list: {
     flexGrow: 1,
     backgroundColor: color.bg,
+  },
+  topBarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   actions: {
     flexDirection: 'row',

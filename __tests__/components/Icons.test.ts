@@ -70,7 +70,7 @@ const ICON_NAMES = [
   'HashtagIcon', 'VerifiedIcon', 'CheckIcon', 'DoubleCheckIcon',
   'FlagIcon', 'ReportIcon', 'SendIcon', 'StarIcon', 'ChevronDownIcon',
   'ChevronUpIcon', 'ShareIOSIcon', 'AddToHomeScreenIOSIcon',
-  'MoreVertAndroidIcon', 'ChevronRightIcon',
+  'MoreVertAndroidIcon', 'ChevronRightIcon', 'TagIcon',
 ] as const;
 
 // Icons whose default size differs from the 24px house default.

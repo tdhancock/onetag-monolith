@@ -257,6 +257,12 @@ describe('Your profile', () => {
     expect(button(el, 'studio news')).not.toBeNull();
   });
 
+  it('opens the Tags dashboard from the top bar (ONE-34)', async () => {
+    const el = await mount(<OwnProfileScreen />);
+    act(() => button(el, 'Tags')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/tags');
+  });
+
   it('offers Create tag on a business profile, and not on an individual one (ONE-32)', async () => {
     const individual = await mount(<OwnProfileScreen />);
     expect(buttonByText(individual, 'Create tag')).toBeUndefined();
