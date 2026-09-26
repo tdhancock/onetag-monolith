@@ -13,6 +13,7 @@ import { reportUser } from '../../features/moderation';
 import { REPORT_REASONS } from '../../services/reportReasons';
 import ProfileHeader, { ProfileHeaderSkeleton } from '../../components/native/ProfileHeader';
 import ProfileTabs from '../../components/native/ProfileTabs';
+import ScanHistorySection from '../../components/native/ScanHistorySection';
 import { GridTile, ProfileGridSkeleton } from '../../components/native/ProfileGrid';
 import { Button, EmptyState, IconButton, Sheet, SheetRow } from '../../components/native/ui';
 import { BlockIcon, LockClosedIcon, DotsHorizontalIcon, ReportIcon, VerifiedIcon } from '../../components/native/Icons';
@@ -266,6 +267,9 @@ export default function UserProfileScreen() {
         onPressFollowing={() => router.push({ pathname: '/user-list', params: { type: 'following', userId: profile.id, title: 'Following' } })}
         actions={actions}
       />
+      {/* Their public scan history, only if they made it public (ONE-35);
+          absent otherwise, with no placeholder. */}
+      {isBlocked ? null : <ScanHistorySection profile={profile} />}
       {/* Blocked and private profiles show why there is nothing to see, in
           place of the tabs and the grid. */}
       {isBlocked ? (

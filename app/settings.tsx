@@ -7,6 +7,11 @@ import { supabase } from '../services/supabase.native';
 import { Button, MonoLabel, SettingsRow, SettingsSection } from '../components/native/ui';
 import { useUpdateProfile, useCurrentProfile } from '../features/profiles';
 import { PRIVATE_ACCOUNT_LABEL, PRIVATE_ACCOUNT_DESCRIPTION } from '../lib/screens/profile';
+import {
+  MAKE_SCAN_HISTORY_PUBLIC,
+  PUBLIC_SCAN_HISTORY_LABEL,
+  publicScanHistoryDescription,
+} from '../lib/screens/scanHistory';
 import { color, space } from '../theme/tokens';
 
 /** The version line at the foot of the list. */
@@ -33,6 +38,36 @@ export default function SettingsScreen() {
         onError: () => addToast('Could not update your privacy setting.', 'error'),
       },
     );
+  };
+
+  // Public scan history (ONE-35): its own mutation, so a save in flight here
+  // never makes the private-account switch show a value it isn't saving.
+  const updateScanHistory = useUpdateProfile(profileId);
+  const scanHistoryPublic = updateScanHistory.isPending
+    ? Boolean(updateScanHistory.variables?.scanHistoryPublic)
+    : Boolean(userProfile?.scanHistoryPublic);
+
+  const saveScanHistoryPublic = (next: boolean) =>
+    updateScanHistory.mutate(
+      { scanHistoryPublic: next },
+      {
+        onSuccess: () =>
+          addToast(next ? 'Your scan history is now public.' : 'Your scan history is private again.', 'info'),
+        onError: () => addToast('Could not update your scan history setting.', 'error'),
+      },
+    );
+
+  // Opening it says plainly what becomes visible — every past scan too — and
+  // waits for a yes. Closing it needs no confirmation: it only hides things.
+  const handleScanHistoryChange = (next: boolean) => {
+    if (!next) {
+      saveScanHistoryPublic(false);
+      return;
+    }
+    Alert.alert(MAKE_SCAN_HISTORY_PUBLIC.title, MAKE_SCAN_HISTORY_PUBLIC.body, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: MAKE_SCAN_HISTORY_PUBLIC.confirm, onPress: () => saveScanHistoryPublic(true) },
+    ]);
   };
 
   const handleLogout = async () => {
@@ -104,6 +139,23 @@ export default function SettingsScreen() {
               />
             }
           />
+          <SettingsRow
+            title={PUBLIC_SCAN_HISTORY_LABEL}
+            subtitle={publicScanHistoryDescription(scanHistoryPublic)}
+            divider
+            control={
+              <Switch
+                value={scanHistoryPublic}
+                onValueChange={handleScanHistoryChange}
+                disabled={!profileId || updateScanHistory.isPending}
+                accessibilityLabel={PUBLIC_SCAN_HISTORY_LABEL}
+                trackColor={{ true: color.text, false: color.borderStrong }}
+                ios_backgroundColor={color.borderStrong}
+                thumbColor={color.inverse}
+              />
+            }
+          />
+          <SettingsRow title="Your scan history" onPress={() => router.push('/scans')} divider />
           <SettingsRow title="Blocked accounts" onPress={() => router.push('/blocked-users')} />
         </SettingsSection>
 

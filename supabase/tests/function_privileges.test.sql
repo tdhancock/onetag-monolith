@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(16);
+SELECT plan(17);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -43,6 +43,8 @@ SELECT ok(has_function_privilege('anon', 'public.resolve_tag(text)', 'EXECUTE'),
   'anon can execute resolve_tag(): a stranger resolving a scanned tag');
 SELECT ok(has_function_privilege('anon', 'public.tag_accepts_scans(uuid)', 'EXECUTE'),
   'anon can execute tag_accepts_scans(): the scan insert policy evaluates it for anonymous scans');
+SELECT ok(has_function_privilege('anon', 'public.scan_history(uuid)', 'EXECUTE'),
+  'anon can execute scan_history(): a public history is public, and it answers nothing for a private one (ONE-35)');
 
 -- ─── Revoked by name elsewhere, and still so ──────────────────────────
 

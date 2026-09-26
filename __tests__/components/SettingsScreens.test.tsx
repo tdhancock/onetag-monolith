@@ -96,10 +96,10 @@ jest.mock('../../services/profileBootstrap', () => ({ ensureCurrentUserProfile: 
 jest.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: jest.fn() }) }));
 
 const mockUpdate = jest.fn();
-const profileState = { isPrivate: false, status: 'ready' as string };
+const profileState = { isPrivate: false, scanHistoryPublic: false, status: 'ready' as string };
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({
-    profile: { username: 'me', isPrivate: profileState.isPrivate },
+    profile: { username: 'me', isPrivate: profileState.isPrivate, scanHistoryPublic: profileState.scanHistoryPublic },
     profileId: 'p-me',
     authUserId: 'u-me',
     status: profileState.status,
@@ -127,6 +127,8 @@ import PrivacyPolicyScreen from '../../app/privacy-policy';
 import OnboardingScreen from '../../app/onboarding';
 import SettingsRow, { SettingsSection, SETTINGS_ROW_MIN_HEIGHT } from '../../components/native/ui/SettingsRow';
 import { PRIVATE_ACCOUNT_DESCRIPTION, PRIVATE_ACCOUNT_LABEL } from '../../lib/screens/profile';
+import { MAKE_SCAN_HISTORY_PUBLIC, PUBLIC_SCAN_HISTORY_LABEL } from '../../lib/screens/scanHistory';
+import { Alert } from 'react-native';
 import { color } from '../../theme/tokens';
 
 // ─── 3. Helpers ─────────────────────────────────────────────────────────
@@ -144,6 +146,8 @@ function mount(element: React.ReactElement): HTMLDivElement {
 
 beforeEach(() => {
   profileState.isPrivate = false;
+  profileState.scanHistoryPublic = false;
+  (Alert.alert as jest.Mock).mockClear();
   profileState.status = 'ready';
   blocks.data = [];
   blocks.isPending = false;
@@ -207,6 +211,45 @@ describe('Settings', () => {
     expect(toggle.getAttribute('data-track-off')).toBe(color.borderStrong);
     act(() => toggle.click());
     expect(mockUpdate).toHaveBeenCalledWith({ isPrivate: true }, expect.any(Object));
+  });
+
+  const scanHistorySwitch = (el: HTMLElement) =>
+    el.querySelector(`input[aria-label="${PUBLIC_SCAN_HISTORY_LABEL}"]`) as HTMLInputElement;
+
+  it('keeps scan history private until its owner opts in, and says so (ONE-35)', () => {
+    const el = mount(<SettingsScreen />);
+    const toggle = scanHistorySwitch(el);
+    expect(toggle.checked).toBe(false);
+    expect(el.textContent).toContain('Only you can see the tags you have scanned.');
+  });
+
+  it('says plainly that past scans become public too, and saves nothing until confirmed', () => {
+    const el = mount(<SettingsScreen />);
+    act(() => scanHistorySwitch(el).click());
+
+    const [title, body, actions] = (Alert.alert as jest.Mock).mock.calls[0] as [string, string, { text: string; onPress?: () => void }[]];
+    expect(title).toBe(MAKE_SCAN_HISTORY_PUBLIC.title);
+    expect(body).toContain('Anyone will be able to see every tag you have scanned');
+    expect(body).toContain('all of your past scans, and every future one');
+    expect(mockUpdate).not.toHaveBeenCalled();
+
+    act(() => actions.find((a) => a.text === MAKE_SCAN_HISTORY_PUBLIC.confirm)!.onPress!());
+    expect(mockUpdate).toHaveBeenCalledWith({ scanHistoryPublic: true }, expect.any(Object));
+  });
+
+  it('closes a public scan history at once, with no confirmation', () => {
+    profileState.scanHistoryPublic = true;
+    const el = mount(<SettingsScreen />);
+    expect(el.textContent).toContain('Anyone can see the tags you have scanned, on your profile.');
+    act(() => scanHistorySwitch(el).click());
+    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalledWith({ scanHistoryPublic: false }, expect.any(Object));
+  });
+
+  it('opens your own scan history', () => {
+    const el = mount(<SettingsScreen />);
+    act(() => button(el, 'Your scan history')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/scans');
   });
 
   it('sets Delete account apart in heart red', () => {

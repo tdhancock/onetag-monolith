@@ -59,6 +59,7 @@ export const mapProfileRow = (row: ProfileRow): UserProfile => {
         profilePicture: row.avatar_url,
         isVerified: row.is_verified,
         isPrivate: row.is_private,
+        scanHistoryPublic: row.scan_history_public === true,
         userId: row.user_id,
         profileType: row.profile_type,
     } as UserProfile;
@@ -90,6 +91,7 @@ export const mapProfileUpdatesToRow = (updates: ProfileUpdates): Partial<Profile
     if (updates.bio !== undefined) row.bio = updates.bio;
     if (updates.profilePicture !== undefined) row.avatar_url = updates.profilePicture;
     if (updates.isPrivate !== undefined) row.is_private = updates.isPrivate;
+    if (updates.scanHistoryPublic !== undefined) row.scan_history_public = updates.scanHistoryPublic;
     return row;
 };
 

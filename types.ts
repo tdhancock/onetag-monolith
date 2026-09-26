@@ -62,6 +62,11 @@ export interface UserProfile {
     /** `profiles.is_private`: only followers see this profile's posts (ONE-58). */
     isPrivate?: boolean;
     /**
+     * `profiles.scan_history_public`: anyone may see the Tags this profile has
+     * scanned. Private unless its owner opts in (ONE-35).
+     */
+    scanHistoryPublic?: boolean;
+    /**
      * A Business Profile's own fields, from its `business_profiles` row
      * (ONE-23). Read only when `profileType` is `business` — what a profile
      * shows is decided by its type, never by whether this happens to be set.
