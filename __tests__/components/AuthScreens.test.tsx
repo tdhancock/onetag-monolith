@@ -308,10 +308,11 @@ describe('auth rules', () => {
     birthday: '2000-01-01',
   };
 
-  it('lets someone without an account be launched into tag resolution and a product page, and nothing else', () => {
-    // A scanned sticker (ONE-30), and a shared or scanned product (ONE-40).
+  it('lets someone without an account be launched into tag resolution, a product or a project, and nothing else', () => {
+    // A scanned sticker (ONE-30), and a shared or scanned product or project (ONE-40, ONE-41).
     expect(opensWithoutSession('t')).toBe(true);
     expect(opensWithoutSession('product')).toBe(true);
+    expect(opensWithoutSession('project')).toBe(true);
     expect(opensWithoutSession('(tabs)')).toBe(false);
     expect(opensWithoutSession('messages')).toBe(false);
     expect(opensWithoutSession(undefined)).toBe(false);

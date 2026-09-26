@@ -5,7 +5,8 @@ import { color, space, type } from '../../theme/tokens';
 
 export interface ModalHeaderProps {
   title: string;
-  onCancel: () => void;
+  /** Omitted on a screen whose only exit is its action, such as a picker's Done. */
+  onCancel?: () => void;
   onSave: () => void;
   /** Save stays greyed out and inert until there is something valid to save. */
   canSave: boolean;
@@ -18,7 +19,7 @@ export interface ModalHeaderProps {
 /**
  * The bar across the top of a form presented as a modal: Cancel, the title,
  * and Save — the layout Edit profile uses, for the product and project forms
- * (ONE-40, ONE-41).
+ * and the project's picker (ONE-40, ONE-41).
  */
 const ModalHeader: React.FC<ModalHeaderProps> = ({
   title,
@@ -29,9 +30,13 @@ const ModalHeader: React.FC<ModalHeaderProps> = ({
   saveLabel = 'Save',
 }) => (
   <View style={styles.header}>
-    <Pressable onPress={onCancel} accessibilityRole="button" hitSlop={12} style={styles.side}>
-      <Text style={styles.cancel}>Cancel</Text>
-    </Pressable>
+    {onCancel ? (
+      <Pressable onPress={onCancel} accessibilityRole="button" hitSlop={12} style={styles.side}>
+        <Text style={styles.cancel}>Cancel</Text>
+      </Pressable>
+    ) : (
+      <View style={styles.side} />
+    )}
     <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
       {title}
     </Text>

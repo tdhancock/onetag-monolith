@@ -133,8 +133,12 @@ describe('a history entry', () => {
     expect(routeForEntry(mapScanHistoryRow(PRODUCT_ROW))).toBe('/product/pd-1');
   });
 
-  it('does not route a project until its screen exists (ONE-41)', () => {
-    expect(routeForEntry(mapScanHistoryRow(PROJECT_ROW))).toBeNull();
+  it('routes a project to its page (ONE-41)', () => {
+    expect(routeForEntry(mapScanHistoryRow(PROJECT_ROW))).toBe('/project/pj-1');
+  });
+
+  it('does not route a profile whose handle is gone', () => {
+    expect(routeForEntry(mapScanHistoryRow({ ...PROFILE_ROW, dest_username: null }))).toBeNull();
   });
 
   it('is keyed per profile, so a switch reads the other profile\'s history', () => {
@@ -197,13 +201,20 @@ describe('your scan history', () => {
     expect(text).toContain('Oak doorProduct · Scanned once · 2h');
     expect(text).toContain('Xavi OrtizProfile · Scanned 10 times · 2h');
     expect(text.indexOf('Oak door')).toBeLessThan(text.indexOf('Xavi Ortiz'));
-    // A project has no screen yet (ONE-41), so its row is not a button — but
-    // it still reads as one labelled element (ONE-87).
+    // Every kind now has a screen, so every row is a button, named as one.
     const project = rowFor(el, 'Barn conversion')!;
     expect(project.getAttribute('aria-label')).toBe('Barn conversion, Project, Scanned 2 times · 2h');
-    expect(project.tagName).not.toBe('BUTTON');
+    expect(project.tagName).toBe('BUTTON');
     expect(rowFor(el, 'Xavi Ortiz')!.tagName).toBe('BUTTON');
     expect(rowFor(el, 'Oak door')!.tagName).toBe('BUTTON');
+  });
+
+  it('reads a row with nowhere to go as one labelled element, not a button (ONE-87)', async () => {
+    mockRpc.mockResolvedValue({ data: [{ ...PROFILE_ROW, dest_name: 'Gone', dest_username: null }], error: null });
+    const el = await mount();
+    const gone = rowFor(el, 'Gone')!;
+    expect(gone.getAttribute('aria-label')).toBe('Gone, Profile, Scanned 10 times · 2h');
+    expect(gone.tagName).not.toBe('BUTTON');
   });
 
   it('routes a row to its destination', async () => {
@@ -212,6 +223,8 @@ describe('your scan history', () => {
     expect(mockPush).toHaveBeenCalledWith('/user/xavi');
     act(() => rowFor(el, 'Oak door')!.click());
     expect(mockPush).toHaveBeenCalledWith('/product/pd-1');
+    act(() => rowFor(el, 'Barn conversion')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/project/pj-1');
   });
 
   it('says who can see it, and leads to the setting', async () => {

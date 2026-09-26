@@ -17,19 +17,18 @@ export const SCAN_DESTINATION_LABEL: Record<ScanHistoryEntry['kind'], string> = 
  * An entry's destination, in the terms Tag Resolution routes by — so a
  * history row goes exactly where scanning the tag again would.
  *
- * Profiles and products today. The project screen (ONE-41) adds its member
- * to TagDestination and its line here; until then a project entry shows
- * without routing anywhere.
+ * A profile entry needs its handle to route by; one whose profile is gone has
+ * none, and shows without routing anywhere.
  */
 export const destinationOfEntry = (entry: ScanHistoryEntry): TagDestination | null => {
-  if (entry.kind === 'profile' && entry.username) {
-    return { kind: 'profile', profileId: entry.destinationId, username: entry.username };
+  if (entry.kind === 'profile') {
+    return entry.username ? { kind: 'profile', profileId: entry.destinationId, username: entry.username } : null;
   }
   if (entry.kind === 'product') return { kind: 'product', productId: entry.destinationId };
-  return null;
+  return { kind: 'project', projectId: entry.destinationId };
 };
 
-/** Where tapping an entry goes, or null while its kind has no screen. */
+/** Where tapping an entry goes, or null when it has nowhere to go. */
 export const routeForEntry = (entry: ScanHistoryEntry): string | null => {
   const destination = destinationOfEntry(entry);
   return destination ? routeForDestination(destination) : null;

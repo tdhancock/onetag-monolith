@@ -6,14 +6,8 @@ import { Image } from 'expo-image';
 import { useApp } from '../../store/AppContext.native';
 import { useAuthStatus } from '../../features/auth';
 import { useCurrentProfile } from '../../features/profiles';
-import {
-  useDeleteProduct,
-  useProductProjectsQuery,
-  useProductQuery,
-  useSetProductAvailable,
-  type Product,
-  type ProductProject,
-} from '../../features/products';
+import { useDeleteProduct, useProductQuery, useSetProductAvailable, type Product } from '../../features/products';
+import { useProjectsUsingProductQuery, type ProjectSummary } from '../../features/projects';
 import DestinationActions from '../../components/native/DestinationActions';
 import DetailSection from '../../components/native/DetailSection';
 import ProductGallery from '../../components/native/ProductGallery';
@@ -32,6 +26,7 @@ import {
   productRoute,
   UNAVAILABLE_LABEL,
 } from '../../lib/screens/products';
+import { projectRoute, projectRowSubtitle } from '../../lib/screens/projects';
 import { color, space, type } from '../../theme/tokens';
 
 /**
@@ -122,7 +117,7 @@ export default function ProductScreen() {
 
 function ProductDetail({ product, onRefreshProduct }: { product: Product; onRefreshProduct: () => Promise<unknown> }) {
   const router = useRouter();
-  const projects = useProductProjectsQuery(product.id);
+  const projects = useProjectsUsingProductQuery(product.id);
   const price = formatPrice(product.priceCents, product.currency);
   const business = product.business;
 
@@ -217,7 +212,7 @@ function ProductDetail({ product, onRefreshProduct }: { product: Product; onRefr
               key={project.id}
               project={project}
               divider={index < all.length - 1}
-              onPress={() => router.push(`/project/${encodeURIComponent(project.id)}`)}
+              onPress={() => router.push(projectRoute(project.id))}
             />
           ))
         )}
@@ -228,11 +223,11 @@ function ProductDetail({ product, onRefreshProduct }: { product: Product; onRefr
 
 const COVER_SIZE = 40;
 
-function ProjectRow({ project, divider, onPress }: { project: ProductProject; divider: boolean; onPress: () => void }) {
+function ProjectRow({ project, divider, onPress }: { project: ProjectSummary; divider: boolean; onPress: () => void }) {
   return (
     <ListRow
       title={project.name}
-      subtitle={[project.projectType, project.year].filter(Boolean).join(' · ') || 'Project'}
+      subtitle={projectRowSubtitle(project)}
       leading={
         project.coverUrl ? (
           <Image source={{ uri: project.coverUrl }} style={styles.cover} contentFit="cover" />

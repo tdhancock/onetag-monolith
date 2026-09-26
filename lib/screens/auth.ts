@@ -6,11 +6,12 @@
 
 /**
  * The screens someone without an account may be launched straight into, by
- * their route's first segment: Tag Resolution (ONE-30), and a product page
- * (ONE-40), which a shared link opens and a tag lands on. The launch check in
- * app/_layout.tsx sends everyone else without a session to sign in.
+ * their route's first segment: Tag Resolution (ONE-30), and the product and
+ * project pages (ONE-40, ONE-41), which a shared link opens and a tag lands
+ * on. The launch check in app/_layout.tsx sends everyone else without a
+ * session to sign in.
  */
-export const PUBLIC_ROUTE_SEGMENTS: readonly string[] = ['t', 'product'];
+export const PUBLIC_ROUTE_SEGMENTS: readonly string[] = ['t', 'product', 'project'];
 
 /** Whether a route, by its first segment, opens without a session. */
 export const opensWithoutSession = (firstSegment: string | undefined): boolean =>

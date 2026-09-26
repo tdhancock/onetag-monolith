@@ -61,8 +61,8 @@ function RootLayoutNav() {
       const inAuthGroup = segments[0] === '(auth)';
       // Tag Resolution never needs an account (ONE-30): a stranger who
       // opens a scanned sticker's link must land on its Destination, not on
-      // the sign-in screen. Nor does a product page opened from a shared
-      // link (ONE-40).
+      // the sign-in screen. Nor does a product or project page opened from a
+      // shared link (ONE-40, ONE-41).
       const publicRoute = opensWithoutSession(segments[0]);
       if (!session && !inAuthGroup && !publicRoute) {
         router.replace('/(auth)/login');
@@ -168,6 +168,9 @@ function RootLayoutNav() {
       <Stack.Screen name="tags/create" options={{ presentation: 'modal' }} />
       <Stack.Screen name="product/create" options={{ presentation: 'modal' }} />
       <Stack.Screen name="product/[id]/edit" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="project/create" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="project/[id]/edit" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="project/[id]/link-product" options={{ presentation: 'modal' }} />
       <Stack.Screen name="story-viewer" options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="story-create" options={{ presentation: 'fullScreenModal' }} />
     </Stack>

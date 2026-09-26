@@ -35,8 +35,9 @@ const destinationOf = (row: ResolveTagRow): TagDestination | null => {
       : null;
   }
   if (row.dest_product_id) return { kind: 'product', productId: row.dest_product_id };
-  // A destination column this build does not read yet (M5's projects, before
-  // the app ships support for them).
+  // A private project is routed like any other: its screen shows not-found to
+  // anyone who may not see it, so nothing here special-cases it (ONE-41).
+  if (row.dest_project_id) return { kind: 'project', projectId: row.dest_project_id };
   return null;
 };
 
@@ -154,6 +155,37 @@ export const fetchMyTags = async (ownerProfileId: ProfileId): Promise<OwnedTag[]
 
   const byTag = new Map(((counts.data ?? []) as TagScanCountRow[]).map((row) => [row.tag_id, row]));
   return ((tags.data ?? []) as unknown as TagRow[]).map((row) => mapTagRow(row, byTag.get(row.id)));
+};
+
+/** The `tags` column each destination kind is stored in. */
+const DESTINATION_COLUMN = {
+  profile: 'dest_profile_id',
+  product: 'dest_product_id',
+  project: 'dest_project_id',
+} as const;
+
+/**
+ * How many times an owner's tags pointing at one destination have been
+ * scanned, all together — the scan count a project's owner sees on its page
+ * (ONE-41). Never who scanned (ONE-82): it reads the owner's own tags and
+ * `tag_scan_counts`, and never a scan row. For anyone but the owner both
+ * come back empty, so the count is 0.
+ */
+export const fetchDestinationScanCount = async (
+  ownerProfileId: ProfileId,
+  destination: { kind: keyof typeof DESTINATION_COLUMN; id: string },
+): Promise<number> => {
+  const [tags, counts] = await Promise.all([
+    supabase.from('tags').select('id').eq('owner_profile_id', ownerProfileId).eq(DESTINATION_COLUMN[destination.kind], destination.id),
+    supabase.rpc('tag_scan_counts', { p_owner_profile_id: ownerProfileId }),
+  ]);
+  if (tags.error) throw tags.error;
+  if (counts.error) throw counts.error;
+
+  const pointing = new Set(((tags.data ?? []) as { id: string }[]).map((tag) => tag.id));
+  return ((counts.data ?? []) as TagScanCountRow[])
+    .filter((row) => pointing.has(row.tag_id))
+    .reduce((total, row) => total + (Number(row.scan_count) || 0), 0);
 };
 
 /**

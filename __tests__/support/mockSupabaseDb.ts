@@ -31,6 +31,11 @@ export interface MockDb {
   failUploads: unknown;
   /** Resolve embeds for a table's selected rows. Suites add the ones they need. */
   embeds: Record<string, (row: Row, select: string) => Row>;
+  /**
+   * Which rows the viewer a suite plays may read, per table — standing in for
+   * RLS on selects. A table with no entry is readable in full.
+   */
+  visible: Record<string, (row: Row) => boolean>;
 }
 
 type Filter = [op: 'eq' | 'in' | 'ilike' | 'not', column: string, value: unknown];
@@ -44,6 +49,7 @@ export const db: MockDb = {
   failNext: null,
   failUploads: null,
   embeds: {},
+  visible: {},
 };
 
 let nextId = 1;
@@ -57,7 +63,13 @@ export const resetDb = (tables: Record<string, Row[]> = {}): void => {
   db.rpcResults = {};
   db.failNext = null;
   db.failUploads = null;
+  db.embeds = {};
+  db.visible = {};
 };
+
+/** Whether the viewer may read a row, as `db.visible` says. */
+export const canSee = (tableName: string, row: Row | null | undefined): boolean =>
+  Boolean(row) && (db.visible[tableName]?.(row as Row) ?? true);
 
 const table = (name: string): Row[] => (db.tables[name] ??= []);
 
@@ -100,7 +112,7 @@ const run = (name: string, op: Op): { data: unknown; error: unknown } => {
     rows = table(name).filter((row) => matches(row, op.filters));
     db.tables[name] = table(name).filter((row) => !rows.includes(row));
   } else {
-    rows = table(name).filter((row) => matches(row, op.filters));
+    rows = table(name).filter((row) => matches(row, op.filters) && canSee(name, row));
   }
 
   if (op.kind !== 'select' && !op.returning) return { data: null, error: null };

@@ -155,8 +155,8 @@ const seed = () => {
       { id: 's-wood', product_id: 'pd-door', label: 'Material', value: 'White oak', sort_order: 0 },
     ],
     projects: [
-      { id: 'pj-barn', name: 'Barn conversion', project_type: 'Renovation', year: '2025', cover_url: null, created_at: '2026-01-01T00:00:00Z' },
-      { id: 'pj-loft', name: 'City loft', project_type: 'Interior', year: '2026', cover_url: 'https://cdn.example/loft.jpg', created_at: '2026-06-01T00:00:00Z' },
+      { id: 'pj-barn', owner_profile_id: 'p-builder', name: 'Barn conversion', project_type: 'Renovation', year: '2025', cover_url: null, is_public: true, created_at: '2026-01-01T00:00:00Z' },
+      { id: 'pj-loft', owner_profile_id: 'p-builder', name: 'City loft', project_type: 'Interior', year: '2026', cover_url: 'https://cdn.example/loft.jpg', is_public: true, created_at: '2026-06-01T00:00:00Z' },
     ],
     project_products: [
       { id: 'pp-1', project_id: 'pj-barn', product_id: 'pd-door' },

@@ -295,11 +295,21 @@ describe('Your profile', () => {
     expect(mockPush).toHaveBeenCalledWith('/product/create');
   });
 
-  it('offers an individual profile no way to create a product (ONE-40)', async () => {
+  it('offers an individual profile a new project, and no way to create a product (ONE-40, ONE-41)', async () => {
     const el = await mount(<OwnProfileScreen />);
-    expect(button(el, 'Create')).toBeNull();
+    act(() => button(el, 'Create')!.click());
     expect(button(el, 'Add a product')).toBeNull();
     expect(el.textContent).not.toMatch(/add a product/i);
+    act(() => button(el, 'New project')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/project/create');
+  });
+
+  it('offers a business profile a new project too (ONE-41)', async () => {
+    state.me = ME_BUSINESS;
+    const el = await mount(<OwnProfileScreen />);
+    act(() => button(el, 'Create')!.click());
+    act(() => button(el, 'New project')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/project/create');
   });
 
   it('invites your first post when you have none', async () => {

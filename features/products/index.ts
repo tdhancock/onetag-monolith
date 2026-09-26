@@ -6,7 +6,8 @@
 export {
   fetchProduct,
   fetchBusinessProducts,
-  fetchProductProjects,
+  searchProducts,
+  PRODUCT_SEARCH_LIMIT,
   createProduct,
   updateProduct,
   saveProductEdits,
@@ -14,16 +15,15 @@ export {
   saveProductSpecs,
   deleteProduct,
   mapProductRow,
-  mapProductSummaryRow,
-  representativeImage,
   mediaChanges,
   specChanges,
   PRODUCT_SELECT,
-  PRODUCT_SUMMARY_SELECT,
 } from './api';
+// A product as a list shows it, shared with other features through services/.
+export { mapProductSummaryRow, representativeImage, PRODUCT_SUMMARY_SELECT } from '../../services/productRows';
 export type { NewProductInput, ProductEdits, SpecEdit, MediaChanges, SpecChanges } from './api';
 export { productKeys } from './keys';
-export { useProductQuery, useBusinessProductsQuery, useProductProjectsQuery } from './queries';
+export { useProductQuery, useBusinessProductsQuery, useProductSearchQuery } from './queries';
 export { useCreateProduct, useUpdateProduct, useSetProductAvailable, useDeleteProduct } from './mutations';
 export type { UpdateProductInput, ProductAvailabilityInput } from './mutations';
 export type {
@@ -32,7 +32,7 @@ export type {
   ProductSpec,
   ProductBusiness,
   ProductSummary,
-  ProductProject,
+  ProductSearchResult,
   ProductFields,
   SpecInput,
   ProductRow,

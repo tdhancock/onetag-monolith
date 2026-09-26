@@ -1,7 +1,7 @@
 // Read hooks for the tags domain.
 
 import { useQuery } from '@tanstack/react-query';
-import { fetchMyTags, resolveTag, TagResolutionError } from './api';
+import { fetchDestinationScanCount, fetchMyTags, resolveTag, TagResolutionError } from './api';
 import { tagKeys } from './keys';
 import type { OwnedTag, TagResolution } from './types';
 import type { ProfileId } from '../../types';
@@ -62,4 +62,20 @@ export const useMyTagQuery = (ownerProfileId: ProfileId | undefined, tagId: stri
     queryFn: () => fetchMyTags(ownerProfileId!),
     enabled: Boolean(ownerProfileId),
     select: (tags) => tags.find((tag) => tag.id === tagId) ?? null,
+  });
+
+/**
+ * How often the owner's tags pointing at a destination were scanned (ONE-41).
+ * Asked for only when the viewer is the owner: nobody else sees scan counts,
+ * so for anyone else nothing is fetched.
+ */
+export const useDestinationScanCountQuery = (
+  ownerProfileId: ProfileId | undefined,
+  destination: { kind: 'profile' | 'product' | 'project'; id: string },
+  isOwner: boolean,
+) =>
+  useQuery<number>({
+    queryKey: tagKeys.destinationScans(ownerProfileId ?? '', destination.kind, destination.id),
+    queryFn: () => fetchDestinationScanCount(ownerProfileId!, destination),
+    enabled: Boolean(ownerProfileId) && isOwner,
   });

@@ -3,6 +3,18 @@
 // A Product is a catalog item a Business Profile lists: browsable, saveable,
 // Linked from Projects, and one of the four Tag Destinations. It is not a
 // thing you can buy — a price, when there is one, is display text.
+//
+// A product as a list shows it lives in services/productRows.ts, since other
+// features list products too; it is re-exported here with the rest.
+
+import type { ProductSummary } from '../../services/productRows';
+
+export type { ProductSummary, ProductSummaryRow } from '../../services/productRows';
+
+/** A product a project's picker offers (ONE-41): with the business that lists it. */
+export interface ProductSearchResult extends ProductSummary {
+  businessName: string | null;
+}
 
 /** One of a product's images. The first by `sortOrder` represents it everywhere. */
 export interface ProductMedia {
@@ -49,28 +61,6 @@ export interface Product {
   specs: ProductSpec[];
   /** Null only if the business's profile could not be read. */
   business: ProductBusiness | null;
-}
-
-/** A product as a grid or list shows it: its name and representative image. */
-export interface ProductSummary {
-  id: string;
-  businessProfileId: string;
-  name: string;
-  category: string | null;
-  priceCents: number | null;
-  currency: string;
-  available: boolean;
-  /** The first image by sort order, or null for a product with none. */
-  imageUrl: string | null;
-}
-
-/** A Project that Links a product: "Used in Projects" on its page. */
-export interface ProductProject {
-  id: string;
-  name: string;
-  projectType: string | null;
-  year: string | null;
-  coverUrl: string | null;
 }
 
 /** A spec as the owner edits it: no id until it is stored. */
@@ -130,24 +120,4 @@ export interface ProductRow {
   product_specs?: ProductSpecRow[] | null;
   /** A one-to-one embed arrives as an object; an older server or a mock may hand back an array. */
   business?: ProductBusinessRow | ProductBusinessRow[] | null;
-}
-
-/** A `products` row with only the representative image's candidates embedded. */
-export interface ProductSummaryRow {
-  id: string;
-  business_profile_id: string;
-  name: string;
-  category: string | null;
-  price_cents: number | null;
-  currency: string;
-  available: boolean;
-  product_media?: Pick<ProductMediaRow, 'url' | 'sort_order'>[] | null;
-}
-
-export interface ProductProjectRow {
-  id: string;
-  name: string;
-  project_type: string | null;
-  year: string | null;
-  cover_url: string | null;
 }

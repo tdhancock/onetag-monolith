@@ -14,6 +14,7 @@ import {
   type ProductEdits,
 } from './api';
 import { productKeys } from './keys';
+import { projectKeys } from '../projects';
 import { saveKeys } from '../saves';
 import type { Product } from './types';
 import type { AuthUserId } from '../../types';
@@ -83,8 +84,8 @@ export const useSetProductAvailable = () => {
 
 /**
  * Delete a product, for good. Its cached page reads as gone at once; its
- * business's list and every profile's saves are re-read, since the saves of
- * it went with it.
+ * business's list, every profile's saves and every project's products are
+ * re-read, since its saves and project links went with it.
  */
 export const useDeleteProduct = () => {
   const queryClient = useQueryClient();
@@ -95,6 +96,7 @@ export const useDeleteProduct = () => {
       return Promise.all([
         queryClient.invalidateQueries({ queryKey: productKeys.business(product.businessProfileId) }),
         queryClient.invalidateQueries({ queryKey: saveKeys.all }),
+        queryClient.invalidateQueries({ queryKey: projectKeys.all }),
       ]);
     },
   });

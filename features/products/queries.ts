@@ -1,9 +1,9 @@
 // Read hooks for Products (ONE-40).
 
-import { useQuery } from '@tanstack/react-query';
-import { fetchBusinessProducts, fetchProduct, fetchProductProjects } from './api';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { fetchBusinessProducts, fetchProduct, searchProducts } from './api';
 import { productKeys } from './keys';
-import type { Product, ProductProject, ProductSummary } from './types';
+import type { Product, ProductSearchResult, ProductSummary } from './types';
 
 /**
  * One product with everything its page shows. `data` is null when there is
@@ -24,10 +24,14 @@ export const useBusinessProductsQuery = (businessProfileId: string | undefined) 
     enabled: Boolean(businessProfileId),
   });
 
-/** The Projects that Link a product — the way onward from its page. */
-export const useProductProjectsQuery = (productId: string | undefined) =>
-  useQuery<ProductProject[]>({
-    queryKey: productKeys.projects(productId ?? ''),
-    queryFn: () => fetchProductProjects(productId!),
-    enabled: Boolean(productId),
+/**
+ * Products by name from every business, for a project's picker (ONE-41). The
+ * last results stay up while the next search runs, so the list does not
+ * blank on every keystroke.
+ */
+export const useProductSearchQuery = (query: string) =>
+  useQuery<ProductSearchResult[]>({
+    queryKey: productKeys.search(query.trim()),
+    queryFn: () => searchProducts(query),
+    placeholderData: keepPreviousData,
   });

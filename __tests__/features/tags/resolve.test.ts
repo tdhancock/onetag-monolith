@@ -39,6 +39,7 @@ const LIVE: ResolveTagRow = {
   dest_profile_id: 'p-ana',
   dest_profile_username: 'ana',
   dest_product_id: null,
+  dest_project_id: null,
 };
 
 /** A live tag pointing at a product (ONE-40). */
@@ -47,6 +48,14 @@ const PRODUCT_TAG: ResolveTagRow = {
   dest_profile_id: null,
   dest_profile_username: null,
   dest_product_id: 'pd-1',
+};
+
+/** A live tag pointing at a project (ONE-41) — private or not, it resolves the same. */
+const PROJECT_TAG: ResolveTagRow = {
+  ...LIVE,
+  dest_profile_id: null,
+  dest_profile_username: null,
+  dest_project_id: 'pj-1',
 };
 
 /** A fake `supabase.rpc(...).maybeSingle()` answering with one result. */
@@ -85,6 +94,15 @@ describe('resolveTag', () => {
       status: 'active',
       tagId: 'tag-1',
       destination: { kind: 'product', productId: 'pd-1' },
+    });
+  });
+
+  it('resolves a live project tag to the project (ONE-41)', async () => {
+    answer({ data: PROJECT_TAG, error: null, status: 200 });
+    await expect(resolveTag('ABC23XYZ')).resolves.toEqual({
+      status: 'active',
+      tagId: 'tag-1',
+      destination: { kind: 'project', projectId: 'pj-1' },
     });
   });
 
@@ -136,7 +154,7 @@ describe('mapResolveTagRow', () => {
 
   it('reads a live tag with no destination this build knows as having nowhere to go', () => {
     expect(
-      mapResolveTagRow({ ...LIVE, dest_profile_id: null, dest_profile_username: null, dest_product_id: null }),
+      mapResolveTagRow({ ...LIVE, dest_profile_id: null, dest_profile_username: null }),
     ).toMatchObject({ destination: null });
   });
 
@@ -195,6 +213,11 @@ describe('routeForDestination', () => {
     expect(routeForDestination({ kind: 'profile', profileId: 'p', username: 'a/b?c' })).toBe('/user/a%2Fb%3Fc');
   });
 
+  it('sends a project destination to its page (ONE-41)', () => {
+    expect(routeForDestination({ kind: 'project', projectId: 'pj-1' })).toBe('/project/pj-1');
+    expect(routeForDestination({ kind: 'project', projectId: 'a/b?c' })).toBe('/project/a%2Fb%3Fc');
+  });
+
   it('sends a product destination to its page (ONE-40)', () => {
     expect(routeForDestination({ kind: 'product', productId: 'pd-1' })).toBe('/product/pd-1');
     expect(routeForDestination({ kind: 'product', productId: 'a/b?c' })).toBe('/product/a%2Fb%3Fc');
@@ -228,6 +251,11 @@ describe('tagScreenFor', () => {
       ...settled,
       data: { status: 'active', tagId: 'tag-1', destination: { kind: 'profile', profileId: 'p', username: 'ana' } },
     })).toEqual({ kind: 'redirect', tagId: 'tag-1', route: '/user/ana' });
+  });
+
+  it('redirects a live project tag to the project page, which decides who may see it (ONE-41)', () => {
+    expect(tagScreenFor({ ...settled, data: mapResolveTagRow(PROJECT_TAG) }))
+      .toEqual({ kind: 'redirect', tagId: 'tag-1', route: '/project/pj-1' });
   });
 
   it('redirects a live product tag to the product page (ONE-40)', () => {

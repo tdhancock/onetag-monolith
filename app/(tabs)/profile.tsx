@@ -23,6 +23,7 @@ import {
 } from '../../lib/screens/profile';
 import { tagCreateRoute, TAGS_DASHBOARD_ROUTE } from '../../lib/screens/tags';
 import { canCreateProduct, PRODUCT_CREATE_ROUTE } from '../../lib/screens/products';
+import { PROJECT_CREATE_ROUTE } from '../../lib/screens/projects';
 import { color, space } from '../../theme/tokens';
 import type { Post } from '../../types';
 
@@ -143,8 +144,9 @@ export default function ProfileScreen() {
   const editButton = getEditButtonProps(userProfile);
   const empty = profileEmptyState(activeTab, true);
 
-  // What this profile can create from here. Only a business lists products
-  // (ONE-40), so an individual profile is offered no such thing.
+  // What this profile can create from here: a project, whatever its type
+  // (ONE-41), and a product only if it is a business (ONE-40) — an
+  // individual profile is never offered one.
   const canAddProduct = canCreateProduct(userProfile);
 
   // A bar of its own above the header: the profile you are acting as, which
@@ -154,13 +156,11 @@ export default function ProfileScreen() {
     <View style={styles.topBar}>
       <ProfileSwitcherButton profile={userProfile} onPress={() => setSwitcherOpen(true)} />
       <View style={styles.topBarActions}>
-        {canAddProduct ? (
-          <IconButton
-            icon={<PlusIcon color={color.text} size={24} strokeWidth={1.8} />}
-            accessibilityLabel="Create"
-            onPress={() => setCreateOpen(true)}
-          />
-        ) : null}
+        <IconButton
+          icon={<PlusIcon color={color.text} size={24} strokeWidth={1.8} />}
+          accessibilityLabel="Create"
+          onPress={() => setCreateOpen(true)}
+        />
         <IconButton
           icon={<TagIcon color={color.text} size={24} strokeWidth={1.8} />}
           accessibilityLabel="Tags"
@@ -241,6 +241,14 @@ export default function ProfileScreen() {
       />
 
       <Sheet visible={createOpen} onClose={() => setCreateOpen(false)} title="Create">
+        <SheetRow
+          label="New project"
+          hint="A build, install or finished job, with the people and products behind it."
+          onPress={() => {
+            setCreateOpen(false);
+            router.push(PROJECT_CREATE_ROUTE);
+          }}
+        />
         {canAddProduct ? (
           <SheetRow
             label="Add a product"

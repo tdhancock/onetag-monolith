@@ -9,6 +9,7 @@ import type { AuthStatus } from '../../features/auth';
 import type { CurrentProfileStatus } from '../../features/profiles';
 import type { ProfileId } from '../../types';
 import { productRoute } from './products';
+import { projectRoute } from './projects';
 
 // ─── Where a destination goes ───────────────────────────────────────────
 
@@ -23,6 +24,7 @@ type RouteBuilders = {
 const DESTINATION_ROUTES: RouteBuilders = {
   profile: ({ username }) => `/user/${encodeURIComponent(username)}`,
   product: ({ productId }) => productRoute(productId),
+  project: ({ projectId }) => projectRoute(projectId),
 };
 
 /** The route a destination lives at, or null for a kind this build cannot route. */

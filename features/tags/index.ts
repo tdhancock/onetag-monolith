@@ -14,10 +14,11 @@ export {
   setTagActive,
   deleteTag,
   mapTagRow,
+  fetchDestinationScanCount,
   TAG_SELECT,
 } from './api';
 export { tagKeys } from './keys';
-export { useTagQuery, useMyTagsQuery, useMyTagQuery } from './queries';
+export { useTagQuery, useMyTagsQuery, useMyTagQuery, useDestinationScanCountQuery } from './queries';
 export {
   useRecordScan,
   useCreateTag,

@@ -10,6 +10,12 @@
 
 import { supabase } from '../../services/supabase.native';
 import { uploadDeviceImages } from '../../services/destinationMedia';
+import {
+  mapProductSummaryRow,
+  PRODUCT_SUMMARY_SELECT,
+  type ProductSummary,
+  type ProductSummaryRow,
+} from '../../services/productRows';
 import type { AuthUserId } from '../../types';
 import type {
   Product,
@@ -17,13 +23,10 @@ import type {
   ProductFields,
   ProductMedia,
   ProductMediaRow,
-  ProductProject,
-  ProductProjectRow,
   ProductRow,
+  ProductSearchResult,
   ProductSpec,
   ProductSpecRow,
-  ProductSummary,
-  ProductSummaryRow,
   SpecInput,
 } from './types';
 
@@ -37,10 +40,6 @@ export const PRODUCT_SELECT =
   'product_media(id, url, media_type, sort_order), ' +
   'product_specs(id, label, value, sort_order), ' +
   'business:profiles!business_profile_id(id, username, full_name, avatar_url, is_verified)';
-
-/** What a grid or list shows: the product, and its images' URLs and order to pick the first. */
-export const PRODUCT_SUMMARY_SELECT =
-  'id, business_profile_id, name, category, price_cents, currency, available, product_media(url, sort_order)';
 
 const one = <T>(embed: T | T[] | null | undefined): T | null =>
   Array.isArray(embed) ? embed[0] ?? null : embed ?? null;
@@ -88,21 +87,6 @@ export const mapProductRow = (row: ProductRow): Product => {
   };
 };
 
-/** The first image by sort order: what represents a product everywhere else. */
-export const representativeImage = (media: Pick<ProductMediaRow, 'url' | 'sort_order'>[] | null | undefined): string | null =>
-  [...(media ?? [])].sort(bySortOrder)[0]?.url ?? null;
-
-export const mapProductSummaryRow = (row: ProductSummaryRow): ProductSummary => ({
-  id: row.id,
-  businessProfileId: row.business_profile_id,
-  name: row.name,
-  category: row.category,
-  priceCents: row.price_cents,
-  currency: row.currency,
-  available: row.available,
-  imageUrl: representativeImage(row.product_media),
-});
-
 // ─── Reads ───────────────────────────────────────────────────────────────
 
 /** One product with everything its page shows, or null when there is none. */
@@ -123,31 +107,31 @@ export const fetchBusinessProducts = async (businessProfileId: string): Promise<
   return ((data ?? []) as unknown as ProductSummaryRow[]).map(mapProductSummaryRow);
 };
 
+/** How many products a picker search returns. */
+export const PRODUCT_SEARCH_LIMIT = 25;
+
 /**
- * The Projects that Link a product, newest first — "Used in Projects".
- *
- * Read from the product's side of `project_products`. A link is visible only
- * where its project is, so a private project stays out of it for everyone
- * but its owner and contributors, as RLS decides.
+ * Products by name, from every business — for a project to Link (ONE-41),
+ * which may Link any business's products, not only its owner's. An empty
+ * search lists the newest. PostgREST reads `*` and `%` in a pattern as
+ * wildcards, so they are taken out of what was typed.
  */
-export const fetchProductProjects = async (productId: string): Promise<ProductProject[]> => {
-  const { data, error } = await supabase
-    .from('project_products')
-    .select('project:projects(id, name, project_type, year, cover_url, created_at)')
-    .eq('product_id', productId);
+export const searchProducts = async (query: string): Promise<ProductSearchResult[]> => {
+  let request = supabase
+    .from('products')
+    .select(`${PRODUCT_SUMMARY_SELECT}, business:profiles!business_profile_id(username, full_name)`);
+  const term = query.replace(/[%*]/g, '').trim();
+  if (term) request = request.ilike('name', `%${term}%`);
+
+  const { data, error } = await request.order('created_at', { ascending: false }).limit(PRODUCT_SEARCH_LIMIT);
   if (error) throw error;
 
-  return ((data ?? []) as unknown as { project: (ProductProjectRow & { created_at: string }) | null }[])
-    .map((row) => one(row.project))
-    .filter((project): project is ProductProjectRow & { created_at: string } => project !== null)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .map((project) => ({
-      id: project.id,
-      name: project.name,
-      projectType: project.project_type,
-      year: project.year,
-      coverUrl: project.cover_url,
-    }));
+  return ((data ?? []) as unknown as (ProductSummaryRow & { business?: ProductBusinessRow | ProductBusinessRow[] | null })[]).map(
+    (row) => {
+      const business = one(row.business);
+      return { ...mapProductSummaryRow(row), businessName: business ? business.full_name || business.username : null };
+    },
+  );
 };
 
 // ─── Writes ──────────────────────────────────────────────────────────────

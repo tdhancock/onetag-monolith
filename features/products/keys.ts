@@ -8,6 +8,6 @@ export const productKeys = {
   ...base,
   /** Every product one business lists. */
   business: (businessProfileId: string) => base.list({ businessProfileId }),
-  /** The Projects that Link one product. */
-  projects: (productId: string) => [...base.all, 'projects', productId] as const,
+  /** A picker's search across every business's products. */
+  search: (query: string) => base.list({ search: query }),
 };
