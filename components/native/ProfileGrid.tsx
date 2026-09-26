@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { Pressable, Skeleton } from './ui';
+import TaggedBadge from './TaggedBadge';
 import {
   firstLine,
   profileGridTileSize,
@@ -60,6 +61,7 @@ export const GridTile: React.FC<GridTileProps> = React.memo(({ post, index, onPr
           transition={200}
         />
       )}
+      {!isTextPost && <TaggedBadge count={post.embeddedTags?.length ?? 0} compact />}
     </Pressable>
   );
 });
