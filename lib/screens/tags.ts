@@ -18,9 +18,30 @@ export const TAG_TYPE_LABEL: Record<TagType, string> = {
   embedded: 'Embedded',
 };
 
-/** How a destination reads in a row: the profile's name and handle. */
-export const destinationLabel = (destination: OwnedTagDestination | null): string =>
-  destination ? `${destination.name} · @${destination.username}` : 'Destination removed';
+/** How a destination reads in a row: a profile's name and handle, or a product's or project's name and kind. */
+export const destinationLabel = (destination: OwnedTagDestination | null): string => {
+  if (!destination) return 'Destination removed';
+  switch (destination.kind) {
+    case 'profile':
+      return `${destination.name} · @${destination.username}`;
+    case 'product':
+      return `${destination.name} · Product`;
+    case 'project':
+      return `${destination.name} · Project`;
+  }
+};
+
+/** A destination's id, whatever its kind. */
+export const destinationIdOf = (destination: OwnedTagDestination): string => {
+  switch (destination.kind) {
+    case 'profile':
+      return destination.profileId;
+    case 'product':
+      return destination.productId;
+    case 'project':
+      return destination.projectId;
+  }
+};
 
 /** A tag's name, or its destination when it has none. */
 export const tagTitle = (tag: Pick<OwnedTag, 'name' | 'destination'>): string =>
@@ -46,10 +67,15 @@ export const tagDetailRoute = (tagId: string): string => `/tags/${encodeURICompo
 
 export const tagExportRoute = (tagId: string): string => `/tags/${encodeURIComponent(tagId)}/export`;
 
-/** What the create flow can start with: a replacement's type and destination. */
+/**
+ * What the create flow can start with: a replacement's type and destination,
+ * or a product's or project's own page pre-filling itself (ONE-89). The kind
+ * says which the destination id is; a missing one reads as a profile.
+ */
 export interface TagCreatePrefill {
   type?: string;
   destination?: string;
+  kind?: string;
 }
 
 export const tagCreateRoute = (prefill: TagCreatePrefill = {}) => ({
@@ -63,7 +89,11 @@ export const tagCreateRoute = (prefill: TagCreatePrefill = {}) => ({
  * owner deactivates it deliberately.
  */
 export const replacementRoute = (tag: Pick<OwnedTag, 'tagType' | 'destination'>) =>
-  tagCreateRoute({ type: tag.tagType, destination: tag.destination?.profileId });
+  tagCreateRoute({
+    type: tag.tagType,
+    destination: tag.destination ? destinationIdOf(tag.destination) : undefined,
+    kind: tag.destination?.kind,
+  });
 
 // ─── The dashboard: filters ─────────────────────────────────────────────
 
@@ -172,12 +202,13 @@ export const CREATABLE_TAG_TYPES: { type: CreatableTagType; label: string; descr
 const isCreatableType = (value: unknown): value is CreatableTagType =>
   value === 'physical' || value === 'digital';
 
-/**
- * The destination a draft points at. One member per kind, like the tag's own
- * destination columns: M5 adds `product` and `project` here and as sections
- * in `destinationSections`.
- */
-export type DraftDestination = { kind: 'profile'; id: string };
+/** The destination a draft points at: one of the three kinds the tag's columns hold. */
+export type DraftDestination = { kind: 'profile' | 'product' | 'project'; id: string };
+
+const DESTINATION_KINDS: DraftDestination['kind'][] = ['profile', 'product', 'project'];
+
+const isDestinationKind = (value: unknown): value is DraftDestination['kind'] =>
+  DESTINATION_KINDS.includes(value as DraftDestination['kind']);
 
 export interface TagDraft {
   tagType: CreatableTagType | null;
@@ -193,7 +224,10 @@ export interface DestinationOption {
   destination: DraftDestination;
   title: string;
   subtitle: string;
-  avatarUri: string | null;
+  /** A profile's avatar, drawn round. */
+  avatarUri?: string | null;
+  /** A product's or project's picture, drawn square; null for one without. */
+  imageUri?: string | null;
 }
 
 export interface DestinationSection {
@@ -211,13 +245,34 @@ export interface OwnedProfileChoice {
   profilePicture?: string | null;
 }
 
+/** A product, as much of one as the picker shows. */
+export interface OwnedProductChoice {
+  id: string;
+  name: string;
+  category?: string | null;
+  imageUrl?: string | null;
+}
+
+/** A project, as much of one as the picker shows. */
+export interface OwnedProjectChoice {
+  id: string;
+  name: string;
+  projectType?: string | null;
+  coverUrl?: string | null;
+  isPublic?: boolean;
+}
+
 /**
- * The destination picker's sections: today, the profiles the account owns and
- * nothing else — no posts (ONE-83), and nobody else's profile, since RLS would
- * refuse the insert and a legitimate-looking choice must not end in an error.
- * M5 appends Products and Projects as further sections.
+ * The destination picker's sections: the profiles, products and projects the
+ * account owns, and nothing else (ONE-89) — no posts (ONE-83), and nothing of
+ * anyone else's, since RLS would refuse the insert and a legitimate-looking
+ * choice must not end in an error. A kind with nothing to offer is left out.
  */
-export const destinationSections = (ownedProfiles: OwnedProfileChoice[]): DestinationSection[] =>
+export const destinationSections = (
+  ownedProfiles: OwnedProfileChoice[],
+  ownedProducts: OwnedProductChoice[] = [],
+  ownedProjects: OwnedProjectChoice[] = [],
+): DestinationSection[] =>
   [
     {
       kind: 'profile' as const,
@@ -227,6 +282,28 @@ export const destinationSections = (ownedProfiles: OwnedProfileChoice[]): Destin
         title: profile.name || profile.username,
         subtitle: `@${profile.username} · ${profile.profileType === 'business' ? 'Business' : 'Individual'}`,
         avatarUri: profile.profilePicture ?? null,
+      })),
+    },
+    {
+      kind: 'product' as const,
+      title: 'Your products',
+      options: ownedProducts.map((product) => ({
+        destination: { kind: 'product' as const, id: product.id },
+        title: product.name,
+        subtitle: ['Product', product.category].filter(Boolean).join(' · '),
+        imageUri: product.imageUrl ?? null,
+      })),
+    },
+    {
+      kind: 'project' as const,
+      title: 'Your projects',
+      options: ownedProjects.map((project) => ({
+        destination: { kind: 'project' as const, id: project.id },
+        title: project.name,
+        subtitle: ['Project', project.projectType, project.isPublic === false ? 'Private' : null]
+          .filter(Boolean)
+          .join(' · '),
+        imageUri: project.coverUrl ?? null,
       })),
     },
   ].filter((section) => section.options.length > 0);
@@ -293,7 +370,8 @@ export const initialTagCreate = (
   sections: DestinationSection[],
 ): { draft: TagDraft; step: TagCreateStep } => {
   const tagType = isCreatableType(prefill.type) ? prefill.type : null;
-  const wanted: DraftDestination | null = prefill.destination ? { kind: 'profile', id: prefill.destination } : null;
+  const kind = isDestinationKind(prefill.kind) ? prefill.kind : 'profile';
+  const wanted: DraftDestination | null = prefill.destination ? { kind, id: prefill.destination } : null;
   const destination = offers(sections, wanted) ? wanted : null;
   const draft: TagDraft = { ...EMPTY_TAG_DRAFT, tagType, destination };
 
@@ -308,7 +386,7 @@ export const newTagFromDraft = (draft: TagDraft, ownerProfileId: ProfileId): New
   return {
     ownerProfileId,
     tagType: draft.tagType,
-    destinationProfileId: draft.destination.id,
+    destination: { kind: draft.destination.kind, id: draft.destination.id },
     name: tagTextOrNull(draft.name),
     note: tagTextOrNull(draft.note),
   };

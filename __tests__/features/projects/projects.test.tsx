@@ -506,6 +506,13 @@ describe('managing a project', () => {
     expect(mockRouter.push).toHaveBeenCalledWith('/project/pj-barn/edit');
   });
 
+  it('offers the owner a tag for it, pre-filled with the project (ONE-89)', async () => {
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Manage project'));
+    await click(byLabel(el, 'Create tag'));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/tags/create', params: { destination: 'pj-barn', kind: 'project' } });
+  });
+
   it('names that contributors lose the link and tags stop resolving, and deletes only on confirmation', async () => {
     const el = await mount(<ProjectScreen />);
     await click(byLabel(el, 'Manage project'));

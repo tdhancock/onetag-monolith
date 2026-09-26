@@ -6,6 +6,7 @@ import { supabase } from '../../services/supabase.native';
 import { isValidShortCode } from '../../lib/tagLinks';
 import type { ProfileId } from '../../types';
 import type {
+  DestinationNamedRow,
   DestinationProfileRow,
   NewTag,
   OwnedTag,
@@ -90,13 +91,16 @@ export const recordScan = async (tagId: string, scannerProfileId: ProfileId | nu
 // as the owner, and RLS refuses it for anyone else.
 
 /**
- * The columns an owner reads, with the destination profile embedded. `tags`
- * has two foreign keys to `profiles` — its owner and its destination — so the
- * embed names the column it follows.
+ * The columns an owner reads, with the destination embedded — a profile, a
+ * product or a project (ONE-89). `tags` has two foreign keys to `profiles` —
+ * its owner and its destination — so each embed names the column it follows.
  */
 export const TAG_SELECT =
-  'id, owner_profile_id, tag_type, format, name, note, short_code, active, created_at, dest_profile_id, ' +
-  'dest_profile:profiles!dest_profile_id(id, username, full_name, profile_type)';
+  'id, owner_profile_id, tag_type, format, name, note, short_code, active, created_at, ' +
+  'dest_profile_id, dest_product_id, dest_project_id, ' +
+  'dest_profile:profiles!dest_profile_id(id, username, full_name, profile_type), ' +
+  'dest_product:products!dest_product_id(id, name), ' +
+  'dest_project:projects!dest_project_id(id, name)';
 
 const one = <T>(embed: T | T[] | null | undefined): T | null =>
   Array.isArray(embed) ? embed[0] ?? null : embed ?? null;
@@ -112,8 +116,11 @@ const destinationFromRow = (row: TagRow): OwnedTagDestination | null => {
       profileType: profile.profile_type,
     };
   }
-  // A destination column this build does not read yet (M5's products and
-  // projects), or a profile the owner can no longer see.
+  const product: DestinationNamedRow | null = one(row.dest_product);
+  if (row.dest_product_id && product) return { kind: 'product', productId: product.id, name: product.name };
+  const project: DestinationNamedRow | null = one(row.dest_project);
+  if (row.dest_project_id && project) return { kind: 'project', projectId: project.id, name: project.name };
+  // A destination that is gone, or one the owner can no longer see.
   return null;
 };
 
@@ -205,7 +212,8 @@ export const createTag = async (tag: NewTag): Promise<OwnedTag> => {
       format: tag.tagType === 'physical' ? 'qr' : null,
       name: tag.name,
       note: tag.note,
-      dest_profile_id: tag.destinationProfileId,
+      // Exactly one destination column, the one for its kind (ONE-89).
+      [DESTINATION_COLUMN[tag.destination.kind]]: tag.destination.id,
     })
     .select(TAG_SELECT)
     .single();

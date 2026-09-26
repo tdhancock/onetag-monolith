@@ -26,6 +26,7 @@ import { RowSkeletons, SectionError } from '../../components/native/SectionState
 import { Button, EmptyState, IconButton, ListRow, MonoLabel, Pressable, Sheet, SheetRow, Skeleton } from '../../components/native/ui';
 import { DotsHorizontalIcon, XIcon } from '../../components/native/Icons';
 import { onwardActionsFor } from '../../lib/screens/tagResolution';
+import { tagCreateRoute } from '../../lib/screens/tags';
 import { productRoute } from '../../lib/screens/products';
 import {
   canManageProject,
@@ -439,6 +440,14 @@ function OwnerMenu({
         onPress={() => {
           onClose();
           router.push(projectEditRoute(project.id));
+        }}
+      />
+      <SheetRow
+        label="Create tag"
+        hint="A QR code or a link that leads here, for people without the app too."
+        onPress={() => {
+          onClose();
+          router.push(tagCreateRoute({ destination: project.id, kind: 'project' }));
         }}
       />
       <SheetRow

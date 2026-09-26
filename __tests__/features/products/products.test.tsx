@@ -581,6 +581,13 @@ describe('managing a product', () => {
     expect(mockRouter.push).toHaveBeenCalledWith('/product/pd-door/edit');
   });
 
+  it('offers the listing business a tag for it, pre-filled with the product (ONE-89)', async () => {
+    const el = await mount(<ProductScreen />);
+    await click(byLabel(el, 'Manage product'));
+    await click(byLabel(el, 'Create tag'));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/tags/create', params: { destination: 'pd-door', kind: 'product' } });
+  });
+
   it('says that tags pointing at it stop working before deleting, and deletes only on confirmation', async () => {
     const el = await mount(<ProductScreen />);
     await click(byLabel(el, 'Manage product'));

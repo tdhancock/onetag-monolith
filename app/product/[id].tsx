@@ -17,6 +17,7 @@ import { RowSkeletons, SectionError } from '../../components/native/SectionState
 import { EmptyState, IconButton, ListRow, MonoLabel, Sheet, SheetRow, Skeleton } from '../../components/native/ui';
 import { DotsHorizontalIcon } from '../../components/native/Icons';
 import { onwardActionsFor } from '../../lib/screens/tagResolution';
+import { tagCreateRoute } from '../../lib/screens/tags';
 import {
   canManageProduct,
   deleteProductConfirm,
@@ -307,6 +308,14 @@ function OwnerMenu({
         onPress={() => {
           onClose();
           router.push(productEditRoute(product.id));
+        }}
+      />
+      <SheetRow
+        label="Create tag"
+        hint="A QR code or a link that leads here, for people without the app too."
+        onPress={() => {
+          onClose();
+          router.push(tagCreateRoute({ destination: product.id, kind: 'product' }));
         }}
       />
       <SheetRow
