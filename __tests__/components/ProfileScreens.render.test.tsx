@@ -52,14 +52,14 @@ jest.mock('react-native', () => {
     useWindowDimensions: () => ({ width: 375, height: 812 }),
     Linking: { openURL: mockOpenURL },
   };
-}, { virtual: true });
+});
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
-}, { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
-jest.mock('expo-image-picker', () => require('../support/expoImagePickerStub'), { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
+});
+jest.mock('expo-image', () => require('../support/expoImageStub'));
+jest.mock('expo-image-picker', () => require('../support/expoImagePickerStub'));
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
@@ -71,7 +71,7 @@ jest.mock('expo-router', () => ({
   Stack: {
     Screen: (p: { options?: { headerRight?: () => unknown } }) => (p.options?.headerRight ? p.options.headerRight() : null),
   },
-}), { virtual: true });
+}));
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
@@ -103,7 +103,7 @@ const mockApp = {
   toggleBlockUser: jest.fn(),
   triggerHapticFeedback: jest.fn(),
 };
-jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }), { virtual: true });
+jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }));
 
 const mockFollowToggle = jest.fn();
 const mockUpdateProfile = jest.fn(() => Promise.resolve());
@@ -126,19 +126,19 @@ jest.mock('../../features/profiles', () => ({
   useUpdateProfile: () => ({ mutateAsync: mockUpdateProfile }),
   useUpdateBusinessProfile: () => ({ mutateAsync: mockUpdateBusiness }),
   useUploadAvatar: () => ({ mutateAsync: jest.fn() }),
-}), { virtual: true });
-jest.mock('../../lib/realtimeBridge', () => ({ useRealtimeSync: jest.fn() }), { virtual: true });
+}));
+jest.mock('../../lib/realtimeBridge', () => ({ useRealtimeSync: jest.fn() }));
 jest.mock('../../features/posts', () => ({
   getSavedPosts: () => Promise.resolve([]),
   getPostLikers: () => Promise.resolve([]),
   getPostReposters: () => Promise.resolve([]),
-}), { virtual: true });
-jest.mock('../../features/admin', () => ({ setUserVerified: jest.fn(), useIsAdmin: () => state.isAdmin }), { virtual: true });
-jest.mock('../../features/auth', () => ({ useAuthUserId: () => 'a-me' }), { virtual: true });
-jest.mock('../../features/moderation', () => ({ reportUser: jest.fn(() => Promise.resolve(true)) }), { virtual: true });
+}));
+jest.mock('../../features/admin', () => ({ setUserVerified: jest.fn(), useIsAdmin: () => state.isAdmin }));
+jest.mock('../../features/auth', () => ({ useAuthUserId: () => 'a-me' }));
+jest.mock('../../features/moderation', () => ({ reportUser: jest.fn(() => Promise.resolve(true)) }));
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: jest.fn(() => Promise.resolve()) }),
-}), { virtual: true });
+}));
 
 import OwnProfileScreen from '../../app/(tabs)/profile';
 import UserProfileScreen from '../../app/user/[username]';

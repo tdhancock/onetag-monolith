@@ -13,9 +13,7 @@
 
 // The transforms under test are pure, but they live beside the picker
 // wrapper, so the native module has to be stubbed for the import to resolve.
-jest.mock('expo-image-picker', () => require('./support/expoImagePickerStub'), {
-  virtual: true,
-});
+jest.mock('expo-image-picker', () => require('./support/expoImagePickerStub'));
 
 import {
   attachmentFromParams,

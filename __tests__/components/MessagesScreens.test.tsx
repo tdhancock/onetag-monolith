@@ -45,13 +45,13 @@ jest.mock('react-native', () => {
     Platform: { OS: 'ios' },
     Linking: { openURL: jest.fn() },
   };
-}, { virtual: true });
+});
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
-}, { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
+});
+jest.mock('expo-image', () => require('../support/expoImageStub'));
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 const mockPush = jest.fn();
 const mockParams: { current: Record<string, string> } = { current: {} };
@@ -79,19 +79,19 @@ jest.mock('expo-router', () => {
     useLocalSearchParams: () => mockParams.current,
     Stack: { Screen },
   };
-}, { virtual: true });
+});
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
 const mockApp = { addToast: jest.fn(), triggerHapticFeedback: jest.fn() };
-jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }), { virtual: true });
+jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }));
 
 const mockSearchUsers = jest.fn((_q: string) => Promise.resolve([] as unknown[]));
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profile: { username: 'me', name: 'Me', profilePicture: null }, profileId: 'p-me' }),
   getUserProfile: jest.fn(() => Promise.resolve(null)),
   searchUsers: (q: string) => mockSearchUsers(q),
-}), { virtual: true });
+}));
 
 const ana = { id: 'p-ana', username: 'ana', name: 'Ana Silva', avatar: null };
 const bo = { id: 'p-bo', username: 'bo', name: 'Bo', avatar: null };
@@ -131,13 +131,13 @@ jest.mock('../../features/messages', () => ({
   useMarkAllMessagesRead: () => ({ mutate: mockMarkAll }),
   useDeleteConversation: () => ({ mutate: mockDelete }),
   isPendingMessage: (m: { id: string }) => m.id.startsWith('temp-'),
-}), { virtual: true });
+}));
 
 const sharedPost = { id: 'post-9', username: 'ana', avatar: null, content: 'Kitchen install\nsecond line', media_type: 'text' };
 const mockFetchPost = jest.fn((_id: string) => Promise.resolve(sharedPost as unknown));
 jest.mock('../../features/posts', () => ({
   fetchPostById: (id: string) => mockFetchPost(id),
-}), { virtual: true });
+}));
 
 import MessagesScreen from '../../app/messages';
 import SharePostScreen from '../../app/share-post';

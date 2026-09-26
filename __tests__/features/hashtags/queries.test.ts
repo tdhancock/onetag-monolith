@@ -21,7 +21,7 @@ import { hashtagKeys } from '../../../features/hashtags/keys';
 
 jest.mock('../../../services/supabase.native', () => ({
   supabase: { from: jest.fn() },
-}), { virtual: true });
+}));
 
 type QueryOptions = { queryKey: readonly unknown[]; queryFn: unknown };
 

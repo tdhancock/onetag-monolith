@@ -35,7 +35,7 @@ jest.mock('react-native', () => {
       ),
     );
   return { ...shim, FlatList };
-}, { virtual: true });
+});
 jest.mock('expo-image', () => {
   const React = require('react');
   const Image = (props: { source?: { uri: string }; style?: unknown }) =>
@@ -44,28 +44,28 @@ jest.mock('expo-image', () => {
       'data-opacity': String(require('../support/reactNativeDom').flattenStyle(props.style).opacity ?? 1),
     });
   return { Image };
-}, { virtual: true });
+});
 jest.mock('expo-linear-gradient', () => {
   const React = require('react');
   return {
     LinearGradient: (props: { colors: string[]; children?: React.ReactNode }) =>
       React.createElement('div', { 'data-gradient': props.colors.join(',') }, props.children),
   };
-}, { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
+});
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 const mockIsStoryViewed = jest.fn();
 jest.mock('../../store/AppContext.native', () => ({
   useApp: () => ({ isStoryViewed: mockIsStoryViewed }),
-}), { virtual: true });
+}));
 
 const mockMyStories: { current: unknown[] } = { current: [] };
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profileId: 'p-me' }),
-}), { virtual: true });
+}));
 jest.mock('../../features/stories', () => ({
   useMyStoriesQuery: () => ({ data: mockMyStories.current }),
-}), { virtual: true });
+}));
 
 import StoryReel, { REEL_CARD_WIDTH, REEL_CARD_HEIGHT, VIEWED_OPACITY } from '../../components/native/StoryReel';
 import type { StoryGroup } from '../../components/native/StoryReel';

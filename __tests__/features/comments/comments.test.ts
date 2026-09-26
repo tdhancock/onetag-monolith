@@ -13,7 +13,7 @@
 
 jest.mock('../../../services/supabase.native', () => ({
   supabase: { from: jest.fn(), auth: { getUser: jest.fn() } },
-}), { virtual: true });
+}));
 
 import { QueryClient } from '@tanstack/react-query';
 import type { InfiniteData } from '@tanstack/react-query';

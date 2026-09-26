@@ -12,7 +12,7 @@
 
 // ─── 1. Mock react-native ────────────────────────────────────────────────
 
-jest.mock('react-native', () => require('../../support/reactNativeDom'), { virtual: true });
+jest.mock('react-native', () => require('../../support/reactNativeDom'));
 
 // ─── 2. Imports ─────────────────────────────────────────────────────────
 

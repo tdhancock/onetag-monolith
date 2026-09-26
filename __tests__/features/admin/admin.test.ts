@@ -19,7 +19,7 @@ jest.mock('../../../services/supabase.native', () => ({
       },
     }),
   },
-}), { virtual: true });
+}));
 
 let mockUpdateResult: { data: unknown[] | null; error: unknown } = { data: [{ id: 'p1' }], error: null };
 

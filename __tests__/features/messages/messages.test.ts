@@ -14,7 +14,7 @@ const mockFetchMessageById = jest.fn();
 
 jest.mock('../../../services/supabase.native', () => ({
   supabase: { from: jest.fn() },
-}), { virtual: true });
+}));
 
 jest.mock('../../../features/messages/api', () => ({
   sendMessage: (...args: unknown[]) => mockSendMessage(...args),

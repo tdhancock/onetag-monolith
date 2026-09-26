@@ -35,7 +35,7 @@ jest.mock('../../services/supabase.native', () => ({
     channel: jest.fn(),
     removeChannel: (...args: unknown[]) => removeChannel(...args),
   },
-}), { virtual: true });
+}));
 
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';

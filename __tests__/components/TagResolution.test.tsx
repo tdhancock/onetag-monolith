@@ -24,13 +24,13 @@ import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-jest.mock('react-native', () => require('../support/reactNativeDom'), { virtual: true });
+jest.mock('react-native', () => require('../support/reactNativeDom'));
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
-}, { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
+});
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
+jest.mock('expo-image', () => require('../support/expoImageStub'));
 
 const mockReplace = jest.fn();
 const mockPush = jest.fn();
@@ -39,7 +39,7 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace, push: mockPush }),
   useLocalSearchParams: () => mockParams,
   Stack: { Screen: () => null },
-}), { virtual: true });
+}));
 
 const mockWho = {
   auth: 'signed-in' as 'unknown' | 'signed-in' | 'signed-out',

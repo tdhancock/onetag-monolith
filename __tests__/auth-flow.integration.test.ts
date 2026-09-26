@@ -115,7 +115,7 @@ jest.mock('../services/supabase.native', () => {
       mockFrom,
     },
   };
-}, { virtual: true });
+});
 
 // Bring the test-only handles into scope. Cast for typing convenience.
 const { supabase: mockedSupabase } = require('../services/supabase.native') as any;

@@ -20,20 +20,20 @@ import { act } from 'react';
 jest.mock('react-native', () => {
   const shim = require('../support/reactNativeDom');
   return { ...shim, Linking: { openSettings: jest.fn(() => Promise.resolve()) } };
-}, { virtual: true });
+});
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
-}, { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
+});
+jest.mock('expo-image', () => require('../support/expoImageStub'));
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 const mockPush = jest.fn();
 const mockNavigate = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush, navigate: mockNavigate }),
   useFocusEffect: () => undefined,
-}), { virtual: true });
+}));
 
 const camera = {
   permission: { granted: true, canAskAgain: true } as { granted: boolean; canAskAgain: boolean } | null,
@@ -47,26 +47,26 @@ jest.mock('expo-camera', () => {
     return React.createElement('div', { 'data-camera': 'true' });
   });
   return { CameraView, useCameraPermissions: () => [camera.permission, camera.requestPermission] };
-}, { virtual: true });
+});
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
 const mockApp = { addToast: jest.fn(), triggerHapticFeedback: jest.fn() };
-jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }), { virtual: true });
+jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }));
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profile: { username: 'me', profilePicture: null }, profileId: 'p-me' }),
-}), { virtual: true });
+}));
 const upload = { resolve: () => {} };
 const mockUpload = jest.fn(
   (_input: unknown) => new Promise<void>((resolve) => { upload.resolve = resolve; }),
 );
 jest.mock('../../features/stories', () => ({
   useUploadStory: () => ({ mutateAsync: mockUpload }),
-}), { virtual: true });
+}));
 const mockPick = jest.fn(() =>
   Promise.resolve({ status: 'selected', media: { uri: 'file://library.jpg', width: 1080, height: 1350 } } as unknown),
 );
-jest.mock('../../services/mediaPicker', () => ({ pickImageFromLibrary: () => mockPick() }), { virtual: true });
+jest.mock('../../services/mediaPicker', () => ({ pickImageFromLibrary: () => mockPick() }));
 
 import CameraScreen from '../../app/(tabs)/camera';
 import { Linking } from 'react-native';

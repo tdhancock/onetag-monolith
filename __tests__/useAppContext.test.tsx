@@ -78,7 +78,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
       delete mockAsyncStore[key];
     }),
   },
-}), { virtual: true });
+}));
 
 // Haptics fire on like/repost/save. Never invoked by these tests, but the
 // import has to resolve.
@@ -86,7 +86,7 @@ jest.mock('expo-haptics', () => ({
   __esModule: true,
   impactAsync: jest.fn(async () => undefined),
   ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-}), { virtual: true });
+}));
 
 jest.mock('../services/supabase.native', () => ({
   supabase: {
@@ -107,13 +107,13 @@ jest.mock('../services/supabase.native', () => ({
     })),
     removeChannel: jest.fn(),
   },
-}), { virtual: true });
+}));
 
 // The session sync makes sure a profile row exists before recording who is
 // signed in. The real function talks to Supabase; the suite drives its outcome.
 jest.mock('../services/profileBootstrap', () => ({
   ensureCurrentUserProfile: jest.fn(async () => true),
-}), { virtual: true });
+}));
 
 // features/blocks talks to Supabase and TanStack Query. This suite is about
 // the provider, so the feature is stubbed and only the calls the provider
@@ -147,15 +147,15 @@ jest.mock('../features/profiles', () => ({
   },
   // The switch reset is exercised in __tests__/features/profiles/activeProfile.test.ts.
   useProfileSwitchReset: (...args: unknown[]) => mockProfileSwitchReset(...args),
-}), { virtual: true });
+}));
 
 jest.mock('../features/notifications', () => ({
   useNotificationsRealtime: jest.fn(),
-}), { virtual: true });
+}));
 
 jest.mock('../features/messages', () => ({
   useMessagesRealtime: jest.fn(),
-}), { virtual: true });
+}));
 
 jest.mock('../features/blocks', () => ({
   useBlockedUsers: () => ({
@@ -167,7 +167,7 @@ jest.mock('../features/blocks', () => ({
   useBlockToggle: () => ({ toggle: jest.fn(), isPending: false }),
   migrateLocalBlocks: (...args: unknown[]) => mockMigrateLocalBlocks(...(args as [])),
   blockKeys: { all: ['blocks'] },
-}), { virtual: true });
+}));
 
 // ─── 2. Imports under test ──────────────────────────────────────────────
 import React, { useEffect } from 'react';

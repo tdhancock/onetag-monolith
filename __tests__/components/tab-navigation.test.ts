@@ -45,9 +45,9 @@ jest.mock('react-native', () => {
     Text: passthrough('span'),
     StyleSheet: { create: (sheet: unknown) => sheet, hairlineWidth: 1 },
   };
-}, { virtual: true });
+});
 
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 jest.mock('expo-router', () => {
   const React = require('react');
@@ -61,17 +61,17 @@ jest.mock('expo-router', () => {
   Screen.displayName = 'TabsScreen';
   Tabs.Screen = Screen;
   return { __esModule: true, Tabs, useRouter: () => ({ push: mockPush }) };
-}, { virtual: true });
+});
 
 jest.mock('react-native-safe-area-context', () => ({
   __esModule: true,
   useSafeAreaInsets: () => mockInsets,
-}), { virtual: true });
+}));
 
 jest.mock('../../store/AppContext.native', () => ({
   __esModule: true,
   useApp: () => mockAppState,
-}), { virtual: true });
+}));
 
 // The acting profile comes from features/profiles since ONE-22, not the context.
 jest.mock('../../features/profiles', () => ({
@@ -82,17 +82,17 @@ jest.mock('../../features/profiles', () => ({
     authUserId: 'auth-u1',
     status: 'ready',
   }),
-}), { virtual: true });
+}));
 
 jest.mock('../../features/notifications', () => ({
   __esModule: true,
   useUnreadNotificationCount: () => mockNotifications.current.filter((n) => !n.is_read).length,
-}), { virtual: true });
+}));
 
 jest.mock('../../features/messages', () => ({
   __esModule: true,
   useUnreadMessageCount: () => mockUnreadMessages.count,
-}), { virtual: true });
+}));
 
 import TabLayout from '../../app/(tabs)/_layout';
 import { color, type } from '../../theme/tokens';

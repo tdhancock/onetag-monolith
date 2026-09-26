@@ -24,9 +24,9 @@ jest.mock('react-native', () => {
     Text: passthrough('span'),
     StyleSheet: { create: (sheet: unknown) => sheet, hairlineWidth: 1 },
   };
-}, { virtual: true });
+});
 
-jest.mock('expo-image', () => require('../../support/expoImageStub'), { virtual: true });
+jest.mock('expo-image', () => require('../../support/expoImageStub'));
 
 import Avatar, {
   initialsFrom,

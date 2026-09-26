@@ -25,7 +25,7 @@ jest.mock('react-native', () => {
     Pressable: passthrough('button'),
     StyleSheet: { create: (sheet: unknown) => sheet, hairlineWidth: 1 },
   };
-}, { virtual: true });
+});
 
 import IconButton, {
   badgeLabel,

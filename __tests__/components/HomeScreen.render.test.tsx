@@ -53,26 +53,24 @@ jest.mock('react-native', () => {
   const ScrollView = (props: { children?: React.ReactNode }) =>
     React.createElement('div', { 'data-scroll': 'true' }, props.children);
   return { ...shim, FlatList, RefreshControl, ActivityIndicator, ScrollView };
-}, { virtual: true });
+});
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return {
     SafeAreaView: (props: { children?: React.ReactNode }) =>
       React.createElement('div', { 'data-safe-area': 'true' }, props.children),
   };
-}, { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
+});
+jest.mock('expo-image', () => require('../support/expoImageStub'));
 jest.mock('expo-linear-gradient', () => {
   const React = require('react');
   return { LinearGradient: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
-}, { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
+});
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 const mockPush = jest.fn();
 const mockNavigate = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, navigate: mockNavigate }) }), {
-  virtual: true,
-});
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, navigate: mockNavigate }) }));
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
@@ -89,7 +87,7 @@ const mockApp = {
   isStoryViewed: () => false,
   triggerHapticFeedback: jest.fn(),
 };
-jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }), { virtual: true });
+jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }));
 
 const state = {
   following: [] as string[],
@@ -120,23 +118,23 @@ jest.mock('../../features/profiles', () => ({
   useToggleFollow: () => ({ toggle: mockFollowToggle }),
   profileKeys: { all: ['profiles'] },
   getSmartUserSuggestions: () => Promise.resolve(state.suggestions),
-}), { virtual: true });
-jest.mock('../../lib/realtimeBridge', () => ({ useRealtimeSync: jest.fn() }), { virtual: true });
+}));
+jest.mock('../../lib/realtimeBridge', () => ({ useRealtimeSync: jest.fn() }));
 jest.mock('../../features/notifications', () => ({
   useUnreadNotificationCount: () => state.notifications,
-}), { virtual: true });
+}));
 jest.mock('../../features/messages', () => ({
   useUnreadMessageCount: () => state.messages,
-}), { virtual: true });
+}));
 jest.mock('../../features/stories', () => ({
   useStoriesQuery: () => state.reel,
   useMyStoriesQuery: () => ({ data: [] }),
   useStoriesRealtime: jest.fn(),
   storyKeys: { lists: () => ['stories', 'list'] },
-}), { virtual: true });
+}));
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn() }),
-}), { virtual: true });
+}));
 jest.mock('../../features/posts', () => ({
   useFeedQuery: () => state.feed,
   fetchPostById: jest.fn(),
@@ -145,8 +143,8 @@ jest.mock('../../features/posts', () => ({
   replacePost: jest.fn(),
   removePost: jest.fn(),
   postKeys: { all: ['posts'], feed: () => ['posts', 'feed'] },
-}), { virtual: true });
-jest.mock('../../services/supabase.native', () => ({ supabase: {} }), { virtual: true });
+}));
+jest.mock('../../services/supabase.native', () => ({ supabase: {} }));
 
 import HomeFeedScreen from '../../app/(tabs)/index';
 import { HOME_HEADER_BRAND } from '../../lib/screens/home';

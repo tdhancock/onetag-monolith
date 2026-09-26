@@ -15,7 +15,7 @@ const mockSendMessage = jest.fn();
 
 jest.mock('../../../services/supabase.native', () => ({
   supabase: { from: jest.fn() },
-}), { virtual: true });
+}));
 
 jest.mock('../../../services/storyUpload', () => ({
   uriToUploadBlob: jest.fn(async () => ({ type: 'image/jpeg' })),

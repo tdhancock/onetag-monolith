@@ -23,13 +23,13 @@ import { act } from 'react';
 jest.mock('react-native', () => {
   const shim = require('../support/reactNativeDom');
   return { ...shim, Linking: { openSettings: jest.fn(() => Promise.resolve()) } };
-}, { virtual: true });
+});
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
-}, { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
+});
+jest.mock('expo-image', () => require('../support/expoImageStub'));
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 const mockPush = jest.fn();
 const mockNavigate = jest.fn();
@@ -37,7 +37,7 @@ const mockFocus: { effect: (() => void) | null } = { effect: null };
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush, navigate: mockNavigate }),
   useFocusEffect: (effect: () => void) => { mockFocus.effect = effect; },
-}), { virtual: true });
+}));
 
 type ScannerProps = {
   onBarcodeScanned?: (result: { type: string; data: string }) => void;
@@ -59,19 +59,19 @@ jest.mock('expo-camera', () => {
     return React.createElement('div', { 'data-camera': 'true' });
   });
   return { CameraView, useCameraPermissions: () => [camera.permission, camera.requestPermission] };
-}, { virtual: true });
+});
 
 const mockApp = { addToast: jest.fn(), triggerHapticFeedback: jest.fn() };
-jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }), { virtual: true });
+jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }));
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profile: { username: 'me', profilePicture: null }, profileId: 'p-me' }),
-}), { virtual: true });
+}));
 jest.mock('../../features/stories', () => ({
   useUploadStory: () => ({ mutateAsync: jest.fn(() => Promise.resolve()) }),
-}), { virtual: true });
+}));
 jest.mock('../../services/mediaPicker', () => ({
   pickImageFromLibrary: () => Promise.resolve({ status: 'cancelled' }),
-}), { virtual: true });
+}));
 
 import CameraScreen from '../../app/(tabs)/camera';
 import { buildTagUrl } from '../../lib/tagLinks';

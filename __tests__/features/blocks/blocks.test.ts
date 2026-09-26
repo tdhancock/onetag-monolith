@@ -17,7 +17,7 @@
 // import time; this suite never reaches the network through it.
 jest.mock('../../../services/supabase.native', () => ({
   supabase: { from: jest.fn() },
-}), { virtual: true });
+}));
 
 import { QueryClient, MutationObserver } from '@tanstack/react-query';
 import { toggleMutationOptions } from '../../../lib/optimisticToggle';

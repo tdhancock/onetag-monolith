@@ -22,22 +22,22 @@ jest.mock('react-native', () => {
   const shim = require('../support/reactNativeDom');
   const box = (props: { children?: React.ReactNode }) => React.createElement('div', null, props.children);
   return { ...shim, ScrollView: box, KeyboardAvoidingView: box, Platform: { OS: 'ios' } };
-}, { virtual: true });
+});
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
-}, { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
+});
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
+jest.mock('expo-image', () => require('../support/expoImageStub'));
 
 const mockBack = jest.fn();
 const mockDismissTo = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: mockBack, dismissTo: mockDismissTo }),
-}), { virtual: true });
+}));
 
 const mockToast = jest.fn();
-jest.mock('../../store/AppContext.native', () => ({ useApp: () => ({ addToast: mockToast }) }), { virtual: true });
+jest.mock('../../store/AppContext.native', () => ({ useApp: () => ({ addToast: mockToast }) }));
 
 const INDIVIDUAL = { id: 'p-ind', username: 'ana', name: 'Ana', profileType: 'individual' };
 const BUSINESS = { id: 'p-biz', username: 'ana_studio', name: 'Ana Studio', profileType: 'business' };
@@ -60,7 +60,7 @@ jest.mock('../../features/profiles', () => {
     useCreateProfile: () => ({ mutateAsync: mockCreate, isPending: false }),
     checkUsernameExists: (username: string) => Promise.resolve(mockState.taken.has(username)),
   };
-}, { virtual: true });
+});
 
 import CreateProfileScreen from '../../app/create-profile';
 import { USERNAME_CHECK_DEBOUNCE_MS } from '../../lib/screens/auth';

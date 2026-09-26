@@ -17,12 +17,12 @@ const mockPersisterConfig: Record<string, unknown> = {};
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
   default: { getItem: jest.fn(), setItem: jest.fn(), removeItem: jest.fn() },
-}), { virtual: true });
+}));
 
 jest.mock('expo-constants', () => ({
   __esModule: true,
   default: { expoConfig: { version: '1.0.8' } },
-}), { virtual: true });
+}));
 
 jest.mock('@tanstack/query-async-storage-persister', () => ({
   __esModule: true,

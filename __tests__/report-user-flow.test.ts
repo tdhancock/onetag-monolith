@@ -51,7 +51,7 @@ jest.mock('../services/supabase.native', () => ({
     auth: { getUser: (...args: unknown[]) => mockAuthGetUser(...args) },
     from: (...args: unknown[]) => mockFrom(...args),
   },
-}), { virtual: true });
+}));
 
 // Load the mocked supabase handle so features/moderation resolves against
 // the same mock instance.

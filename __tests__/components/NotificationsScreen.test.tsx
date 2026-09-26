@@ -41,22 +41,22 @@ jest.mock('react-native', () => {
           ),
     );
   return { ...shim, SectionList, RefreshControl: () => null };
-}, { virtual: true });
+});
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
-}, { virtual: true });
+});
 jest.mock('expo-image', () => {
   const React = require('react');
   return { Image: (p: { source?: { uri: string } }) => React.createElement('img', { src: p.source?.uri }) };
-}, { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
+});
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
   Stack: { Screen: () => null },
-}), { virtual: true });
+}));
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
@@ -87,12 +87,12 @@ const mockFollowToggle = jest.fn();
 jest.mock('../../features/notifications', () => ({
   useNotificationsQuery: () => state.query,
   useMarkAllRead: () => ({ mutate: mockMarkAll }),
-}), { virtual: true });
+}));
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profileId: 'p-me' }),
   useFollowState: () => ({ isFollowing: (u: string) => state.following.has(u) }),
   useToggleFollow: () => ({ toggle: mockFollowToggle, isPending: false }),
-}), { virtual: true });
+}));
 
 import NotificationsScreen from '../../app/notifications';
 

@@ -3,7 +3,7 @@
 //
 // The exports are `jest.fn()`s so a suite can drive them directly:
 //
-//   jest.mock('expo-image-picker', () => require('../support/expoImagePickerStub'), { virtual: true });
+//   jest.mock('expo-image-picker', () => require('../support/expoImagePickerStub'));
 //   import { launchImageLibraryAsync } from '../support/expoImagePickerStub';
 //
 // jest.mock hands back this same module instance, so the mock the suite

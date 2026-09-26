@@ -24,13 +24,13 @@ jest.mock('expo-device', () => ({
   get isDevice() {
     return mockIsDevice;
   },
-}), { virtual: true });
+}));
 
 jest.mock('react-native', () => ({
   get Platform() {
     return { OS: mockPlatformOS };
   },
-}), { virtual: true });
+}));
 
 jest.mock('expo-constants', () => ({
   __esModule: true,
@@ -50,7 +50,7 @@ jest.mock('expo-constants', () => ({
     Standalone: 'standalone',
     StoreClient: 'storeClient',
   },
-}), { virtual: true });
+}));
 
 jest.mock('expo-notifications', () => ({
   getPermissionsAsync: jest.fn(),
@@ -67,13 +67,13 @@ jest.mock('expo-notifications', () => ({
     capturedForegroundHandler = handler;
   }),
   AndroidImportance: { HIGH: 4 },
-}), { virtual: true });
+}));
 
 jest.mock('../../services/supabase.native', () => ({
   supabase: {
     from: jest.fn(),
   },
-}), { virtual: true });
+}));
 
 // ---------------------------------------------------------------------------
 // Imports (modules resolved after mocks are wired)

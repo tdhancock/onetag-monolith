@@ -20,7 +20,7 @@ jest.mock('react-native', () => {
     Text: passthrough('span'),
     StyleSheet: { create: (sheet: unknown) => sheet, hairlineWidth: 1 },
   };
-}, { virtual: true });
+});
 
 import Divider from '../../../components/native/ui/Divider';
 import type { DividerProps } from '../../../components/native/ui/Divider';

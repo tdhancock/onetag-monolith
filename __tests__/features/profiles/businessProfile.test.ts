@@ -14,7 +14,7 @@
 const mockFrom = jest.fn();
 jest.mock('../../../services/supabase.native', () => ({
   supabase: { from: (...args: unknown[]) => mockFrom(...args), auth: { getUser: jest.fn() } },
-}), { virtual: true });
+}));
 
 import {
   PROFILE_SELECT,

@@ -18,7 +18,7 @@
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
-jest.mock('../../services/supabase.native', () => ({ supabase: {} }), { virtual: true });
+jest.mock('../../services/supabase.native', () => ({ supabase: {} }));
 
 import { mapProfileUpdatesToRow } from '../../features/profiles/api';
 import { isProfileLocked, PRIVATE_ACCOUNT_DESCRIPTION } from '../../lib/screens/profile';

@@ -25,7 +25,7 @@ jest.mock('react-native', () => {
     Text: passthrough('span'),
     StyleSheet: { create: (sheet: unknown) => sheet, hairlineWidth: 1 },
   };
-}, { virtual: true });
+});
 
 import MonoLabel, { letterSpacingFor } from '../../../components/native/ui/MonoLabel';
 import type { MonoLabelProps } from '../../../components/native/ui/MonoLabel';

@@ -29,11 +29,11 @@ jest.mock('react-native', () => {
     AccessibilityInfo: {},
     StyleSheet: { create: (sheet: unknown) => sheet, hairlineWidth: 1 },
   };
-}, { virtual: true });
+});
 
-jest.mock('expo-image', () => require('../../support/expoImageStub'), { virtual: true });
+jest.mock('expo-image', () => require('../../support/expoImageStub'));
 // The barrel reaches the icons (ListRow, Sheet), and through them react-native-svg.
-jest.mock('react-native-svg', () => require('../../support/reactNativeSvgStub'), { virtual: true });
+jest.mock('react-native-svg', () => require('../../support/reactNativeSvgStub'));
 
 // The import line from the acceptance criterion, verbatim in spirit: every
 // primitive, one specifier. If this does not typecheck, tsc fails.

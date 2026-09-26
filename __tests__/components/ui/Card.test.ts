@@ -26,7 +26,7 @@ jest.mock('react-native', () => {
     Pressable: passthrough('button'),
     StyleSheet: { create: (sheet: unknown) => sheet, hairlineWidth: 1 },
   };
-}, { virtual: true });
+});
 
 import Card, { PRESSED_OPACITY } from '../../../components/native/ui/Card';
 import Pressable from '../../../components/native/ui/Pressable';
