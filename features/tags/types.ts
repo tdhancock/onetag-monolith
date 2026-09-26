@@ -116,6 +116,19 @@ export interface NewTag {
   note: string | null;
 }
 
+/**
+ * What embedding a tag in a post takes (ONE-46). The post's author owns it;
+ * the destination may be anyone's profile or product, or a public project
+ * (ONE-44). No format, name or note: an embedded tag carries none.
+ */
+export interface NewEmbeddedTag {
+  destination: TagDestinationRef;
+  /** 0–100 of the image content's width. */
+  xPct: number;
+  /** 0–100 of the image content's height. */
+  yPct: number;
+}
+
 /** The fields an owner may change. `short_code` and the destination never. */
 export interface TagUpdates {
   name?: string | null;

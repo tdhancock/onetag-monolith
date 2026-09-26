@@ -11,6 +11,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Image } from 'expo-image';
+import TaggedBadge from '../../components/native/TaggedBadge';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
@@ -68,6 +69,7 @@ const ExploreTile: React.FC<{ post: Post; index: number; onPress: () => void }> 
             transition={200}
           />
         )}
+        {!isTextPost && <TaggedBadge count={post.embeddedTags?.length ?? 0} compact />}
       </Pressable>
     );
   },

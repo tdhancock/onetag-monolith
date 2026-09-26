@@ -9,6 +9,7 @@ import type {
   DestinationNamedRow,
   DestinationProfileRow,
   NewTag,
+  NewEmbeddedTag,
   OwnedTag,
   OwnedTagDestination,
   ResolveTagRow,
@@ -220,6 +221,33 @@ export const createTag = async (tag: NewTag): Promise<OwnedTag> => {
 
   if (error) throw error;
   return mapTagRow(data as unknown as TagRow);
+};
+
+/**
+ * Embed tags in a just-published post (ONE-46), all in one insert: they land
+ * together or not at all, so a retry never doubles the ones that made it.
+ * Attributed to the post's author, the profile that published it — RLS
+ * refuses anyone else, and a private project (ONE-44).
+ *
+ * No RETURNING: the post is refetched with its tags embedded.
+ */
+export const createEmbeddedTags = async (
+  hostPostId: string,
+  ownerProfileId: ProfileId,
+  tags: NewEmbeddedTag[],
+): Promise<void> => {
+  if (tags.length === 0) return;
+  const { error } = await supabase.from('tags').insert(
+    tags.map((tag) => ({
+      owner_profile_id: ownerProfileId,
+      tag_type: 'embedded',
+      host_post_id: hostPostId,
+      tag_x_pct: tag.xPct,
+      tag_y_pct: tag.yPct,
+      [DESTINATION_COLUMN[tag.destination.kind]]: tag.destination.id,
+    })),
+  );
+  if (error) throw error;
 };
 
 /**

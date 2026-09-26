@@ -6,6 +6,7 @@
 export {
   resolveTag,
   recordScan,
+  createEmbeddedTags,
   mapResolveTagRow,
   TagResolutionError,
   fetchMyTags,
@@ -21,13 +22,14 @@ export { tagKeys } from './keys';
 export { useTagQuery, useMyTagsQuery, useMyTagQuery, useDestinationScanCountQuery } from './queries';
 export {
   useRecordScan,
+  useCreateEmbeddedTags,
   useCreateTag,
   useUpdateTag,
   useDeleteTag,
   useTagActiveToggle,
   activeAfterFlip,
 } from './mutations';
-export type { RecordScanInput, UpdateTagInput } from './mutations';
+export type { RecordScanInput, UpdateTagInput, CreateEmbeddedTagsInput } from './mutations';
 export type {
   TagDestination,
   TagDestinationKind,
@@ -39,6 +41,7 @@ export type {
   OwnedTag,
   OwnedTagDestination,
   NewTag,
+  NewEmbeddedTag,
   TagUpdates,
   TagRow,
   TagScanCountRow,
