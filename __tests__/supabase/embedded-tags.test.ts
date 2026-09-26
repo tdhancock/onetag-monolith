@@ -98,3 +98,21 @@ describe('the behavioural suite', () => {
     expect(pgTap).toContain(description);
   });
 });
+
+describe('the follow-ups (ONE-93, ONE-94)', () => {
+  const followups = readdirSync(MIGRATIONS).find((name) => name.endsWith('_embedded_tag_followups.sql'));
+  if (!followups) throw new Error('No *_embedded_tag_followups.sql migration found');
+  const body = readFileSync(join(MIGRATIONS, followups), 'utf8').replace(/--.*$/gm, '').replace(/\s+/g, ' ');
+
+  it('freezes an embedded tag\'s host post with the rest of its identity', () => {
+    expect(body).toContain('IF NEW.host_post_id IS DISTINCT FROM OLD.host_post_id THEN');
+    for (const column of ['short_code', 'dest_profile_id', 'dest_product_id', 'dest_project_id', 'tag_type', 'owner_profile_id']) {
+      expect(body).toContain(`NEW.${column} IS DISTINCT FROM OLD.${column}`);
+    }
+  });
+
+  it('keeps taps on post tags out of Scan History, and its grants as they were', () => {
+    expect(body).toContain("WHERE s.scanner_profile_id = p_profile_id AND t.tag_type <> 'embedded'");
+    expect(body).toContain('GRANT EXECUTE ON FUNCTION public.scan_history(UUID) TO anon, authenticated;');
+  });
+});

@@ -12,7 +12,7 @@
 -- Account D: individual DI, private. Author of post HIDDEN, which C cannot see.
 
 BEGIN;
-SELECT plan(22);
+SELECT plan(26);
 
 -- ─── Fixtures (as the database owner) ─────────────────────────────────
 
@@ -37,11 +37,14 @@ SELECT
   'f0000000-0000-0000-0000-000000000442'::uuid AS hidden,
   'f0000000-0000-0000-0000-000000000443'::uuid AS bp,
   'f0000000-0000-0000-0000-000000000444'::uuid AS pub,
-  'f0000000-0000-0000-0000-000000000445'::uuid AS priv;
+  'f0000000-0000-0000-0000-000000000445'::uuid AS priv,
+  'f0000000-0000-0000-0000-000000000446'::uuid AS other;
 GRANT SELECT ON ids TO authenticated, anon;
 
 INSERT INTO public.posts (id, user_id, image_url, media_type)
 SELECT post, ai, 'https://example.test/a.jpg', 'image' FROM ids;
+INSERT INTO public.posts (id, user_id, image_url, media_type)
+SELECT other, ai, 'https://example.test/a2.jpg', 'image' FROM ids;
 INSERT INTO public.posts (id, user_id, image_url, media_type)
 SELECT hidden, di, 'https://example.test/d.jpg', 'image' FROM ids;
 INSERT INTO public.products (id, business_profile_id, name) SELECT bp, bb, 'Lamp' FROM ids;
@@ -143,6 +146,29 @@ SELECT lives_ok(
   $$INSERT INTO public.scans (tag_id, scanner_profile_id)
     SELECT t.id, i.ci FROM public.tags t, ids i WHERE t.short_code = 'EmbProd2'$$,
   'a tap is recorded as an ordinary scan');
+
+SELECT is(
+  (SELECT count(*)::int FROM public.scan_history((SELECT ci FROM ids))),
+  0, 'a tap stays out of the tapper''s Scan History (ONE-94)');
+
+-- ─── As A again: the tag's owner and the post's author ────────────────
+
+SELECT set_config('request.jwt.claims', '{"sub":"aaaaaaaa-0000-0000-0000-000000000044","role":"authenticated"}', true);
+
+SELECT is(
+  (SELECT c.scan_count::int FROM public.tag_scan_counts((SELECT ai FROM ids)) c
+   JOIN public.tags t ON t.id = c.tag_id WHERE t.short_code = 'EmbProd2'),
+  1, 'the tag''s owner still counts the tap');
+
+SELECT lives_ok(
+  $$UPDATE public.tags SET tag_x_pct = 10, tag_y_pct = 90 WHERE short_code = 'EmbProd2'$$,
+  'the author can move a tag on its photo');
+
+SELECT throws_ok(
+  $$UPDATE public.tags SET host_post_id = (SELECT other FROM ids) WHERE short_code = 'EmbProd2'$$,
+  '42501', NULL, 'an embedded tag can''t be moved to another post, even the author''s own (ONE-93)');
+
+SELECT set_config('request.jwt.claims', '{"sub":"cccccccc-0000-0000-0000-000000000044","role":"authenticated"}', true);
 
 DELETE FROM public.tags WHERE host_post_id = (SELECT post FROM ids);
 
