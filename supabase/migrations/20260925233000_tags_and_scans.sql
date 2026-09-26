@@ -8,8 +8,10 @@
 -- kind, with a check that exactly one is set — not the reference handoff's
 -- `dest_type` / `dest_id` pair, which can carry no foreign key and so lets a
 -- deleted destination leave tags pointing at nothing. The same reasoning as
--- the locked identity decision. Profiles and posts are the destinations that
--- exist today; M5 adds product and project columns to this table.
+-- the locked identity decision. Of the four Destination kinds — Business
+-- Profile, Individual Profile, Product, Project — only profiles exist today,
+-- both kinds in the one profiles table; M5 adds product and project columns
+-- to this table. A post is not a Destination (ONE-83).
 --
 -- Embedded Tag positions (tag_x_pct / tag_y_pct) belong to M6.
 
@@ -87,7 +89,6 @@ CREATE TABLE public.tags (
     name TEXT,
     note TEXT,
     dest_profile_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
-    dest_post_id UUID REFERENCES public.posts(id) ON DELETE CASCADE,
     active BOOLEAN NOT NULL DEFAULT true,
     short_code TEXT NOT NULL UNIQUE DEFAULT public.gen_short_code()
         -- The shape lib/tagLinks.ts's isValidShortCode accepts, so a code the
@@ -95,10 +96,12 @@ CREATE TABLE public.tags (
         CONSTRAINT tags_short_code_shape
         CHECK (short_code ~ '^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{8}$'),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    -- Exactly one destination. M5 MUST extend this check when it adds the
-    -- product and project destination columns, or a tag could point at a
-    -- product and a profile at once.
-    CONSTRAINT tags_one_destination CHECK (num_nonnulls(dest_profile_id, dest_post_id) = 1)
+    -- Exactly one destination. With one kind today this only says a profile
+    -- is set, but it is written as num_nonnulls so M5 extends it rather than
+    -- replacing it. M5 MUST extend this check with the product and project
+    -- destination columns, or a tag could point at a product and a profile
+    -- at once.
+    CONSTRAINT tags_one_destination CHECK (num_nonnulls(dest_profile_id) = 1)
 );
 
 COMMENT ON CONSTRAINT tags_one_destination ON public.tags IS
@@ -106,10 +109,9 @@ COMMENT ON CONSTRAINT tags_one_destination ON public.tags IS
 
 -- tags(short_code) is covered by its unique constraint.
 CREATE INDEX tags_owner_profile_id ON public.tags (owner_profile_id);
--- The destination foreign keys cascade, so deleting a profile or a post
--- looks its tags up by these; without an index that is a full scan.
+-- The destination foreign key cascades, so deleting a profile looks its tags
+-- up by it; without an index that is a full scan.
 CREATE INDEX tags_dest_profile_id ON public.tags (dest_profile_id) WHERE dest_profile_id IS NOT NULL;
-CREATE INDEX tags_dest_post_id ON public.tags (dest_post_id) WHERE dest_post_id IS NOT NULL;
 
 -- ─── scans ────────────────────────────────────────────────────────────
 
@@ -152,10 +154,6 @@ CREATE POLICY "Users can create tags to own destinations" ON public.tags
     WITH CHECK (
         (SELECT public.owns_profile(owner_profile_id))
         AND (tags.dest_profile_id IS NULL OR (SELECT public.owns_profile(tags.dest_profile_id)))
-        AND (tags.dest_post_id IS NULL OR EXISTS (
-            SELECT 1 FROM public.posts p
-            WHERE p.id = tags.dest_post_id AND (SELECT public.owns_profile(p.user_id))
-        ))
     );
 
 CREATE POLICY "Users can update own tags" ON public.tags
@@ -164,10 +162,6 @@ CREATE POLICY "Users can update own tags" ON public.tags
     WITH CHECK (
         (SELECT public.owns_profile(owner_profile_id))
         AND (tags.dest_profile_id IS NULL OR (SELECT public.owns_profile(tags.dest_profile_id)))
-        AND (tags.dest_post_id IS NULL OR EXISTS (
-            SELECT 1 FROM public.posts p
-            WHERE p.id = tags.dest_post_id AND (SELECT public.owns_profile(p.user_id))
-        ))
     );
 
 CREATE POLICY "Users can delete own tags" ON public.tags

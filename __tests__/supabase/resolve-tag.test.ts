@@ -30,9 +30,13 @@ describe('resolve_tag', () => {
   });
 
   it('hides a paused tag\'s id and destination — every column but active is guarded', () => {
-    for (const column of ['t.id', 't.dest_profile_id', 'p.username', 't.dest_post_id']) {
+    for (const column of ['t.id', 't.dest_profile_id', 'p.username']) {
       expect(sql).toContain(`CASE WHEN t.active THEN ${column} END`);
     }
+  });
+
+  it('returns no post destination — a post is not one of the four kinds (ONE-83)', () => {
+    expect(sql).not.toContain('dest_post_id');
   });
 
   it('may be called signed in or not', () => {

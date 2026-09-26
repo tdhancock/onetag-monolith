@@ -61,8 +61,8 @@ import TagResolutionScreen from '../../app/t/[shortCode]';
 import { SCAN_ATTRIBUTION_WAIT_MS } from '../../lib/screens/tagResolution';
 
 const CODE = 'ABC23XYZ';
-const LIVE_PROFILE = { tag_id: 'tag-1', active: true, dest_profile_id: 'p-ana', dest_profile_username: 'ana', dest_post_id: null };
-const PAUSED = { tag_id: null, active: false, dest_profile_id: null, dest_profile_username: null, dest_post_id: null };
+const LIVE_PROFILE = { tag_id: 'tag-1', active: true, dest_profile_id: 'p-ana', dest_profile_username: 'ana' };
+const PAUSED = { tag_id: null, active: false, dest_profile_id: null, dest_profile_username: null };
 
 /** resolve_tag answers with each result in turn, then keeps repeating the last. */
 function resolveWith(...results: { data: unknown; error?: unknown; status?: number }[]) {
@@ -151,13 +151,6 @@ describe('a live tag', () => {
     mount();
     await settle();
     expect(mockPush).not.toHaveBeenCalled();
-  });
-
-  it('routes a post destination to its post', async () => {
-    resolveWith({ data: { ...LIVE_PROFILE, dest_profile_id: null, dest_profile_username: null, dest_post_id: 'post-9' } });
-    mount();
-    await settle();
-    expect(mockReplace).toHaveBeenCalledWith('/post/post-9');
   });
 
   it('writes exactly one scan, however often it re-renders', async () => {

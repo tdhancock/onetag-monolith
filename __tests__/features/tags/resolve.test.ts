@@ -38,7 +38,6 @@ const LIVE: ResolveTagRow = {
   active: true,
   dest_profile_id: 'p-ana',
   dest_profile_username: 'ana',
-  dest_post_id: null,
 };
 
 /** A fake `supabase.rpc(...).maybeSingle()` answering with one result. */
@@ -71,17 +70,8 @@ describe('resolveTag', () => {
     });
   });
 
-  it('resolves a live post tag to the post', async () => {
-    answer({ data: { ...LIVE, dest_profile_id: null, dest_profile_username: null, dest_post_id: 'post-9' }, error: null, status: 200 });
-    await expect(resolveTag('ABC23XYZ')).resolves.toEqual({
-      status: 'active',
-      tagId: 'tag-1',
-      destination: { kind: 'post', postId: 'post-9' },
-    });
-  });
-
   it('reads a paused tag as inactive — distinct from not-found', async () => {
-    answer({ data: { tag_id: null, active: false, dest_profile_id: null, dest_profile_username: null, dest_post_id: null }, error: null, status: 200 });
+    answer({ data: { tag_id: null, active: false, dest_profile_id: null, dest_profile_username: null }, error: null, status: 200 });
     await expect(resolveTag('ABC23XYZ')).resolves.toEqual({ status: 'inactive' });
   });
 
@@ -175,10 +165,6 @@ describe('routeForDestination', () => {
     expect(routeForDestination({ kind: 'profile', profileId: 'p', username: 'ana' })).toBe('/user/ana');
   });
 
-  it('sends a post destination to its post', () => {
-    expect(routeForDestination({ kind: 'post', postId: 'post-9' })).toBe('/post/post-9');
-  });
-
   it('escapes what goes into the path', () => {
     expect(routeForDestination({ kind: 'profile', profileId: 'p', username: 'a/b?c' })).toBe('/user/a%2Fb%3Fc');
   });
@@ -208,8 +194,8 @@ describe('tagScreenFor', () => {
   it('redirects a live tag to its destination', () => {
     expect(tagScreenFor({
       ...settled,
-      data: { status: 'active', tagId: 'tag-1', destination: { kind: 'post', postId: 'post-9' } },
-    })).toEqual({ kind: 'redirect', tagId: 'tag-1', route: '/post/post-9' });
+      data: { status: 'active', tagId: 'tag-1', destination: { kind: 'profile', profileId: 'p', username: 'ana' } },
+    })).toEqual({ kind: 'redirect', tagId: 'tag-1', route: '/user/ana' });
   });
 
   it.each([

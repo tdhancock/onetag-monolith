@@ -22,7 +22,6 @@ const destinationOf = (row: ResolveTagRow): TagDestination | null => {
       ? { kind: 'profile', profileId: row.dest_profile_id, username: row.dest_profile_username }
       : null;
   }
-  if (row.dest_post_id) return { kind: 'post', postId: row.dest_post_id };
   // A destination column this build does not read yet (M5's products and
   // projects, before the app ships support for them).
   return null;

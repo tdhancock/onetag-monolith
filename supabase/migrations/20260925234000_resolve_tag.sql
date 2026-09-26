@@ -22,8 +22,7 @@ RETURNS TABLE (
     tag_id UUID,
     active BOOLEAN,
     dest_profile_id UUID,
-    dest_profile_username TEXT,
-    dest_post_id UUID
+    dest_profile_username TEXT
 )
 LANGUAGE sql
 STABLE
@@ -34,8 +33,7 @@ AS $$
     CASE WHEN t.active THEN t.id END,
     t.active,
     CASE WHEN t.active THEN t.dest_profile_id END,
-    CASE WHEN t.active THEN p.username END,
-    CASE WHEN t.active THEN t.dest_post_id END
+    CASE WHEN t.active THEN p.username END
   FROM public.tags t
   LEFT JOIN public.profiles p ON p.id = t.dest_profile_id
   WHERE t.short_code = p_short_code;

@@ -41,12 +41,15 @@ const commandOf = (body: string) => body.match(/FOR (\w+)/)![1];
 describe('tags', () => {
   it('points at its destination through real foreign keys, not a polymorphic pair', () => {
     expect(sql).toContain('dest_profile_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE');
-    expect(sql).toContain('dest_post_id UUID REFERENCES public.posts(id) ON DELETE CASCADE');
     expect(sql).not.toMatch(/dest_type|dest_id\b/);
   });
 
+  it('has no post destination — a post is not one of the four kinds (ONE-83)', () => {
+    expect(sql).not.toContain('dest_post_id');
+  });
+
   it('has exactly one destination, and says M5 must extend the check', () => {
-    expect(sql).toContain('CONSTRAINT tags_one_destination CHECK (num_nonnulls(dest_profile_id, dest_post_id) = 1)');
+    expect(sql).toContain('CONSTRAINT tags_one_destination CHECK (num_nonnulls(dest_profile_id) = 1)');
     expect(raw).toMatch(/M5 MUST extend this check/);
     expect(sql).toMatch(/COMMENT ON CONSTRAINT tags_one_destination ON public\.tags IS '[^']*M5 must extend/);
   });
@@ -71,10 +74,9 @@ describe('tags', () => {
     expect(sql).not.toMatch(/tag_x_pct|tag_y_pct|host_post_id/);
   });
 
-  it('indexes the owner and both cascading destinations', () => {
+  it('indexes the owner and the cascading destination', () => {
     expect(sql).toContain('CREATE INDEX tags_owner_profile_id ON public.tags (owner_profile_id)');
     expect(sql).toContain('ON public.tags (dest_profile_id)');
-    expect(sql).toContain('ON public.tags (dest_post_id)');
   });
 });
 
@@ -166,7 +168,6 @@ describe('RLS on tags', () => {
       const policy = policies.find((p) => commandOf(p.body) === command)!;
       const check = policy.body.slice(policy.body.indexOf('WITH CHECK'));
       expect(check).toContain('(tags.dest_profile_id IS NULL OR (SELECT public.owns_profile(tags.dest_profile_id)))');
-      expect(check).toContain('WHERE p.id = tags.dest_post_id AND (SELECT public.owns_profile(p.user_id))');
     }
   });
 });
@@ -210,14 +211,13 @@ describe('the behavioural suite', () => {
     'an anonymous client can insert a scan with a null scanner_profile_id',
     'an anonymous client cannot insert a tag',
     'a user cannot create a tag pointing at a profile they do not own',
-    'a user cannot create a tag pointing at a post they do not own',
+    'a post is not a Destination (ONE-83)',
     'a tag cannot be re-pointed at a profile its owner does not own',
     'a tag owner can see every scan of its tag, anonymous ones included',
     'a tag owner sees scans of its own tags and no others',
     'an unrelated user cannot see scans of the tag',
     'nobody can forge a scan attributed to another profile',
     'the destination check rejects zero destinations',
-    'the destination check rejects two destinations',
     '10,000 generated codes are all 8 characters',
     '10,000 generated codes contain none of 0, O, 1, I or l',
     '10,000 generated codes produce no duplicates',

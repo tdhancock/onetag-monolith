@@ -4,15 +4,15 @@
 --
 -- Everything runs in one transaction and rolls back.
 --
--- Account A: individual profile AA (signup trigger) and a post AP. Owns the tags.
--- Account B: individual profile BA and a post BP. Scans A's tag.
+-- Account A: individual profile AA (signup trigger). Owns the tags.
+-- Account B: individual profile BA. Scans A's tag.
 -- Account C: individual profile CA. Unrelated to both.
 --
 -- Tag T1 (active) and T2 (paused) belong to A and point at AA. Tag T3 belongs
 -- to B, with one scan already, so "no others" has something to exclude.
 
 BEGIN;
-SELECT plan(38);
+SELECT plan(36);
 
 -- ─── Fixtures (as the database owner) ─────────────────────────────────
 
@@ -21,17 +21,11 @@ INSERT INTO auth.users (id, email, raw_user_meta_data) VALUES
   ('bbbbbbbb-0000-0000-0000-000000000027', 'b@one27.test', '{"username":"one27_b"}'),
   ('cccccccc-0000-0000-0000-000000000027', 'c@one27.test', '{"username":"one27_c"}');
 
-INSERT INTO public.posts (id, user_id, content) VALUES
-  ('aaaaaaaa-0000-0000-0000-0000000000a9', (SELECT id FROM public.profiles WHERE username = 'one27_a'), 'A''s post'),
-  ('bbbbbbbb-0000-0000-0000-0000000000b9', (SELECT id FROM public.profiles WHERE username = 'one27_b'), 'B''s post');
-
 CREATE TEMP TABLE ids ON COMMIT DROP AS
 SELECT
   (SELECT id FROM public.profiles WHERE username = 'one27_a') AS aa,
   (SELECT id FROM public.profiles WHERE username = 'one27_b') AS ba,
   (SELECT id FROM public.profiles WHERE username = 'one27_c') AS ca,
-  'aaaaaaaa-0000-0000-0000-0000000000a9'::uuid AS ap,
-  'bbbbbbbb-0000-0000-0000-0000000000b9'::uuid AS bp,
   'dddddddd-0000-0000-0000-000000000001'::uuid AS t1,
   'dddddddd-0000-0000-0000-000000000002'::uuid AS t2;
 GRANT SELECT ON ids TO authenticated, anon;
@@ -64,20 +58,10 @@ SELECT isnt(
   (SELECT short_code FROM public.tags WHERE id = (SELECT t2 FROM ids)),
   'each tag gets its own short code');
 
-SELECT lives_ok(
-  $$INSERT INTO public.tags (owner_profile_id, tag_type, format, dest_post_id)
-    VALUES ((SELECT aa FROM ids), 'physical', 'qr', (SELECT ap FROM ids))$$,
-  'the owner can create a tag pointing at its own post');
-
 SELECT throws_ok(
   $$INSERT INTO public.tags (owner_profile_id, tag_type, dest_profile_id)
     VALUES ((SELECT aa FROM ids), 'physical', (SELECT ba FROM ids))$$,
   '42501', NULL, 'a user cannot create a tag pointing at a profile they do not own');
-
-SELECT throws_ok(
-  $$INSERT INTO public.tags (owner_profile_id, tag_type, dest_post_id)
-    VALUES ((SELECT aa FROM ids), 'physical', (SELECT bp FROM ids))$$,
-  '42501', NULL, 'a user cannot create a tag pointing at a post they do not own');
 
 SELECT throws_ok(
   $$INSERT INTO public.tags (owner_profile_id, tag_type, dest_profile_id)
@@ -88,10 +72,9 @@ SELECT throws_ok(
   $$INSERT INTO public.tags (owner_profile_id, tag_type) VALUES ((SELECT aa FROM ids), 'physical')$$,
   '23514', NULL, 'the destination check rejects zero destinations');
 
-SELECT throws_ok(
-  $$INSERT INTO public.tags (owner_profile_id, tag_type, dest_profile_id, dest_post_id)
-    VALUES ((SELECT aa FROM ids), 'physical', (SELECT aa FROM ids), (SELECT ap FROM ids))$$,
-  '23514', NULL, 'the destination check rejects two destinations');
+SELECT hasnt_column(
+  'public', 'tags', 'dest_post_id',
+  'a post is not a Destination (ONE-83)');
 
 SELECT throws_ok(
   $$INSERT INTO public.tags (owner_profile_id, tag_type, dest_profile_id, short_code)
