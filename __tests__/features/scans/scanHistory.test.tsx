@@ -186,8 +186,12 @@ describe('your scan history', () => {
     expect(text).toContain('Oak doorProduct · Scanned once · 2h');
     expect(text).toContain('Xavi OrtizProfile · Scanned 10 times · 2h');
     expect(text.indexOf('Oak door')).toBeLessThan(text.indexOf('Xavi Ortiz'));
-    // A product has no screen yet (ONE-40), so its row is not a button.
-    expect(rowFor(el, 'Oak door')).toBeNull();
+    // A product has no screen yet (ONE-40), so its row is not a button — but
+    // it still reads as one labelled element (ONE-87).
+    const product = rowFor(el, 'Oak door')!;
+    expect(product.getAttribute('aria-label')).toBe('Oak door, Product, Scanned once · 2h');
+    expect(product.tagName).not.toBe('BUTTON');
+    expect(rowFor(el, 'Xavi Ortiz')!.tagName).toBe('BUTTON');
   });
 
   it('routes a row to its destination', async () => {
