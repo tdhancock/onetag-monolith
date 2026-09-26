@@ -26,9 +26,9 @@ jest.mock('react-native', () => {
     Linking: { openURL: (url: string) => mockOpenURL(url) },
     StyleSheet: { create: (sheet: unknown) => sheet, hairlineWidth: 1 },
   };
-}, { virtual: true });
+});
 
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }), { virtual: true });
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 
 import RenderUserContent, { segmentUserContent } from '../../components/native/RenderUserContent';
 import { color, type } from '../../theme/tokens';

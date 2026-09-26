@@ -9,7 +9,7 @@
 
 jest.mock('../../../services/supabase.native', () => ({
   supabase: { from: jest.fn() },
-}), { virtual: true });
+}));
 
 /** Records the chain a query built, so the test can assert on it. */
 type Call = { lt?: string; limit?: number; inIds?: string[] };

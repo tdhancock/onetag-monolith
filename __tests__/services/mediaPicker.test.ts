@@ -11,9 +11,7 @@
 //   3. Camera capture requests permission first and reports a denial
 //      distinctly, rather than silently doing nothing.
 
-jest.mock('expo-image-picker', () => require('../support/expoImagePickerStub'), {
-  virtual: true,
-});
+jest.mock('expo-image-picker', () => require('../support/expoImagePickerStub'));
 
 import {
   launchImageLibraryAsync,

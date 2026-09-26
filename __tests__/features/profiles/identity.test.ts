@@ -12,8 +12,8 @@
 //      being an error.
 //   2. Which profile the app acts as, and what it does when there is none.
 
-jest.mock('../../../services/supabase.native', () => ({ supabase: {} }), { virtual: true });
-jest.mock('../../../features/auth', () => ({ useAuthUserId: () => undefined }), { virtual: true });
+jest.mock('../../../services/supabase.native', () => ({ supabase: {} }));
+jest.mock('../../../features/auth', () => ({ useAuthUserId: () => undefined }));
 
 import { resolveCurrentProfile, PLACEHOLDER_PROFILE } from '../../../features/profiles/queries';
 import { asAuthUserId, asProfileId } from '../../../types';

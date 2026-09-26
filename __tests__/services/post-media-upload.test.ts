@@ -29,7 +29,7 @@ jest.mock('../../services/supabase.native', () => ({
       })),
     },
   },
-}), { virtual: true });
+}));
 
 import { publishPost } from '../../features/posts';
 import { assertRemoteMediaUrl, MediaUploadError } from '../../services/mediaUpload';

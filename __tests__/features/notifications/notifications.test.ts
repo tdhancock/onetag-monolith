@@ -10,7 +10,7 @@ const mockMarkOne = jest.fn();
 
 jest.mock('../../../services/supabase.native', () => ({
   supabase: { from: jest.fn() },
-}), { virtual: true });
+}));
 
 jest.mock('../../../features/notifications/api', () => ({
   markNotificationsAsRead: (...args: unknown[]) => mockMarkAll(...args),

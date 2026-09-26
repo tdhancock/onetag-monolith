@@ -39,15 +39,13 @@ jest.mock('react-native', () => {
       return shim.View(props);
     },
   };
-}, { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }) }), {
-  virtual: true,
 });
-jest.mock('../../features/moderation', () => ({ reportPost: jest.fn() }), { virtual: true });
-jest.mock('../../features/admin', () => ({ useIsAdmin: () => false }), { virtual: true });
-jest.mock('../../features/auth', () => ({ useAuthUserId: () => undefined }), { virtual: true });
+jest.mock('expo-image', () => require('../support/expoImageStub'));
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }) }));
+jest.mock('../../features/moderation', () => ({ reportPost: jest.fn() }));
+jest.mock('../../features/admin', () => ({ useIsAdmin: () => false }));
+jest.mock('../../features/auth', () => ({ useAuthUserId: () => undefined }));
 // The acting profile comes from features/profiles since ONE-22, not the context.
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({
@@ -56,7 +54,7 @@ jest.mock('../../features/profiles', () => ({
     authUserId: 'a-tanner',
     status: 'ready',
   }),
-}), { virtual: true });
+}));
 
 // The toggle hooks need a QueryClientProvider, and this suite is about
 // framing rather than mutations — a stub keeps the mount free of both.
@@ -68,7 +66,7 @@ jest.mock('../../features/posts', () => {
     useSavePost: stub,
     useDeletePost: () => ({ mutate: jest.fn(), isPending: false }),
   };
-}, { virtual: true });
+});
 
 // PostCard reads a dozen actions off the context. None of them fire during a
 // plain render, so a no-op shape is enough to mount it.
@@ -87,7 +85,7 @@ jest.mock('../../store/AppContext.native', () => ({
     toggleSavePost: jest.fn(),
     triggerHapticFeedback: jest.fn(),
   }),
-}), { virtual: true });
+}));
 
 import PostCard from '../../components/native/PostCard';
 import type { Post } from '../../types';

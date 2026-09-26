@@ -29,7 +29,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
     removeItem: jest.fn(async (key: string) => { mockStore.delete(key); }),
     getAllKeys: jest.fn(async () => [...mockStore.keys()]),
   },
-}), { virtual: true });
+}));
 
 const mockFrom = jest.fn();
 const mockGetUser = jest.fn();
@@ -38,7 +38,7 @@ jest.mock('../../../services/supabase.native', () => ({
     from: (...args: unknown[]) => mockFrom(...args),
     auth: { getUser: (...args: unknown[]) => mockGetUser(...args) },
   },
-}), { virtual: true });
+}));
 
 import React from 'react';
 import { readFileSync } from 'fs';

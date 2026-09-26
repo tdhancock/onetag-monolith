@@ -46,26 +46,26 @@ jest.mock('react-native', () => {
     RefreshControl: () => null,
     Platform: { OS: 'ios' },
   };
-}, { virtual: true });
+});
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
-}, { virtual: true });
+});
 jest.mock('react-native-gesture-handler', () => {
   const React = require('react');
   return {
     Swipeable: (p: { children?: React.ReactNode; renderRightActions: () => React.ReactNode }) =>
       React.createElement('div', { 'data-swipeable': 'true' }, p.children, p.renderRightActions()),
   };
-}, { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
+});
+jest.mock('expo-image', () => require('../support/expoImageStub'));
 jest.mock('react-native-svg', () => {
   const React = require('react');
   const Svg = (props: Record<string, unknown>) =>
     React.createElement('svg', { 'data-fill': props.fill }, props.children as React.ReactNode);
   const leaf = () => null;
   return { __esModule: true, default: Svg, Svg, Path: leaf, Circle: leaf, G: leaf, Rect: leaf };
-}, { virtual: true });
+});
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
@@ -74,15 +74,15 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush, back: mockBack }),
   useLocalSearchParams: () => mockParams.current,
   Stack: { Screen: () => null },
-}), { virtual: true });
+}));
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
 const mockApp = { isUserBlocked: () => false, addToast: jest.fn(), triggerHapticFeedback: jest.fn() };
-jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }), { virtual: true });
+jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }));
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profile: { username: 'me', name: 'Me', profilePicture: null }, profileId: 'p-me' }),
-}), { virtual: true });
+}));
 
 const comment = (id: string, username: string, text: string, userId = `p-${username}`) => ({
   id, userId, username, avatar: null, text,
@@ -112,8 +112,8 @@ jest.mock('../../features/comments', () => ({
   useAddComment: () => ({ mutate: mockAdd, isPending: false }),
   useDeleteComment: () => ({ mutate: mockDelete }),
   useToggleCommentLike: () => ({ toggle: mockToggleLike }),
-}), { virtual: true });
-jest.mock('../../features/posts', () => ({ usePostQuery: () => state.post }), { virtual: true });
+}));
+jest.mock('../../features/posts', () => ({ usePostQuery: () => state.post }));
 jest.mock('../../components/native/PostCard', () => {
   const React = require('react');
   return (props: { post: { id: string }; detail?: boolean }) =>

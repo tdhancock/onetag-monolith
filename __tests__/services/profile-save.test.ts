@@ -30,7 +30,7 @@ jest.mock('../../services/supabase.native', () => ({
       })),
     },
   },
-}), { virtual: true });
+}));
 
 import { updateUserProfileData, uploadAvatar, mapProfileUpdatesToRow, asProfileId } from '../../features/profiles';
 

@@ -17,8 +17,8 @@
 //   3. Storage (`supabase.storage.from(...).upload(...)`) — bucket
 //      dispatch and the upload result envelope.
 //
-// The mock itself lives inside this file (jest.mock with `virtual: true`
-// so the project does not need to import the real Supabase client at
+// The mock itself lives inside this file (a jest.mock factory over
+// services/supabase.native, so the real Supabase client is never loaded at
 // test time) and is exercised directly via `require(...)` to avoid
 // coupling these assertions to any specific app module.
 
@@ -173,7 +173,7 @@ jest.mock('../../services/supabase.native', () => {
       },
     },
   };
-}, { virtual: true });
+});
 
 // Imports resolved AFTER the mock above is hoisted.
 import { supabase } from '../../services/supabase.native';

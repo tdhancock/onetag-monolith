@@ -57,7 +57,7 @@ jest.mock('../../services/supabase.native', () => ({
     channel: jest.fn(),
     removeChannel: (...args: unknown[]) => removeChannel(...args),
   },
-}), { virtual: true });
+}));
 
 import { supabase } from '../../services/supabase.native';
 import {

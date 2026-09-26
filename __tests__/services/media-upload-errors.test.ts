@@ -25,7 +25,7 @@ jest.mock('../../services/supabase.native', () => ({
       })),
     },
   },
-}), { virtual: true });
+}));
 
 import { uploadMedia } from '../../services/mediaUpload';
 

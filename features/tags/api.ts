@@ -5,7 +5,19 @@
 import { supabase } from '../../services/supabase.native';
 import { isValidShortCode } from '../../lib/tagLinks';
 import type { ProfileId } from '../../types';
-import type { ResolveTagRow, TagDestination, TagResolution, TagResolutionFailure } from './types';
+import type {
+  DestinationProfileRow,
+  NewTag,
+  OwnedTag,
+  OwnedTagDestination,
+  ResolveTagRow,
+  TagDestination,
+  TagResolution,
+  TagResolutionFailure,
+  TagRow,
+  TagScanCountRow,
+  TagUpdates,
+} from './types';
 
 export class TagResolutionError extends Error {
   constructor(readonly reason: TagResolutionFailure, readonly cause?: unknown) {
@@ -68,4 +80,135 @@ export const recordScan = async (tagId: string, scannerProfileId: ProfileId | nu
     .from('scans')
     .insert({ tag_id: tagId, scanner_profile_id: scannerProfileId });
   if (error) throw error;
+};
+
+// ─── The owner's tags (ONE-32, ONE-34) ──────────────────────────────────
+//
+// Only a tag's owner reads the tags table (ONE-82), so everything below runs
+// as the owner, and RLS refuses it for anyone else.
+
+/**
+ * The columns an owner reads, with the destination profile embedded. `tags`
+ * has two foreign keys to `profiles` — its owner and its destination — so the
+ * embed names the column it follows.
+ */
+export const TAG_SELECT =
+  'id, owner_profile_id, tag_type, format, name, note, short_code, active, created_at, dest_profile_id, ' +
+  'dest_profile:profiles!dest_profile_id(id, username, full_name, profile_type)';
+
+const one = <T>(embed: T | T[] | null | undefined): T | null =>
+  Array.isArray(embed) ? embed[0] ?? null : embed ?? null;
+
+const destinationFromRow = (row: TagRow): OwnedTagDestination | null => {
+  const profile: DestinationProfileRow | null = one(row.dest_profile);
+  if (row.dest_profile_id && profile) {
+    return {
+      kind: 'profile',
+      profileId: profile.id,
+      username: profile.username,
+      name: profile.full_name || profile.username,
+      profileType: profile.profile_type,
+    };
+  }
+  // A destination column this build does not read yet (M5's products and
+  // projects), or a profile the owner can no longer see.
+  return null;
+};
+
+/** A tags row, and its scan count if there is one, as the owner's tag. */
+export const mapTagRow = (row: TagRow, counts?: TagScanCountRow): OwnedTag => ({
+  id: row.id,
+  ownerProfileId: row.owner_profile_id,
+  tagType: row.tag_type,
+  format: row.format,
+  name: row.name,
+  note: row.note,
+  shortCode: row.short_code,
+  active: row.active,
+  createdAt: row.created_at,
+  destination: destinationFromRow(row),
+  scanCount: counts ? Number(counts.scan_count) || 0 : 0,
+  lastScannedAt: counts?.last_scanned_at ?? null,
+});
+
+/**
+ * Every tag a profile owns, newest first, each with its scan count.
+ *
+ * The counts come from `tag_scan_counts` in one call, merged by tag id here.
+ * An owner cannot read scan rows (ONE-82), so an embedded `scans(count)` would
+ * always come back 0 — and scan rows are never fetched.
+ */
+export const fetchMyTags = async (ownerProfileId: ProfileId): Promise<OwnedTag[]> => {
+  const [tags, counts] = await Promise.all([
+    supabase
+      .from('tags')
+      .select(TAG_SELECT)
+      .eq('owner_profile_id', ownerProfileId)
+      .order('created_at', { ascending: false }),
+    supabase.rpc('tag_scan_counts', { p_owner_profile_id: ownerProfileId }),
+  ]);
+
+  if (tags.error) throw tags.error;
+  if (counts.error) throw counts.error;
+
+  const byTag = new Map(((counts.data ?? []) as TagScanCountRow[]).map((row) => [row.tag_id, row]));
+  return ((tags.data ?? []) as unknown as TagRow[]).map((row) => mapTagRow(row, byTag.get(row.id)));
+};
+
+/**
+ * Create a tag and read it back.
+ *
+ * The short code is the column default's, issued by the database: a client
+ * cannot guarantee uniqueness, and a code that is only provisional is
+ * worthless on something printed. `format` is `qr` for a Physical Tag and
+ * null for a Digital one — the only other difference between them.
+ */
+export const createTag = async (tag: NewTag): Promise<OwnedTag> => {
+  const { data, error } = await supabase
+    .from('tags')
+    .insert({
+      owner_profile_id: tag.ownerProfileId,
+      tag_type: tag.tagType,
+      format: tag.tagType === 'physical' ? 'qr' : null,
+      name: tag.name,
+      note: tag.note,
+      dest_profile_id: tag.destinationProfileId,
+    })
+    .select(TAG_SELECT)
+    .single();
+
+  if (error) throw error;
+  return mapTagRow(data as unknown as TagRow);
+};
+
+/**
+ * Change a tag's name or note. Nothing else goes through here: the short code
+ * is printed on objects, and the destination is what people scanned to reach.
+ */
+export const updateTag = async (tagId: string, updates: TagUpdates): Promise<void> => {
+  const row: { name?: string | null; note?: string | null } = {};
+  if (updates.name !== undefined) row.name = updates.name;
+  if (updates.note !== undefined) row.note = updates.note;
+
+  const { data, error } = await supabase.from('tags').update(row).eq('id', tagId).select('id');
+  if (error) throw error;
+  // RLS filters a row the caller does not own out of the update silently.
+  if (!data || data.length === 0) throw new Error('Tag not found.');
+};
+
+/** Pause or resume a tag. A paused tag resolves to the inactive state. */
+export const setTagActive = async (tagId: string, active: boolean): Promise<void> => {
+  const { data, error } = await supabase.from('tags').update({ active }).eq('id', tagId).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Tag not found.');
+};
+
+/**
+ * Delete a tag. Irreversible: its scans go with it, and any object carrying
+ * its code stops resolving for everyone.
+ */
+export const deleteTag = async (tagId: string): Promise<void> => {
+  const { data, error } = await supabase.from('tags').delete().eq('id', tagId).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Tag not found.');
 };

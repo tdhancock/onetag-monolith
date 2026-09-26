@@ -29,21 +29,21 @@ jest.mock('react-native', () => {
     Platform: { OS: 'ios' },
     Dimensions: { get: () => ({ width: 375, height: 812 }) },
   };
-}, { virtual: true });
+});
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
-}, { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
+});
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
+jest.mock('expo-image', () => require('../support/expoImageStub'));
 jest.mock('@react-native-community/datetimepicker', () => {
   const React = require('react');
   return { __esModule: true, default: () => React.createElement('div', { 'data-date-picker': 'true' }) };
-}, { virtual: true });
+});
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, replace: mockReplace }) }), { virtual: true });
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, replace: mockReplace }) }));
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
@@ -54,10 +54,10 @@ const auth = {
 };
 jest.mock('../../services/supabase.native', () => ({
   supabase: { auth, rpc: jest.fn(() => Promise.resolve({ data: 'ana@example.com', error: null })) },
-}), { virtual: true });
-jest.mock('../../services/profileBootstrap', () => ({ ensureCurrentUserProfile: () => Promise.resolve(true) }), { virtual: true });
+}));
+jest.mock('../../services/profileBootstrap', () => ({ ensureCurrentUserProfile: () => Promise.resolve(true) }));
 const mockUsernameExists = jest.fn((_u: string) => Promise.resolve(false));
-jest.mock('../../features/profiles', () => ({ checkUsernameExists: (u: string) => mockUsernameExists(u) }), { virtual: true });
+jest.mock('../../features/profiles', () => ({ checkUsernameExists: (u: string) => mockUsernameExists(u) }));
 
 import LoginScreen from '../../app/(auth)/login';
 import SignupScreen from '../../app/(auth)/signup';

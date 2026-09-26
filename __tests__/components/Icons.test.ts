@@ -22,7 +22,7 @@ import React from 'react';
 // enough — and it keeps this suite inside the project's "no React Native at
 // runtime" Jest config.
 
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 import * as Icons from '../../components/native/Icons';
 import { color } from '../../theme/tokens';
@@ -70,7 +70,7 @@ const ICON_NAMES = [
   'HashtagIcon', 'VerifiedIcon', 'CheckIcon', 'DoubleCheckIcon',
   'FlagIcon', 'ReportIcon', 'SendIcon', 'StarIcon', 'ChevronDownIcon',
   'ChevronUpIcon', 'ShareIOSIcon', 'AddToHomeScreenIOSIcon',
-  'MoreVertAndroidIcon', 'ChevronRightIcon',
+  'MoreVertAndroidIcon', 'ChevronRightIcon', 'TagIcon',
 ] as const;
 
 // Icons whose default size differs from the 24px house default.

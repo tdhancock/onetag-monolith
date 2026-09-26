@@ -19,7 +19,7 @@ jest.mock('@tanstack/react-query', () => ({
 
 jest.mock('../../../services/supabase.native', () => ({
   supabase: { from: jest.fn() },
-}), { virtual: true });
+}));
 
 // Only fetchFeedPage is stubbed; nextFeedCursor and the constants stay real,
 // so the identity check below is against the function the feed actually uses.

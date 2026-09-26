@@ -35,8 +35,8 @@ jest.mock('react-native', () => {
     Pressable: (props: Record<string, unknown>) =>
       shim.Pressable({ ...props, 'data-raw-style': raw(props.style) }),
   };
-}, { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
+});
+jest.mock('expo-image', () => require('../support/expoImageStub'));
 jest.mock('react-native-svg', () => {
   const React = require('react');
   const Svg = (props: Record<string, unknown>) =>
@@ -47,13 +47,11 @@ jest.mock('react-native-svg', () => {
     );
   const leaf = (name: string) => () => React.createElement(name);
   return { __esModule: true, default: Svg, Svg, Path: leaf('path'), Circle: leaf('circle'), G: leaf('g'), Rect: leaf('rect') };
-}, { virtual: true });
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }) }), {
-  virtual: true,
 });
-jest.mock('../../features/moderation', () => ({ reportPost: jest.fn() }), { virtual: true });
-jest.mock('../../features/admin', () => ({ useIsAdmin: () => false }), { virtual: true });
-jest.mock('../../features/auth', () => ({ useAuthUserId: () => undefined }), { virtual: true });
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }) }));
+jest.mock('../../features/moderation', () => ({ reportPost: jest.fn() }));
+jest.mock('../../features/admin', () => ({ useIsAdmin: () => false }));
+jest.mock('../../features/auth', () => ({ useAuthUserId: () => undefined }));
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({
     profile: { id: 'p-tanner', username: 'tanner', name: 'Tanner', profilePicture: null },
@@ -61,7 +59,7 @@ jest.mock('../../features/profiles', () => ({
     authUserId: 'a-tanner',
     status: 'ready',
   }),
-}), { virtual: true });
+}));
 
 const mockToggle = jest.fn();
 jest.mock('../../features/posts', () => {
@@ -72,11 +70,11 @@ jest.mock('../../features/posts', () => {
     useSavePost: stub,
     useDeletePost: () => ({ mutate: jest.fn(), isPending: false }),
   };
-}, { virtual: true });
+});
 
 jest.mock('../../store/AppContext.native', () => ({
   useApp: () => ({ addToast: jest.fn(), triggerHapticFeedback: jest.fn() }),
-}), { virtual: true });
+}));
 
 import PostCard from '../../components/native/PostCard';
 import { POST_REPORT_REASONS } from '../../services/reportReasons';

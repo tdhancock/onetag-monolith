@@ -14,7 +14,7 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-jest.mock('react-native', () => require('../../support/reactNativeDom'), { virtual: true });
+jest.mock('react-native', () => require('../../support/reactNativeDom'));
 
 import fs from 'fs';
 import path from 'path';

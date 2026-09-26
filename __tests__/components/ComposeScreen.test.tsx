@@ -31,7 +31,7 @@ jest.mock('react-native', () => {
     Platform: { OS: 'ios' },
     Keyboard: { addListener: () => ({ remove: () => {} }) },
   };
-}, { virtual: true });
+});
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return {
@@ -39,11 +39,11 @@ jest.mock('react-native-safe-area-context', () => {
       React.createElement('div', { 'data-screen': 'true', style: require('../support/reactNativeDom').flattenStyle(props.style) }, props.children),
     useSafeAreaInsets: () => ({ top: 0, bottom: 34, left: 0, right: 0 }),
   };
-}, { virtual: true });
+});
 jest.mock('expo-image', () => {
   const React = require('react');
   return { Image: (props: { source?: { uri: string } }) => React.createElement('img', { src: props.source?.uri }) };
-}, { virtual: true });
+});
 jest.mock('react-native-svg', () => {
   const React = require('react');
   const Svg = (props: { children?: React.ReactNode }) => React.createElement('svg', null, props.children);
@@ -51,7 +51,7 @@ jest.mock('react-native-svg', () => {
     React.createElement('circle', { 'data-stroke': props.stroke, 'data-offset': String(props.strokeDashoffset ?? '') });
   const Path = () => React.createElement('path');
   return { __esModule: true, default: Svg, Svg, Circle, Path, G: Path, Rect: Path };
-}, { virtual: true });
+});
 
 const mockBack = jest.fn();
 const mockParams: { current: Record<string, string | undefined> } = { current: {} };
@@ -60,30 +60,30 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams.current,
   useNavigation: () => ({ addListener: () => () => {} }),
   Stack: { Screen: () => null },
-}), { virtual: true });
+}));
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
 const mockToast = jest.fn();
 const mockApp = { addToast: mockToast };
-jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }), { virtual: true });
+jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }));
 const mockActing: { profile: Record<string, unknown>; profileId: string | undefined } = {
   profile: { username: 'me', name: 'Me Myself', profilePicture: null, isVerified: false, profileType: 'individual' },
   profileId: 'p-me',
 };
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => mockActing,
-}), { virtual: true });
+}));
 
 const mockMutateAsync = jest.fn();
 jest.mock('../../features/posts', () => ({
   useCreatePost: () => ({ mutateAsync: mockMutateAsync }),
-}), { virtual: true });
+}));
 
 jest.mock('../../services/mediaUpload', () => {
   class MediaUploadError extends Error {}
   return { MediaUploadError };
-}, { virtual: true });
+});
 
 jest.mock('../../services/mediaPicker', () => ({
   pickImageFromLibrary: jest.fn(),
@@ -93,7 +93,7 @@ jest.mock('../../services/mediaPicker', () => ({
   mediaAspectRatio: (media: { width: number; height: number } | null) => (media ? media.width / media.height : null),
   buildPostMedia: (media: { uri: string } | null) =>
     media ? { media: media.uri, media_type: 'image' } : { media_type: 'text' },
-}), { virtual: true });
+}));
 
 import ComposeScreen from '../../app/compose';
 import { MediaUploadError } from '../../services/mediaUpload';

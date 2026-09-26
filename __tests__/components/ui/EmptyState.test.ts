@@ -21,7 +21,7 @@ jest.mock('react-native', () => {
     Pressable: passthrough('button'),
     StyleSheet: { create: (sheet: unknown) => sheet, hairlineWidth: 1 },
   };
-}, { virtual: true });
+});
 
 import EmptyState from '../../../components/native/ui/EmptyState';
 import type { EmptyStateProps } from '../../../components/native/ui/EmptyState';

@@ -57,19 +57,19 @@ jest.mock('react-native', () => {
       'data-track-off': props.trackColor?.false,
     });
   return { ...shim, FlatList, ScrollView, Switch };
-}, { virtual: true });
+});
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
-}, { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
+});
+jest.mock('expo-image', () => require('../support/expoImageStub'));
 // Icons render as a bare <svg>, so a suite can tell a chevron is there.
 jest.mock('react-native-svg', () => {
   const React = require('react');
   const Svg = () => React.createElement('svg');
   const leaf = () => null;
   return { __esModule: true, default: Svg, Svg, Path: leaf, Circle: leaf, G: leaf, Rect: leaf };
-}, { virtual: true });
+});
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -79,21 +79,21 @@ jest.mock('expo-router', () => {
     useRouter: () => ({ push: mockPush, replace: mockReplace }),
     Stack: { Screen: ({ options }: { options?: { title?: string } }) => React.createElement('h1', null, options?.title) },
   };
-}, { virtual: true });
+});
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
 const mockApp = { addToast: jest.fn() };
-jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }), { virtual: true });
+jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }));
 
 const mockSignOut = jest.fn(() => Promise.resolve());
 jest.mock('../../services/supabase.native', () => ({
   supabase: { auth: { signOut: () => mockSignOut() }, functions: { invoke: jest.fn() } },
-}), { virtual: true });
+}));
 
 const mockEnsureProfile = jest.fn(() => Promise.resolve(false));
-jest.mock('../../services/profileBootstrap', () => ({ ensureCurrentUserProfile: () => mockEnsureProfile() }), { virtual: true });
-jest.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: jest.fn() }) }), { virtual: true });
+jest.mock('../../services/profileBootstrap', () => ({ ensureCurrentUserProfile: () => mockEnsureProfile() }));
+jest.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: jest.fn() }) }));
 
 const mockUpdate = jest.fn();
 const profileState = { isPrivate: false, status: 'ready' as string };
@@ -106,7 +106,7 @@ jest.mock('../../features/profiles', () => ({
   }),
   useUpdateProfile: () => ({ mutate: mockUpdate, isPending: false, variables: undefined }),
   profileKeys: { all: ['profiles'] },
-}), { virtual: true });
+}));
 
 const blocks = {
   data: [] as unknown[] | undefined,
@@ -118,7 +118,7 @@ const mockUnblock = jest.fn();
 jest.mock('../../features/blocks', () => ({
   useBlocksQuery: () => blocks,
   useBlockToggle: () => ({ toggle: mockUnblock, isPending: false }),
-}), { virtual: true });
+}));
 
 import SettingsScreen from '../../app/settings';
 import BlockedUsersScreen from '../../app/blocked-users';

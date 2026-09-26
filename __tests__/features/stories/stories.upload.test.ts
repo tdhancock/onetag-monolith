@@ -26,7 +26,7 @@ jest.mock('../../../services/supabase.native', () => ({
       from: () => ({ getPublicUrl: () => ({ data: { publicUrl: 'https://cdn.test/snap.jpg' } }) }),
     },
   },
-}), { virtual: true });
+}));
 
 jest.mock('../../../services/profileBootstrap', () => ({ ensureProfileRowForUser: async () => true }));
 jest.mock('../../../services/mediaUpload', () => ({

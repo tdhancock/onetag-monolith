@@ -45,22 +45,22 @@ jest.mock('react-native', () => {
     RefreshControl: () => null,
     Dimensions: { get: () => ({ width: 376, height: 812 }) },
   };
-}, { virtual: true });
+});
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
-}, { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
+});
+jest.mock('expo-image', () => require('../support/expoImageStub'));
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }), { virtual: true });
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
 // Stable across renders, as the real one is (a useCallback in features/blocks).
 const mockApp = { isUserBlocked: () => false };
-jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }), { virtual: true });
+jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }));
 
 const state = {
   following: new Set<string>(),
@@ -75,14 +75,14 @@ jest.mock('../../features/profiles', () => ({
   useFollowState: () => ({ isFollowing: (u: string) => state.following.has(u) }),
   useToggleFollow: () => ({ toggle: mockToggle, isPending: false }),
   searchUsers: (q: string) => mockSearchUsers(q),
-}), { virtual: true });
-jest.mock('../../features/hashtags', () => ({ useHashtagsQuery: () => state.hashtags }), { virtual: true });
+}));
+jest.mock('../../features/hashtags', () => ({ useHashtagsQuery: () => state.hashtags }));
 
 const post = (id: string, extra: Record<string, unknown> = {}) => ({
   id, username: 'ana', avatar: null, content: `Post ${id}\nmore`, media_type: 'text', likes: 0, reposts: 0, replies: 0, ...extra,
 });
 const mockTrending = jest.fn(() => Promise.resolve([post('1'), post('2', { media_type: 'image', media: 'https://x/2.jpg' }), post('3'), post('4')] as unknown[]));
-jest.mock('../../features/posts', () => ({ fetchTrendingPosts: () => mockTrending() }), { virtual: true });
+jest.mock('../../features/posts', () => ({ fetchTrendingPosts: () => mockTrending() }));
 
 import SearchScreen from '../../app/(tabs)/search';
 import { Keyboard } from 'react-native';

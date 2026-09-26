@@ -19,33 +19,33 @@ jest.mock('react-native', () => {
   const shim = require('../support/reactNativeDom');
   const box = (props: { children?: React.ReactNode }) => React.createElement('div', null, props.children);
   return { ...shim, ScrollView: box, Platform: { OS: 'ios' } };
-}, { virtual: true });
+});
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
-}, { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
+});
+jest.mock('expo-image', () => require('../support/expoImageStub'));
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 const mockBack = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: mockBack, canGoBack: () => true }),
   useLocalSearchParams: () => ({ id: 'post-1' }),
   Stack: { Screen: () => null },
-}), { virtual: true });
+}));
 
 const mockToast = jest.fn();
-jest.mock('../../store/AppContext.native', () => ({ useApp: () => ({ addToast: mockToast }) }), { virtual: true });
+jest.mock('../../store/AppContext.native', () => ({ useApp: () => ({ addToast: mockToast }) }));
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profile: { username: 'me', name: 'Me', profilePicture: null } }),
-}), { virtual: true });
+}));
 
 const mockMutateAsync = jest.fn();
 const mockFetchPost = jest.fn();
 jest.mock('../../features/posts', () => ({
   useUpdatePost: () => ({ mutateAsync: mockMutateAsync }),
   fetchPostById: (id: string) => mockFetchPost(id),
-}), { virtual: true });
+}));
 
 import EditPostScreen from '../../app/edit-post';
 

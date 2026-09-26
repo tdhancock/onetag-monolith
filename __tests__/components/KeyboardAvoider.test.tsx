@@ -13,9 +13,7 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-jest.mock('react-native', () => ({ ...require('../support/reactNativeDom'), Platform: { OS: 'ios' } }), {
-  virtual: true,
-});
+jest.mock('react-native', () => ({ ...require('../support/reactNativeDom'), Platform: { OS: 'ios' } }));
 
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';

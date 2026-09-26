@@ -15,8 +15,8 @@
 jest.mock('react-native', () => ({
   ...require('../support/reactNativeDom'),
   useWindowDimensions: () => ({ width: 390, height: 844 }),
-}), { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
+}));
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 jest.mock('expo-image', () => {
   const React = require('react');
   return {
@@ -27,7 +27,7 @@ jest.mock('expo-image', () => {
         'data-fit': props.contentFit,
       }),
   };
-}, { virtual: true });
+});
 
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';

@@ -62,6 +62,11 @@ Tests run on **ts-jest** in a `node` environment with no React Native preset (`j
 `npm run db:reset`) and reach production only via the `deploy-migrations` workflow on merge,
 behind a required review.
 
+**A function only signed-in callers run revokes `FROM PUBLIC, anon`**, then grants
+`authenticated`. Supabase's default privileges grant every new `public` function to `anon`
+directly, so revoking PUBLIC alone leaves anon able to call it (ONE-85).
+`supabase/tests/function_privileges.test.sql` pins who may call what — add a new function to it.
+
 ## State boundary
 
 Server data belongs in **TanStack Query**, in `features/`. `AppContext` holds only UI state no

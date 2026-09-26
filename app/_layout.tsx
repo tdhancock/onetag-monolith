@@ -163,6 +163,7 @@ function RootLayoutNav() {
       <Stack.Screen name="compose" options={{ presentation: 'modal' }} />
       <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
       <Stack.Screen name="create-profile" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="tags/create" options={{ presentation: 'modal' }} />
       <Stack.Screen name="story-viewer" options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="story-create" options={{ presentation: 'fullScreenModal' }} />
     </Stack>

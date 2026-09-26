@@ -12,7 +12,7 @@
 
 jest.mock('../../../services/supabase.native', () => ({
   supabase: { from: jest.fn(), auth: { getUser: jest.fn() } },
-}), { virtual: true });
+}));
 
 import { QueryClient, MutationObserver } from '@tanstack/react-query';
 import { toggleMutationOptions } from '../../../lib/optimisticToggle';

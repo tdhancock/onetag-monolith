@@ -40,7 +40,7 @@ jest.mock('react-native', () => ({
     View: () => null,
     Text: () => null,
     StyleSheet: { create: (sheet: unknown) => sheet },
-}), { virtual: true });
+}));
 
 // ---------------------------------------------------------------------------
 // 1. Header brand

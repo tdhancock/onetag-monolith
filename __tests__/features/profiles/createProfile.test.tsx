@@ -26,7 +26,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
     removeItem: jest.fn(async (key: string) => { mockStore.delete(key); }),
     getAllKeys: jest.fn(async () => [...mockStore.keys()]),
   },
-}), { virtual: true });
+}));
 
 const mockFrom = jest.fn();
 const mockRpc = jest.fn();
@@ -36,9 +36,9 @@ jest.mock('../../../services/supabase.native', () => ({
     rpc: (...args: unknown[]) => mockRpc(...args),
     auth: { getUser: jest.fn() },
   },
-}), { virtual: true });
+}));
 
-jest.mock('../../../features/auth', () => ({ useAuthUserId: () => 'auth-x' }), { virtual: true });
+jest.mock('../../../features/auth', () => ({ useAuthUserId: () => 'auth-x' }));
 
 import React from 'react';
 import { act } from 'react';

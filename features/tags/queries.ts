@@ -1,9 +1,10 @@
 // Read hooks for the tags domain.
 
 import { useQuery } from '@tanstack/react-query';
-import { resolveTag, TagResolutionError } from './api';
+import { fetchMyTags, resolveTag, TagResolutionError } from './api';
 import { tagKeys } from './keys';
-import type { TagResolution } from './types';
+import type { OwnedTag, TagResolution } from './types';
+import type { ProfileId } from '../../types';
 
 /**
  * What a short code resolves to (ONE-30).
@@ -32,4 +33,33 @@ export const useTagQuery = (shortCode: string) =>
     networkMode: 'always',
     retry: (failureCount, error) =>
       failureCount < 1 && !(error instanceof TagResolutionError && error.reason === 'offline'),
+  });
+
+/**
+ * Every tag the active profile owns, newest first, with scan counts (ONE-34).
+ *
+ * Keyed by the profile, so a profile switch reads the other profile's tags —
+ * and the switch resets this entry with every other profile-scoped query.
+ */
+export const useMyTagsQuery = (ownerProfileId: ProfileId | undefined) =>
+  useQuery<OwnedTag[]>({
+    queryKey: tagKeys.mine(ownerProfileId ?? ''),
+    queryFn: () => fetchMyTags(ownerProfileId!),
+    enabled: Boolean(ownerProfileId),
+  });
+
+/**
+ * One of the active profile's tags, read out of its list rather than fetched
+ * on its own: there is one cached copy of each tag, so pausing it on its
+ * detail screen is the same write as pausing it on the dashboard.
+ *
+ * `data` is undefined while the list loads, and null when this profile owns
+ * no such tag.
+ */
+export const useMyTagQuery = (ownerProfileId: ProfileId | undefined, tagId: string) =>
+  useQuery<OwnedTag[], Error, OwnedTag | null>({
+    queryKey: tagKeys.mine(ownerProfileId ?? ''),
+    queryFn: () => fetchMyTags(ownerProfileId!),
+    enabled: Boolean(ownerProfileId),
+    select: (tags) => tags.find((tag) => tag.id === tagId) ?? null,
   });

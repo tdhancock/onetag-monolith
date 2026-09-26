@@ -17,12 +17,12 @@ import { join } from 'path';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react';
 
-jest.mock('react-native', () => require('../support/reactNativeDom'), { virtual: true });
-jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'), { virtual: true });
-jest.mock('expo-image', () => require('../support/expoImageStub'), { virtual: true });
+jest.mock('react-native', () => require('../support/reactNativeDom'));
+jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
+jest.mock('expo-image', () => require('../support/expoImageStub'));
 
 const mockToast = jest.fn();
-jest.mock('../../store/AppContext.native', () => ({ useApp: () => ({ addToast: mockToast }) }), { virtual: true });
+jest.mock('../../store/AppContext.native', () => ({ useApp: () => ({ addToast: mockToast }) }));
 
 const INDIVIDUAL = { id: 'p-ind', username: 'ana', name: 'Ana Reyes', profilePicture: null, profileType: 'individual', bio: '' };
 const BUSINESS = { id: 'p-biz', username: 'ana_studio', name: 'Ana Studio', profilePicture: null, profileType: 'business', bio: '' };
@@ -34,7 +34,7 @@ jest.mock('../../features/profiles', () => ({
   useMyProfilesQuery: () => ({ data: mockState.profiles }),
   useSetActiveProfile: () => ({ mutate: mockMutate }),
   asProfileId: (id: string) => id,
-}), { virtual: true });
+}));
 
 import ProfileSwitcher, { ProfileSwitcherButton, SWITCHER_ROW_HEIGHT } from '../../components/native/ProfileSwitcher';
 import {

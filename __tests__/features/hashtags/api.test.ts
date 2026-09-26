@@ -7,7 +7,7 @@
 
 jest.mock('../../../services/supabase.native', () => ({
   supabase: { from: jest.fn() },
-}), { virtual: true });
+}));
 
 const mockLimit = jest.fn();
 const mockOrder = jest.fn(() => ({ limit: mockLimit }));

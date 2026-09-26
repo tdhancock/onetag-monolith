@@ -27,7 +27,7 @@ jest.mock('react-native', () => {
     ActivityIndicator: passthrough('progress'),
     StyleSheet: { create: (sheet: unknown) => sheet, hairlineWidth: 1 },
   };
-}, { virtual: true });
+});
 
 import Button, { DISABLED_OPACITY, PRESSED_OPACITY } from '../../../components/native/ui/Button';
 import type { ButtonProps } from '../../../components/native/ui/Button';

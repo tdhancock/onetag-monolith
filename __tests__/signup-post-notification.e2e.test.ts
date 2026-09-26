@@ -114,7 +114,7 @@ jest.mock('../services/supabase.native', () => {
       insertCalls,
     },
   };
-}, { virtual: true });
+});
 
 const testHooks = (require('../services/supabase.native') as any).__test__ as {
   handlers: Record<string, () => ChainResult>;

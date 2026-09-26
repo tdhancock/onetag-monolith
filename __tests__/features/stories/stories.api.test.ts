@@ -26,7 +26,7 @@ jest.mock('../../../services/supabase.native', () => ({
     auth: { getUser: async () => ({ data: { user: { id: 'me' } } }) },
     from: () => builder(),
   },
-}), { virtual: true });
+}));
 
 jest.mock('../../../services/profileBootstrap', () => ({ ensureProfileRowForUser: jest.fn() }));
 jest.mock('../../../services/storyUpload', () => ({}));
