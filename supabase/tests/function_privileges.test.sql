@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(14);
+SELECT plan(16);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -50,6 +50,10 @@ SELECT ok(NOT has_function_privilege('anon', 'public.create_profile(text, text, 
   'anon cannot execute create_profile() (ONE-80)');
 SELECT ok(NOT has_function_privilege('anon', 'public.tag_scan_counts(uuid)', 'EXECUTE'),
   'anon cannot execute tag_scan_counts() (ONE-82)');
+SELECT ok(NOT has_function_privilege('anon', 'public.is_project_contributor(uuid)', 'EXECUTE'),
+  'anon cannot execute is_project_contributor() (ONE-38)');
+SELECT ok(has_function_privilege('authenticated', 'public.is_project_contributor(uuid)', 'EXECUTE'),
+  'authenticated can execute is_project_contributor(): the private-project read policy calls it');
 
 SELECT * FROM finish();
 ROLLBACK;

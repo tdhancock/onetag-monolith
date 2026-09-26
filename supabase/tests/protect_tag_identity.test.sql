@@ -10,7 +10,7 @@
 -- RLS would allow — A owns both profiles — so only the trigger refuses it.
 
 BEGIN;
-SELECT plan(11);
+SELECT plan(12);
 
 -- ─── Fixtures (as the database owner) ─────────────────────────────────
 
@@ -26,8 +26,12 @@ CREATE TEMP TABLE ids ON COMMIT DROP AS
 SELECT
   (SELECT id FROM public.profiles WHERE username = 'one86_a') AS ai,
   (SELECT id FROM public.profiles WHERE username = 'one86_a_studio') AS ab,
-  'dddddddd-0000-0000-0000-000000000086'::uuid AS t;
+  'dddddddd-0000-0000-0000-000000000086'::uuid AS t,
+  'dddddddd-0000-0000-0000-0000000000f6'::uuid AS pj;
 GRANT SELECT ON ids TO authenticated;
+
+INSERT INTO public.projects (id, owner_profile_id, name)
+VALUES ((SELECT pj FROM ids), (SELECT ai FROM ids), 'A''s own project');
 
 INSERT INTO public.tags (id, owner_profile_id, tag_type, format, name, dest_profile_id)
 VALUES ((SELECT t FROM ids), (SELECT ai FROM ids), 'physical', 'qr', 'Front door', (SELECT ai FROM ids));
@@ -59,6 +63,10 @@ SELECT throws_ok(
 SELECT throws_ok(
   $$UPDATE public.tags SET dest_profile_id = (SELECT ab FROM ids) WHERE id = (SELECT t FROM ids)$$,
   '42501', NULL, 'the owner cannot repoint the tag, even at another profile the account owns');
+
+SELECT throws_ok(
+  $$UPDATE public.tags SET dest_profile_id = NULL, dest_project_id = (SELECT pj FROM ids) WHERE id = (SELECT t FROM ids)$$,
+  '42501', NULL, 'the owner cannot repoint the tag at a project the account owns either (ONE-38)');
 
 SELECT throws_ok(
   $$UPDATE public.tags SET tag_type = 'digital', format = NULL WHERE id = (SELECT t FROM ids)$$,
