@@ -12,8 +12,8 @@ import ProfileHeader, { ProfileHeaderSkeleton } from '../../components/native/Pr
 import ProfileTabs from '../../components/native/ProfileTabs';
 import ProfileSwitcher, { ProfileSwitcherButton } from '../../components/native/ProfileSwitcher';
 import { GridTile, ProfileGridSkeleton } from '../../components/native/ProfileGrid';
-import { Button, EmptyState, IconButton } from '../../components/native/ui';
-import { MenuIcon, TagIcon } from '../../components/native/Icons';
+import { Button, EmptyState, IconButton, Sheet, SheetRow } from '../../components/native/ui';
+import { MenuIcon, PlusIcon, TagIcon } from '../../components/native/Icons';
 import {
   getEditButtonProps,
   profileEmptyState,
@@ -22,6 +22,7 @@ import {
   type ProfileTab,
 } from '../../lib/screens/profile';
 import { tagCreateRoute, TAGS_DASHBOARD_ROUTE } from '../../lib/screens/tags';
+import { canCreateProduct, PRODUCT_CREATE_ROUTE } from '../../lib/screens/products';
 import { color, space } from '../../theme/tokens';
 import type { Post } from '../../types';
 
@@ -46,6 +47,7 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   // The profile these lists were asked for. A switch mid-fetch must not let
   // the previous profile's answer land under the new one's header.
@@ -141,12 +143,24 @@ export default function ProfileScreen() {
   const editButton = getEditButtonProps(userProfile);
   const empty = profileEmptyState(activeTab, true);
 
+  // What this profile can create from here. Only a business lists products
+  // (ONE-40), so an individual profile is offered no such thing.
+  const canAddProduct = canCreateProduct(userProfile);
+
   // A bar of its own above the header: the profile you are acting as, which
-  // opens the switcher (ONE-25), its Tags (ONE-34), and Settings.
+  // opens the switcher (ONE-25), what it can create, its Tags (ONE-34), and
+  // Settings.
   const topBar = (
     <View style={styles.topBar}>
       <ProfileSwitcherButton profile={userProfile} onPress={() => setSwitcherOpen(true)} />
       <View style={styles.topBarActions}>
+        {canAddProduct ? (
+          <IconButton
+            icon={<PlusIcon color={color.text} size={24} strokeWidth={1.8} />}
+            accessibilityLabel="Create"
+            onPress={() => setCreateOpen(true)}
+          />
+        ) : null}
         <IconButton
           icon={<TagIcon color={color.text} size={24} strokeWidth={1.8} />}
           accessibilityLabel="Tags"
@@ -225,6 +239,19 @@ export default function ProfileScreen() {
         onClose={() => setSwitcherOpen(false)}
         onAddProfile={() => router.push('/create-profile')}
       />
+
+      <Sheet visible={createOpen} onClose={() => setCreateOpen(false)} title="Create">
+        {canAddProduct ? (
+          <SheetRow
+            label="Add a product"
+            hint="A catalog item people can save and projects can Link."
+            onPress={() => {
+              setCreateOpen(false);
+              router.push(PRODUCT_CREATE_ROUTE);
+            }}
+          />
+        ) : null}
+      </Sheet>
     </SafeAreaView>
   );
 }

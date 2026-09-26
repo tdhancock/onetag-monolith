@@ -17,14 +17,15 @@ export const SCAN_DESTINATION_LABEL: Record<ScanHistoryEntry['kind'], string> = 
  * An entry's destination, in the terms Tag Resolution routes by — so a
  * history row goes exactly where scanning the tag again would.
  *
- * Only profiles today. M5's product and project screens (ONE-40, ONE-41) add
- * their members to TagDestination; each adds its line here too, and until
- * then those entries show without routing anywhere.
+ * Profiles and products today. The project screen (ONE-41) adds its member
+ * to TagDestination and its line here; until then a project entry shows
+ * without routing anywhere.
  */
 export const destinationOfEntry = (entry: ScanHistoryEntry): TagDestination | null => {
   if (entry.kind === 'profile' && entry.username) {
     return { kind: 'profile', profileId: entry.destinationId, username: entry.username };
   }
+  if (entry.kind === 'product') return { kind: 'product', productId: entry.destinationId };
   return null;
 };
 

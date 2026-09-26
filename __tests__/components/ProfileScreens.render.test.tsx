@@ -287,6 +287,21 @@ describe('Your profile', () => {
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/tags/create', params: {} });
   });
 
+  it('offers a business profile Add a product, from Create in the top bar (ONE-40)', async () => {
+    state.me = ME_BUSINESS;
+    const el = await mount(<OwnProfileScreen />);
+    act(() => button(el, 'Create')!.click());
+    act(() => button(el, 'Add a product')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/product/create');
+  });
+
+  it('offers an individual profile no way to create a product (ONE-40)', async () => {
+    const el = await mount(<OwnProfileScreen />);
+    expect(button(el, 'Create')).toBeNull();
+    expect(button(el, 'Add a product')).toBeNull();
+    expect(el.textContent).not.toMatch(/add a product/i);
+  });
+
   it('invites your first post when you have none', async () => {
     state.posts = [];
     const el = await mount(<OwnProfileScreen />);

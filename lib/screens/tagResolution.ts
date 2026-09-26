@@ -8,6 +8,7 @@ import type { TagDestination, TagResolution, TagResolutionError } from '../../fe
 import type { AuthStatus } from '../../features/auth';
 import type { CurrentProfileStatus } from '../../features/profiles';
 import type { ProfileId } from '../../types';
+import { productRoute } from './products';
 
 // ─── Where a destination goes ───────────────────────────────────────────
 
@@ -16,11 +17,12 @@ type RouteBuilders = {
 };
 
 /**
- * One route per destination kind. Adding M5's Products and Projects is one
- * line each here, beside their member of `TagDestination`.
+ * One route per destination kind, beside its member of `TagDestination`.
+ * Each id goes through `encodeURIComponent`, in the kind's own route builder.
  */
 const DESTINATION_ROUTES: RouteBuilders = {
   profile: ({ username }) => `/user/${encodeURIComponent(username)}`,
+  product: ({ productId }) => productRoute(productId),
 };
 
 /** The route a destination lives at, or null for a kind this build cannot route. */

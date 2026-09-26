@@ -10,12 +10,14 @@ import type { ProfileId } from '../../types';
  *
  * One member per destination kind the app can route to. A Destination is one
  * of four kinds — Business Profile, Individual Profile, Product, Project —
- * and both profile kinds are the one member here. M5 adds Products and
- * Projects (ONE-40, ONE-41), each alongside a column in `resolve_tag` and a
- * route in `lib/screens/tagResolution.ts`. A post is not a Destination
- * (ONE-83).
+ * and both profile kinds are the one member here. Products arrived with
+ * ONE-40, beside a column in `resolve_tag` and a route in
+ * `lib/screens/tagResolution.ts`; Projects follow the same way (ONE-41). A
+ * post is not a Destination (ONE-83).
  */
-export type TagDestination = { kind: 'profile'; profileId: string; username: string };
+export type TagDestination =
+  | { kind: 'profile'; profileId: string; username: string }
+  | { kind: 'product'; productId: string };
 
 export type TagDestinationKind = TagDestination['kind'];
 
@@ -38,6 +40,7 @@ export interface ResolveTagRow {
   active: boolean;
   dest_profile_id: string | null;
   dest_profile_username: string | null;
+  dest_product_id: string | null;
 }
 
 /** Why a resolution could not be read, in terms a screen can say something about. */

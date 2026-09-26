@@ -4,6 +4,18 @@
 // show, and what the username check says can be tested without mounting
 // them. The messages are the ones the screens have always shown.
 
+/**
+ * The screens someone without an account may be launched straight into, by
+ * their route's first segment: Tag Resolution (ONE-30), and a product page
+ * (ONE-40), which a shared link opens and a tag lands on. The launch check in
+ * app/_layout.tsx sends everyone else without a session to sign in.
+ */
+export const PUBLIC_ROUTE_SEGMENTS: readonly string[] = ['t', 'product'];
+
+/** Whether a route, by its first segment, opens without a session. */
+export const opensWithoutSession = (firstSegment: string | undefined): boolean =>
+  firstSegment !== undefined && PUBLIC_ROUTE_SEGMENTS.includes(firstSegment);
+
 /** Supabase rejects anything shorter, and the form has always said so. */
 export const PASSWORD_MIN_LENGTH = 6;
 /** How long typing must pause before the username is looked up. */
