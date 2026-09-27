@@ -106,7 +106,9 @@ const state = {
     fetchNextPage: jest.fn(),
   },
   reel: { data: [] as unknown[], isPending: false, refetch: jest.fn(() => Promise.resolve()) },
+  filteredFeed: { data: { pages: [[]] } as undefined | { pages: { id: string }[][] }, isPending: false },
 };
+const mockFeedInterests: (string | null)[] = [];
 
 const mockFollowToggle = jest.fn();
 jest.mock('../../features/profiles', () => ({
@@ -135,8 +137,17 @@ jest.mock('../../features/stories', () => ({
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn() }),
 }));
+// The interest filter's list (ONE-49), fixed.
+jest.mock('../../features/interests', () => ({
+  useInterestsQuery: () => ({ data: [{ slug: 'custom-homes', name: 'Custom Homes' }, { slug: 'vehicle-builds', name: 'Vehicle Builds' }] }),
+}));
 jest.mock('../../features/posts', () => ({
-  useFeedQuery: () => state.feed,
+  // Records the interest it was asked for (ONE-49); a filtered feed answers
+  // from `filteredFeed`.
+  useFeedQuery: (_id: unknown, interest?: string | null) => {
+    mockFeedInterests.push(interest ?? null);
+    return interest ? { ...state.feed, ...state.filteredFeed } : state.feed;
+  },
   fetchPostById: jest.fn(),
   feedPosts: (data?: { pages: { id: string }[][] }) => (data ? data.pages.flat() : []),
   prependPost: jest.fn(),
@@ -178,6 +189,8 @@ beforeEach(() => {
   state.feed.isPending = false;
   state.feed.isError = false;
   state.feed.refetch.mockClear();
+  state.filteredFeed = { data: { pages: [[]] }, isPending: false };
+  mockFeedInterests.length = 0;
   state.reel.isPending = false;
   mockPush.mockClear();
   mockNavigate.mockClear();
@@ -327,5 +340,51 @@ describe('Home — empty', () => {
     const explore = Array.from(el.querySelectorAll('button')).find(b => b.textContent === 'Explore')!;
     act(() => explore.click());
     expect(mockNavigate).toHaveBeenCalledWith('/(tabs)/search');
+  });
+});
+
+// ─── The interest filter (ONE-49) ───────────────────────────────────────
+
+describe('Home — interest filter', () => {
+  const chip = (el: HTMLElement, label: string) => button(el, `Interest: ${label}`) ?? button(el, `Interest: ${label}, selected`);
+
+  it('offers All and each interest above the feed, starting at All', async () => {
+    const el = await mount();
+    expect(chip(el, 'All')!.getAttribute('aria-label')).toBe('Interest: All, selected');
+    expect(chip(el, 'Custom Homes')).not.toBeNull();
+    expect(mockFeedInterests.every(i => i === null)).toBe(true);
+  });
+
+  it('asks the server for that interest when one is chosen', async () => {
+    const el = await mount();
+    act(() => chip(el, 'Custom Homes')!.click());
+    expect(mockFeedInterests[mockFeedInterests.length - 1]).toBe('custom-homes');
+  });
+
+  it('explains an empty interest and offers a way back to All', async () => {
+    const el = await mount();
+    act(() => chip(el, 'Custom Homes')!.click());
+    expect(el.textContent).toContain('Nothing in Custom Homes yet');
+    act(() => (Array.from(el.querySelectorAll('button')).find(b => b.textContent === 'Show all') as HTMLButtonElement).click());
+    expect(mockFeedInterests[mockFeedInterests.length - 1]).toBeNull();
+    expect(chip(el, 'All')!.getAttribute('aria-label')).toBe('Interest: All, selected');
+  });
+
+  it('shows the filtered posts when there are some', async () => {
+    state.filteredFeed = { data: { pages: [[{ id: 'post-9' }]] }, isPending: false };
+    const el = await mount();
+    act(() => chip(el, 'Custom Homes')!.click());
+    expect(el.textContent).not.toContain('Nothing in Custom Homes yet');
+  });
+
+  it('starts at All on every mount: the choice is never stored', async () => {
+    const first = await mount();
+    act(() => chip(first, 'Custom Homes')!.click());
+    act(() => root!.unmount());
+    root = null;
+    mockFeedInterests.length = 0;
+    const second = await mount();
+    expect(chip(second, 'All')!.getAttribute('aria-label')).toBe('Interest: All, selected');
+    expect(mockFeedInterests.every(i => i === null)).toBe(true);
   });
 });

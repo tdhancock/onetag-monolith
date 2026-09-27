@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,72 +10,60 @@ import {
   Keyboard,
   StyleSheet,
 } from 'react-native';
-import { Image } from 'expo-image';
-import TaggedBadge from '../../components/native/TaggedBadge';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
-import { useFollowState, useToggleFollow, useCurrentProfile, searchUsers } from '../../features/profiles';
-import { fetchTrendingPosts as getTrendingPosts } from '../../features/posts';
+import { useFollowState, useToggleFollow, useCurrentProfile } from '../../features/profiles';
+import {
+  useProfileResultsQuery,
+  usePostResultsQuery,
+  useProductResultsQuery,
+  useProjectResultsQuery,
+  type SearchProfile,
+  type SearchPost,
+  type SearchProduct,
+  type SearchProject,
+} from '../../features/search';
+import FilterChips from '../../components/native/FilterChips';
+import InterestFilter, { useInterestName } from '../../components/native/InterestFilter';
+import { useDebouncedValue } from '../../lib/useDebouncedValue';
+import { productRoute } from '../../lib/screens/products';
+import { projectRoute } from '../../lib/screens/projects';
+import { firstLine } from '../../lib/screens/profile';
+import { useExploreQuery, flattenExplorePages, type ExploreItem } from '../../features/explore';
+import ExploreCard from '../../components/native/ExploreCard';
 import { useHashtagsQuery } from '../../features/hashtags';
-import { Button, EmptyState, ListRow, MonoLabel, Pressable, Skeleton, TextField } from '../../components/native/ui';
+import { Button, EmptyState, ListRow, MonoLabel, Pressable, Sheet, SheetRow, Skeleton, TextField } from '../../components/native/ui';
 import { SearchIcon } from '../../components/native/Icons';
 import {
   EXPLORE_COLUMNS,
   EXPLORE_GRID_GAP,
+  exploreRoute,
   exploreTileGapRight,
   exploreTileSize,
   hashtagPostCount,
   matchingHashtags,
   noResultsLabel,
+  NO_RESULTS_HINT,
+  SEARCH_TABS,
+  ALL_TAB_PREVIEW,
+  categoriesOf,
+  categoryFilterLabel,
+  type SearchTab,
 } from '../../lib/screens/explore';
-import { firstLine } from '../../lib/screens/profile';
 import { color, space, type } from '../../theme/tokens';
-import type { Post, SimpleUser, Hashtag } from '../../types';
+import type { Hashtag } from '../../types';
 
 const tileSize = exploreTileSize(Dimensions.get('window').width);
-/** Tiles shown while the grid loads: four rows. */
-const SKELETON_TILES = EXPLORE_COLUMNS * 4;
-/** Placeholder people rows while a search is in flight. */
+/** Cells shown while the grid loads: three rows. */
+const SKELETON_TILES = EXPLORE_COLUMNS * 3;
+/** Placeholder result rows while a search is in flight. */
 const SKELETON_ROWS = 3;
 const HASH_TILE_SIZE = 40;
 
 // ─── Sub-components ──────────────────────────────
 
-/** One square of the trending grid: the photo, or a text post's first line. */
-const ExploreTile: React.FC<{ post: Post; index: number; onPress: () => void }> = React.memo(
-  ({ post, index, onPress }) => {
-    const isTextPost = post.media_type === 'text' || !post.media;
-    return (
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={`Post by ${post.username}`}
-        style={[styles.tile, { marginRight: exploreTileGapRight(index) }]}
-      >
-        {isTextPost ? (
-          <View style={styles.textTile}>
-            <Text style={styles.textTileCopy} numberOfLines={5}>
-              {firstLine(post.content)}
-            </Text>
-          </View>
-        ) : (
-          <Image
-            // The preview is a 50px blur-up, not something to show on its own.
-            source={{ uri: post.media }}
-            placeholder={post.media_preview_url ? { uri: post.media_preview_url } : undefined}
-            style={styles.fill}
-            contentFit="cover"
-            transition={200}
-          />
-        )}
-        {!isTextPost && <TaggedBadge count={post.embeddedTags?.length ?? 0} compact />}
-      </Pressable>
-    );
-  },
-);
-
-/** The grid's shape, pulsing, while trending posts load. */
+/** The grid's shape, pulsing, while it loads. */
 const GridSkeleton: React.FC = () => (
   <View style={styles.skeletonGrid}>
     {Array.from({ length: SKELETON_TILES }, (_, i) => (
@@ -120,94 +108,68 @@ export default function SearchScreen() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
 
-  const [trendingPosts, setTrendingPosts] = useState<Post[]>([]);
-  const [userResults, setUserResults] = useState<SimpleUser[]>([]);
-  const [isUserSearchLoading, setIsUserSearchLoading] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [tab, setTab] = useState<SearchTab>('all');
+  const [productCategory, setProductCategory] = useState<string | null>(null);
+  const [projectCategory, setProjectCategory] = useState<string | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   // ─── Data loading ──────────────────────────────
 
-  // Hashtags come from the query cache; trending posts are still on the old
-  // path until the feed migration ticket moves them.
-  const {
-    data: hashtags = [],
-    isLoading: hashtagsLoading,
-    refetch: refetchHashtags,
-  } = useHashtagsQuery();
-
-  const loadExploreData = useCallback(async () => {
-    try {
-      const postsData = await getTrendingPosts();
-      setTrendingPosts(postsData);
-      setLoadFailed(false);
-    } catch (error) {
-      console.error('Search data load error:', error);
-      setLoadFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // The grid waits on both sources, exactly as it did when they loaded
-  // together.
-  const isExploreLoading = loading || hashtagsLoading;
-
-  useEffect(() => {
-    loadExploreData();
-  }, [loadExploreData]);
+  // Hashtags feed the search results; the grid is its own infinite query
+  // (ONE-47), ordered and filtered on the server.
+  const { data: hashtags = [], refetch: refetchHashtags } = useHashtagsQuery();
+  // View state, reset on launch (ONE-49); narrows explore_items itself.
+  const [interest, setInterest] = useState<string | null>(null);
+  const interestName = useInterestName(interest);
+  const explore = useExploreQuery(profileId, interest);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([loadExploreData(), refetchHashtags()]);
+    await Promise.all([explore.refetch(), refetchHashtags()]);
     setRefreshing(false);
-  }, [loadExploreData, refetchHashtags]);
+  }, [explore, refetchHashtags]);
 
-  const retry = useCallback(() => {
-    setLoading(true);
-    void loadExploreData();
-    void refetchHashtags();
-  }, [loadExploreData, refetchHashtags]);
+  // ─── Search (ONE-48) ───────────────────────────
+  //
+  // One query per content type on the debounced term: typing waits out the
+  // pause, and TanStack Query dedupes identical requests in flight — no
+  // hand-written guard. Blocks and private projects are filtered in the
+  // database; the client filter below covers a block made moments ago.
 
-  // ─── User search with debounce ─────────────────
+  const term = useDebouncedValue(searchTerm).trim();
+  const profileResults = useProfileResultsQuery(term);
+  const postResults = usePostResultsQuery(term);
+  const productResults = useProductResultsQuery(term, productCategory);
+  const projectResults = useProjectResultsQuery(term, projectCategory);
 
-  useEffect(() => {
-    if (!isSearching || !searchTerm.trim()) {
-      setUserResults([]);
-      setIsUserSearchLoading(false);
-      return;
-    }
-
-    setIsUserSearchLoading(true);
-    const timer = setTimeout(async () => {
-      try {
-        const usersFromApi = await searchUsers(searchTerm);
-        const mapped: SimpleUser[] = usersFromApi.map((u: any) => ({
-          id: u.id,
-          name: u.full_name,
-          username: u.username,
-          avatar: u.avatar_url,
-          isVerified: u.is_verified,
-        }));
-        setUserResults(mapped.filter(u => !isUserBlocked(u.username)));
-      } catch (error) {
-        console.error('User search error:', error);
-      } finally {
-        setIsUserSearchLoading(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchTerm, isSearching, isUserBlocked]);
+  const profiles = useMemo(
+    () => (profileResults.data ?? []).filter(p => !isUserBlocked(p.username)),
+    [profileResults.data, isUserBlocked],
+  );
+  const posts = useMemo(
+    () => (postResults.data ?? []).filter(p => !isUserBlocked(p.authorUsername)),
+    [postResults.data, isUserBlocked],
+  );
+  const products = useMemo(
+    () => (productResults.data ?? []).filter(p => !isUserBlocked(p.businessUsername)),
+    [productResults.data, isUserBlocked],
+  );
+  const projects = useMemo(
+    () => (projectResults.data ?? []).filter(p => !isUserBlocked(p.ownerUsername)),
+    [projectResults.data, isUserBlocked],
+  );
 
   // ─── Filtered data ─────────────────────────────
 
+  // Hashtag search is unchanged: the known tags, matched as they are typed.
   const filteredHashtags = useMemo(() => matchingHashtags(hashtags, searchTerm), [hashtags, searchTerm]);
 
-  const visibleExplorePosts = useMemo(
-    () => trendingPosts.filter(p => !isUserBlocked(p.username)),
-    [trendingPosts, isUserBlocked],
+  // The server leaves out blocked accounts either way (explore_items). This
+  // covers a block made since the page loaded, until the next refetch.
+  const exploreItems = useMemo(
+    () => flattenExplorePages(explore.data?.pages ?? []).filter(item => !isUserBlocked(item.ownerUsername)),
+    [explore.data, isUserBlocked],
   );
 
   // ─── Navigation ────────────────────────────────
@@ -216,28 +178,31 @@ export default function SearchScreen() {
     router.push(`/user/${username}`);
   }, [router]);
 
-  const handleViewPost = useCallback((post: Post) => {
-    router.push(`/post/${post.id}`);
+  const handleOpenItem = useCallback((item: ExploreItem) => {
+    router.push(exploreRoute(item) as never);
   }, [router]);
 
   const cancelSearch = () => {
     setIsSearching(false);
     setSearchTerm('');
+    setTab('all');
+    setProductCategory(null);
+    setProjectCategory(null);
     searchRef.current?.blur();
     Keyboard.dismiss();
   };
 
   // ─── Render search results ─────────────────────
 
-  const renderPerson = (user: SimpleUser) => {
+  const renderPerson = (user: SearchProfile) => {
     const following = isFollowing(user.username);
     const isMe = userProfile?.username === user.username;
     return (
       <ListRow
-        key={user.id || user.username}
-        title={user.name || user.username}
-        subtitle={`@${user.username}`}
-        avatarUri={user.avatar}
+        key={user.id}
+        title={user.name}
+        subtitle={`@${user.username} · ${user.profileType === 'business' ? 'Business' : 'Individual'}`}
+        avatarUri={user.avatarUrl}
         verified={user.isVerified}
         onPress={() => handleViewProfile(user.username)}
         accessibilityLabel={`View ${user.username}'s profile`}
@@ -266,64 +231,179 @@ export default function SearchScreen() {
     />
   );
 
-  const renderSearchContent = () => {
-    if (!searchTerm.trim()) {
-      return <Text style={styles.hint}>Search for people and hashtags.</Text>;
-    }
+  const renderPost = (post: SearchPost) => (
+    <ListRow
+      key={post.id}
+      title={firstLine(post.content) || 'Photo'}
+      subtitle={`Post · @${post.authorUsername}`}
+      avatarUri={post.imageUrl ?? post.authorAvatarUrl}
+      onPress={() => router.push(`/post/${encodeURIComponent(post.id)}` as never)}
+      accessibilityLabel={`Post by @${post.authorUsername}: ${firstLine(post.content)}`}
+    />
+  );
 
-    const noPeople = !isUserSearchLoading && userResults.length === 0;
-    if (noPeople && filteredHashtags.length === 0) {
-      return <Text style={styles.hint}>{noResultsLabel(searchTerm)}</Text>;
-    }
+  const renderProduct = (product: SearchProduct) => (
+    <ListRow
+      key={product.id}
+      title={product.name}
+      subtitle={['Product', product.businessName, product.category].filter(Boolean).join(' · ')}
+      avatarUri={product.imageUrl}
+      onPress={() => router.push(productRoute(product.id) as never)}
+      accessibilityLabel={`Product: ${product.name}, from ${product.businessName}`}
+    />
+  );
+
+  const renderProject = (project: SearchProject) => (
+    <ListRow
+      key={project.id}
+      title={project.name}
+      subtitle={['Project', `@${project.ownerUsername}`, project.category].filter(Boolean).join(' · ')}
+      avatarUri={project.coverUrl}
+      onPress={() => router.push(projectRoute(project.id) as never)}
+      accessibilityLabel={`Project: ${project.name}, by @${project.ownerUsername}`}
+    />
+  );
+
+  /** A section of results: a mono header, the rows, and on All a way into its tab. */
+  const section = <T,>(title: string, items: T[], render: (item: T) => React.ReactNode, target?: SearchTab) => {
+    if (items.length === 0) return null;
+    const preview = tab === 'all' && target ? items.slice(0, ALL_TAB_PREVIEW) : items;
+    return (
+      <View key={title}>
+        <MonoLabel color="textMid" style={styles.sectionHeader}>{title}</MonoLabel>
+        {preview.map(render)}
+        {tab === 'all' && target && items.length > ALL_TAB_PREVIEW ? (
+          <Pressable
+            onPress={() => setTab(target)}
+            accessibilityRole="button"
+            accessibilityLabel={`See all ${title.toLowerCase()}`}
+            style={styles.seeAll}
+          >
+            <MonoLabel>{`See all ${title.toLowerCase()}`}</MonoLabel>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  };
+
+  // The filter sheet (products and projects only): the categories in the
+  // results, and a way back to every category.
+  const filterCategory = tab === 'products' ? productCategory : tab === 'projects' ? projectCategory : null;
+  const setFilterCategory = tab === 'products' ? setProductCategory : setProjectCategory;
+  const filterOptions = categoriesOf(tab === 'products' ? products : tab === 'projects' ? projects : []);
+
+  const renderSearchContent = () => {
+    const loading = [profileResults, postResults, productResults, projectResults].some(q => q.isPending && q.isFetching);
+    const nothing =
+      !loading &&
+      profiles.length === 0 &&
+      posts.length === 0 &&
+      products.length === 0 &&
+      projects.length === 0 &&
+      filteredHashtags.length === 0;
 
     return (
-      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.results}>
-        {!noPeople ? (
-          <View>
-            <MonoLabel color="textMid" style={styles.sectionHeader}>People</MonoLabel>
-            {isUserSearchLoading
-              ? Array.from({ length: SKELETON_ROWS }, (_, i) => <RowSkeleton key={i} />)
-              : userResults.map(renderPerson)}
+      <View style={styles.fill}>
+        <View style={styles.tabs}>
+          <FilterChips label="Show" options={SEARCH_TABS} selected={tab} onSelect={setTab} />
+        </View>
+
+        {(tab === 'products' || tab === 'projects') ? (
+          <View style={styles.filterBar}>
+            <Button size="sm" variant={filterCategory ? 'primary' : 'outline'} onPress={() => setFilterOpen(true)}>
+              {categoryFilterLabel(filterCategory)}
+            </Button>
           </View>
         ) : null}
-        {filteredHashtags.length > 0 ? (
-          <View>
-            <MonoLabel color="textMid" style={styles.sectionHeader}>Hashtags</MonoLabel>
-            {filteredHashtags.map(renderHashtag)}
+
+        {loading && nothing ? (
+          <View>{Array.from({ length: SKELETON_ROWS }, (_, i) => <RowSkeleton key={i} />)}</View>
+        ) : nothing ? (
+          <View style={styles.noResults}>
+            <Text style={styles.hint}>{noResultsLabel(searchTerm)}</Text>
+            <Text style={styles.hintSub}>{NO_RESULTS_HINT}</Text>
           </View>
-        ) : null}
-      </ScrollView>
+        ) : (
+          <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.results}>
+            {(tab === 'all' || tab === 'profiles') && section('Profiles', profiles, renderPerson, 'profiles')}
+            {(tab === 'all' || tab === 'posts') && section('Hashtags', filteredHashtags, renderHashtag, 'posts')}
+            {(tab === 'all' || tab === 'posts') && section('Posts', posts, renderPost, 'posts')}
+            {(tab === 'all' || tab === 'products') && section('Products', products, renderProduct, 'products')}
+            {(tab === 'all' || tab === 'projects') && section('Projects', projects, renderProject, 'projects')}
+          </ScrollView>
+        )}
+
+        <Sheet visible={filterOpen} onClose={() => setFilterOpen(false)} title="Filter by category">
+          <SheetRow
+            label="All categories"
+            onPress={() => {
+              setFilterCategory(null);
+              setFilterOpen(false);
+            }}
+          />
+          {filterOptions.map(category => (
+            <SheetRow
+              key={category}
+              label={category}
+              onPress={() => {
+                setFilterCategory(category);
+                setFilterOpen(false);
+              }}
+            />
+          ))}
+        </Sheet>
+      </View>
     );
   };
 
   // ─── Render explore grid ───────────────────────
 
   const renderExploreItem = useCallback(
-    ({ item, index }: { item: Post; index: number }) => (
-      <ExploreTile post={item} index={index} onPress={() => handleViewPost(item)} />
+    ({ item, index }: { item: ExploreItem; index: number }) => (
+      <ExploreCard
+        item={item}
+        size={tileSize}
+        gapRight={exploreTileGapRight(index)}
+        gapBottom={EXPLORE_GRID_GAP}
+        onPress={() => handleOpenItem(item)}
+      />
     ),
-    [handleViewPost],
+    [handleOpenItem],
   );
 
-  const renderGrid = () => {
-    if (isExploreLoading) return <GridSkeleton />;
+  const loadMore = useCallback(() => {
+    // One page at a time: onEndReached can fire again before the page lands.
+    if (explore.hasNextPage && !explore.isFetchingNextPage) void explore.fetchNextPage();
+  }, [explore]);
 
-    if (loadFailed && visibleExplorePosts.length === 0) {
+  const renderGrid = () => {
+    if (explore.isPending && !interest) return <GridSkeleton />;
+
+    if (explore.isError && exploreItems.length === 0) {
       return (
         <EmptyState
           title="Couldn't load Explore"
           body="Check your connection and try again."
-          action={{ label: 'Retry', onPress: retry }}
+          action={{ label: 'Retry', onPress: () => void explore.refetch() }}
         />
       );
     }
 
     return (
       <FlatList
-        data={visibleExplorePosts}
+        data={exploreItems}
         renderItem={renderExploreItem}
-        keyExtractor={item => item.id}
+        keyExtractor={item => item.key}
         numColumns={EXPLORE_COLUMNS}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        // The interest filter row, in the slot ONE-47 kept above the grid.
+        ListHeaderComponent={
+          <View testID="explore-filter-slot">
+            <InterestFilter selected={interest} onSelect={setInterest} />
+          </View>
+        }
+        ListFooterComponent={explore.isFetchingNextPage ? <GridSkeleton /> : null}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -333,11 +413,23 @@ export default function SearchScreen() {
           />
         }
         ListEmptyComponent={
+          interest ? (
+            explore.isPending ? (
+              <GridSkeleton />
+            ) : (
+              <EmptyState
+                title={`Nothing in ${interestName} yet`}
+                body="When people post or share projects about this, they'll show up here."
+                action={{ label: 'Show all', onPress: () => setInterest(null) }}
+              />
+            )
+          ) : (
           <EmptyState
             title="Nothing to explore yet"
-            body="As more posts are created, they will appear here."
+            body="Follow people to fill your feed, or be the first to post, list a product or share a project."
             action={{ label: 'Create a post', onPress: () => router.push('/compose') }}
           />
+          )
         }
         contentContainerStyle={styles.fillGrow}
       />
@@ -378,7 +470,8 @@ export default function SearchScreen() {
       </View>
 
       {/* Content */}
-      {isSearching ? renderSearchContent() : renderGrid()}
+      {/* An empty input shows the grid, even while the field is focused (ONE-48). */}
+      {isSearching && searchTerm.trim() ? renderSearchContent() : renderGrid()}
     </SafeAreaView>
   );
 }
@@ -422,6 +515,30 @@ const styles = StyleSheet.create({
     paddingTop: space.lg,
     paddingBottom: space.sm,
   },
+  tabs: {
+    paddingBottom: space.sm,
+  },
+  filterBar: {
+    flexDirection: 'row',
+    paddingHorizontal: space.lg,
+    paddingBottom: space.sm,
+  },
+  seeAll: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: space.lg,
+  },
+  noResults: {
+    paddingTop: space.xl,
+  },
+  hintSub: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.sm,
+    fontFamily: type.body,
+    fontSize: 13,
+    color: color.textMuted,
+    textAlign: 'center',
+  },
   hint: {
     paddingHorizontal: space.lg,
     paddingTop: space.xl,
@@ -440,23 +557,6 @@ const styles = StyleSheet.create({
   hashGlyph: {
     fontFamily: type.bodyBold,
     fontSize: 17,
-    color: color.text,
-  },
-  tile: {
-    width: tileSize,
-    height: tileSize,
-    marginBottom: EXPLORE_GRID_GAP,
-    backgroundColor: color.bgPanel,
-  },
-  textTile: {
-    flex: 1,
-    padding: space.sm,
-    justifyContent: 'center',
-  },
-  textTileCopy: {
-    fontFamily: type.bodyMedium,
-    fontSize: 13,
-    lineHeight: 18,
     color: color.text,
   },
   skeletonGrid: {

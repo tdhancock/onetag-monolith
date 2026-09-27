@@ -16,6 +16,8 @@ export interface ProjectSummary {
   coverUrl: string | null;
   /** Public or Private. A private one reaches only its owner and contributors. */
   isPublic: boolean;
+  /** An interest slug (ONE-49), or null for an untagged project. */
+  interestSlug: string | null;
   createdAt: string;
 }
 
@@ -27,11 +29,12 @@ export interface ProjectSummaryRow {
   year: string | null;
   cover_url: string | null;
   is_public: boolean;
+  interest_slug?: string | null;
   created_at: string;
 }
 
 /** What a list reads of a project. Embeds as `project:projects(…)` from a table that Links one. */
-export const PROJECT_SUMMARY_SELECT = 'id, owner_profile_id, name, project_type, year, cover_url, is_public, created_at';
+export const PROJECT_SUMMARY_SELECT = 'id, owner_profile_id, name, project_type, year, cover_url, is_public, interest_slug, created_at';
 
 export const mapProjectSummaryRow = (row: ProjectSummaryRow): ProjectSummary => ({
   id: row.id,
@@ -41,6 +44,7 @@ export const mapProjectSummaryRow = (row: ProjectSummaryRow): ProjectSummary => 
   year: row.year,
   coverUrl: row.cover_url,
   isPublic: row.is_public,
+  interestSlug: row.interest_slug ?? null,
   createdAt: row.created_at,
 });
 

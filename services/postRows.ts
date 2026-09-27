@@ -15,6 +15,7 @@ export const POST_SELECT_QUERY = `
     image_url,
     media_type,
     media_aspect_ratio,
+    interest_slug,
     created_at,
     profiles!user_id(
         username,
@@ -155,6 +156,7 @@ export const mapPostData = (p: any): Post => {
     isReposted: hasViewerRow(p.viewer_repost),
     isSaved: hasViewerRow(p.viewer_save),
     embeddedTags: mapEmbeddedTags(p.embedded_tags),
+    interestSlug: p.interest_slug ?? null,
   };
 };
 

@@ -12,7 +12,7 @@ jest.mock('../../../services/supabase.native', () => ({
 }));
 
 /** Records the chain a query built, so the test can assert on it. */
-type Call = { lt?: string; limit?: number; inIds?: string[] };
+type Call = { lt?: string; limit?: number; inIds?: string[]; eqs: [string, unknown][] };
 
 let calls: Call[] = [];
 let postsResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
@@ -26,7 +26,7 @@ supabase.from.mockImplementation((table: string) => {
     return { select: () => ({ eq: () => Promise.resolve(followsResult) }) };
   }
 
-  const call: Call = {};
+  const call: Call = { eqs: [] };
   calls.push(call);
 
   const chain = {
@@ -44,14 +44,16 @@ supabase.from.mockImplementation((table: string) => {
       return Object.assign(Promise.resolve(postsResult), chain);
     },
     select: () => chain,
-    eq: () => chain,
+    eq: (col: string, value: unknown) => {
+      call.eqs.push([col, value]);
+      return Object.assign(Promise.resolve(postsResult), chain);
+    },
   };
   return chain;
 });
 
 import {
   fetchFeedPage,
-  fetchTrendingPosts,
   nextFeedCursor,
   FEED_PAGE_SIZE,
   mapPostData,
@@ -119,6 +121,22 @@ describe('fetchFeedPage — paging is an argument', () => {
 
 // ─── 2. Errors reach the query ──────────────────────────────────────────
 
+describe('fetchFeedPage — the interest filter (ONE-49)', () => {
+  it('narrows the query itself, so a filtered page is still full-length', async () => {
+    calls = [];
+    await fetchFeedPage({ userId: 'me', pageParam: null, interest: 'custom-homes' });
+    const call = calls[calls.length - 1];
+    expect(call.eqs).toContainEqual(['interest_slug', 'custom-homes']);
+    expect(call.limit).toBe(FEED_PAGE_SIZE);
+  });
+
+  it('adds no filter for All, so untagged posts appear there', async () => {
+    calls = [];
+    await fetchFeedPage({ userId: 'me', pageParam: null });
+    expect(calls[calls.length - 1].eqs.map(([col]) => col)).not.toContain('interest_slug');
+  });
+});
+
 describe('fetchFeedPage — errors', () => {
   it('throws rather than returning an empty page', async () => {
     // Swallowing here would take away the query's retry and error state, and
@@ -135,25 +153,6 @@ describe('fetchFeedPage — errors', () => {
   it('returns an empty page for no rows without throwing', async () => {
     postsResult = { data: [], error: null };
     await expect(fetchFeedPage({ userId: 'me', pageParam: null })).resolves.toEqual([]);
-  });
-});
-
-describe('fetchTrendingPosts — errors', () => {
-  it('throws rather than returning an empty grid, so Explore can offer Retry', async () => {
-    postsResult = { data: null, error: { message: 'boom' } };
-    await expect(fetchTrendingPosts()).rejects.toBeDefined();
-  });
-
-  it('returns the mapped posts when the query succeeds', async () => {
-    postsResult = { data: [row('p-1', new Date(BASE_MS).toISOString())], error: null };
-    const posts = await fetchTrendingPosts();
-    expect(posts.map((p) => p.id)).toEqual(['p-1']);
-    expect(calls[0]!.limit).toBe(FEED_PAGE_SIZE + 1);
-  });
-
-  it('returns an empty grid for no rows without throwing', async () => {
-    postsResult = { data: [], error: null };
-    await expect(fetchTrendingPosts()).resolves.toEqual([]);
   });
 });
 

@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(17);
+SELECT plan(25);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -56,6 +56,23 @@ SELECT ok(NOT has_function_privilege('anon', 'public.is_project_contributor(uuid
   'anon cannot execute is_project_contributor() (ONE-38)');
 SELECT ok(has_function_privilege('authenticated', 'public.is_project_contributor(uuid)', 'EXECUTE'),
   'authenticated can execute is_project_contributor(): the private-project read policy calls it');
+SELECT ok(NOT has_function_privilege('anon', 'public.explore_items(double precision, text, integer, text)', 'EXECUTE'),
+  'anon cannot execute explore_items() (ONE-47)');
+
+SELECT ok(NOT has_function_privilege('anon', 'public.search_tsquery(text)', 'EXECUTE'),
+  'anon cannot execute search_tsquery() (ONE-48)');
+SELECT ok(NOT has_function_privilege('anon', 'public.hidden_by_block(uuid)', 'EXECUTE'),
+  'anon cannot execute hidden_by_block() (ONE-48)');
+SELECT ok(NOT has_function_privilege('anon', 'public.search_profiles(text, integer)', 'EXECUTE'),
+  'anon cannot execute search_profiles() (ONE-48)');
+SELECT ok(NOT has_function_privilege('anon', 'public.search_posts(text, integer)', 'EXECUTE'),
+  'anon cannot execute search_posts() (ONE-48)');
+SELECT ok(NOT has_function_privilege('anon', 'public.search_products(text, text, integer)', 'EXECUTE'),
+  'anon cannot execute search_products() (ONE-48)');
+SELECT ok(NOT has_function_privilege('anon', 'public.search_projects(text, text, integer, boolean)', 'EXECUTE'),
+  'anon cannot execute search_projects() (ONE-48)');
+SELECT ok(NOT has_function_privilege('anon', 'public.embedded_tag_destination_owner(uuid, uuid, uuid)', 'EXECUTE'),
+  'anon cannot execute embedded_tag_destination_owner() (ONE-93)');
 
 SELECT * FROM finish();
 ROLLBACK;

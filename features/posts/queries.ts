@@ -18,13 +18,13 @@ import type { ProfileId } from '../../types';
  * me", which is meaningless without one, and firing it anyway would cache a
  * page under an empty key.
  */
-export const useFeedQuery = (userId: ProfileId | undefined) =>
+export const useFeedQuery = (userId: ProfileId | undefined, interest: string | null = null) =>
   // The generics are spelled out because inference widens the page param to
   // `unknown` once getNextPageParam is a named function rather than an inline
   // arrow, which then leaks into every consumer of `data`.
   useInfiniteQuery<Post[], Error, InfiniteData<Post[], FeedCursor>, QueryKey, FeedCursor>({
-    queryKey: postKeys.feed(userId ?? ''),
-    queryFn: ({ pageParam }) => fetchFeedPage({ userId: userId!, pageParam }),
+    queryKey: interest ? postKeys.feedForInterest(userId ?? '', interest) : postKeys.feed(userId ?? ''),
+    queryFn: ({ pageParam }) => fetchFeedPage({ userId: userId!, pageParam, interest }),
     initialPageParam: null as FeedCursor,
     getNextPageParam: nextFeedCursor,
     enabled: Boolean(userId),

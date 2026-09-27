@@ -2,9 +2,7 @@ import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ListRow, Sheet, TextField } from './ui';
 import { SearchIcon } from './Icons';
-import { useProfileSearchQuery } from '../../features/profiles';
-import { useProductSearchQuery } from '../../features/products';
-import { usePublicProjectSearchQuery } from '../../features/projects';
+import { useProfileResultsQuery, useProductResultsQuery, useProjectResultsQuery } from '../../features/search';
 import { useDebouncedValue } from '../../lib/useDebouncedValue';
 import { pickerOptions } from '../../lib/screens/composeTags';
 import { color, space, type } from '../../theme/tokens';
@@ -13,6 +11,10 @@ import type { EmbeddedTagDestination } from '../../types';
 // What a tag in the composer points at (ONE-46): any profile, any product, or
 // any public project — anyone's, not only the author's. Tagging another
 // business's product in your photo is the point. Never a post (ONE-83).
+//
+// Through the search functions (ONE-48), which leave out accounts blocked
+// either way — a block prevents a tag (ONE-93), so the picker never offers
+// one the database would refuse.
 
 export interface TagDestinationPickerProps {
   visible: boolean;
@@ -31,11 +33,15 @@ const TagDestinationPicker: React.FC<TagDestinationPickerProps> = ({ visible, on
 const PickerBody: React.FC<{ onPick: (destination: EmbeddedTagDestination) => void }> = ({ onPick }) => {
   const [query, setQuery] = useState('');
   const term = useDebouncedValue(query);
-  const profiles = useProfileSearchQuery(term);
-  const products = useProductSearchQuery(term);
-  const projects = usePublicProjectSearchQuery(term);
+  const profiles = useProfileResultsQuery(term);
+  const products = useProductResultsQuery(term, null);
+  const projects = useProjectResultsQuery(term, null, true);
 
-  const options = pickerOptions(profiles.data ?? [], products.data ?? [], projects.data ?? []);
+  const options = pickerOptions(
+    profiles.data ?? [],
+    products.data ?? [],
+    (projects.data ?? []).map((p) => ({ id: p.id, name: p.name, coverUrl: p.coverUrl, isPublic: true })),
+  );
   const failed = profiles.isError && products.isError && projects.isError;
 
   return (
@@ -64,7 +70,11 @@ const PickerBody: React.FC<{ onPick: (destination: EmbeddedTagDestination) => vo
         ))}
         {options.length === 0 ? (
           <Text style={styles.empty}>
-            {failed ? 'Search didn’t load. Check your connection.' : 'Nothing found. Try another name.'}
+            {failed
+              ? 'Search didn’t load. Check your connection.'
+              : term.trim()
+                ? 'Nothing found. Try another name.'
+                : 'Search for a profile, product or project.'}
           </Text>
         ) : null}
       </ScrollView>

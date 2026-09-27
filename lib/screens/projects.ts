@@ -47,6 +47,8 @@ export interface ProjectDraft {
   /** A stored URL, a photo just picked from the device, or none. */
   coverUri: string | null;
   isPublic: boolean;
+  /** Optional: an interest slug, or null (ONE-49). */
+  interestSlug: string | null;
 }
 
 /** New projects are public: a project is a discovery surface unless its owner says otherwise. */
@@ -57,6 +59,7 @@ export const EMPTY_PROJECT_DRAFT: ProjectDraft = {
   description: '',
   coverUri: null,
   isPublic: true,
+  interestSlug: null,
 };
 
 /** A stored project as the edit form starts. */
@@ -67,6 +70,7 @@ export const projectDraftFrom = (project: Project): ProjectDraft => ({
   description: project.description ?? '',
   coverUri: project.coverUrl,
   isPublic: project.isPublic,
+  interestSlug: project.interestSlug ?? null,
 });
 
 export const projectNameError = (draft: Pick<ProjectDraft, 'name'>): string | null =>
@@ -82,6 +86,7 @@ export const projectFieldsFrom = (draft: ProjectDraft): ProjectFields => ({
   year: textOrNull(draft.year),
   description: textOrNull(draft.description),
   isPublic: draft.isPublic,
+  interestSlug: draft.interestSlug,
 });
 
 /** What creating a project from a draft writes. */

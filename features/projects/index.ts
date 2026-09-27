@@ -10,8 +10,6 @@ export {
   fetchProjectsUsingProduct,
   fetchContributors,
   fetchProjectProducts,
-  searchPublicProjects,
-  PROJECT_SEARCH_LIMIT,
   createProject,
   updateProject,
   saveProjectEdits,
@@ -37,7 +35,6 @@ export {
   useProjectsUsingProductQuery,
   useContributorsQuery,
   useProjectProductsQuery,
-  usePublicProjectSearchQuery,
 } from './queries';
 export {
   useCreateProject,

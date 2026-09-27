@@ -29,6 +29,7 @@ import { Avatar, Button, IconButton, ICON_BUTTON_SIZE, MonoLabel } from '../comp
 import ComposeMedia from '../components/native/ComposeMedia';
 import TagPlacer from '../components/native/TagPlacer';
 import TagDestinationPicker from '../components/native/TagDestinationPicker';
+import InterestFilter from '../components/native/InterestFilter';
 import CharacterRing from '../components/native/CharacterRing';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
 import { ImageIcon } from '../components/native/Icons';
@@ -90,6 +91,8 @@ export default function ComposeScreen() {
   // exists, since a tag needs its host post's id.
   const [tags, setTags] = useState<DraftTag[]>([]);
   const [tagging, setTagging] = useState(false);
+  // Optional (ONE-49): a forced choice produces noise from people picking the first option.
+  const [interestSlug, setInterestSlug] = useState<string | null>(null);
   /** The tag whose destination picker is open. */
   const [pickingFor, setPickingFor] = useState<string | null>(null);
 
@@ -197,6 +200,7 @@ export default function ComposeScreen() {
         reposts: 0,
         replies: 0,
         isVerified: userProfile.isVerified || false,
+        interestSlug,
       };
 
       const published = await createPost.mutateAsync(newPost);
@@ -366,6 +370,11 @@ export default function ComposeScreen() {
             {content.length > 0 && <CharacterRing length={content.length} />}
           </View>
 
+          <View style={styles.interest}>
+            <MonoLabel color="textMid" style={styles.interestLabel}>Interest (optional)</MonoLabel>
+            <InterestFilter selected={interestSlug} onSelect={setInterestSlug} leadingLabel="None" label="Interest" />
+          </View>
+
           {/* The rest of the page still means "write here". */}
           <Pressable onPress={() => inputRef.current?.focus()} accessible={false} style={styles.fill} />
         </ScrollView>
@@ -446,6 +455,12 @@ const styles = StyleSheet.create({
   media: {
     paddingHorizontal: space.lg,
     paddingBottom: space.sm,
+  },
+  interest: {
+    paddingTop: space.sm,
+  },
+  interestLabel: {
+    paddingHorizontal: space.lg,
   },
   tools: {
     flexDirection: 'row',

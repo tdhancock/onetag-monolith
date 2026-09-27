@@ -52,6 +52,8 @@ export type FeedCursor = string | null;
 export interface FetchFeedPageArgs {
   userId: string;
   pageParam: FeedCursor;
+  /** An interest slug, or null for All (ONE-49). */
+  interest?: string | null;
 }
 
 /**
@@ -69,6 +71,7 @@ export interface FetchFeedPageArgs {
 export const fetchFeedPage = async ({
   userId,
   pageParam,
+  interest = null,
 }: FetchFeedPageArgs): Promise<Post[]> => {
   const userIdsToFetch = await getFeedUserIds(userId);
 
@@ -84,6 +87,13 @@ export const fetchFeedPage = async ({
 
   if (pageParam) {
     query = query.lt('created_at', pageParam);
+  }
+
+  // Narrowed in the query, never by filtering a fetched page: a page cut
+  // down on the client comes back short, or empty (ONE-49). Untagged posts
+  // have no interest, so they appear under All only.
+  if (interest) {
+    query = query.eq('interest_slug', interest);
   }
 
   const { data, error } = await query;
@@ -128,24 +138,6 @@ export const fetchPostById = async (
     console.error('Error fetching post by ID:', (error as Error).message || error);
     return undefined;
   }
-};
-
-/** Recent posts from everyone, for the Explore grid. */
-/**
- * The posts Explore's grid shows. Throws on failure, as `fetchFeedPage` does:
- * returning `[]` made an outage look like an empty app, and Explore's Retry
- * could never appear.
- */
-export const fetchTrendingPosts = async (viewerId?: string): Promise<Post[]> => {
-  const { data, error } = await scopeToViewer(
-    supabase.from('posts').select(POST_SELECT_QUERY),
-    viewerId,
-  )
-    .order('created_at', { ascending: false })
-    .limit(FEED_PAGE_SIZE + 1);
-
-  if (error) throw error;
-  return (data || []).map(mapPostData);
 };
 
 // ---------------------------------------------------------------------------
@@ -271,6 +263,8 @@ export const publishPost = async (post: Post, authorId: ProfileId): Promise<Post
                     content: content,
                     image_url: uploadUrl, // This is now the permanent URL if an image was uploaded
                     media_type: mediaType,
+                    // Optional: untagged posts appear under All only (ONE-49).
+                    interest_slug: post.interestSlug ?? null,
                     media_aspect_ratio: aspectRatio,
                     created_at: post.timestamp || new Date().toISOString(),
                 },
