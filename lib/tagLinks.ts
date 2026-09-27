@@ -2,10 +2,10 @@
 //
 // Every Physical Tag encodes `https://<domain>/t/<short_code>`, and that URL
 // is printed onto stickers. Once a sticker exists its URL cannot change, so
-// the domain lives here and nowhere else: QR generation, the share sheet, the
-// resolution route and the web surface all import from this module. Changing
-// the domain is a one-line edit — until the first sticker is printed, after
-// which it must never change at all.
+// the domain lives here and nowhere else: QR generation, the share sheet and
+// the resolution route all import from this module. Changing the domain is a
+// one-line edit — until the first sticker is printed, after which it must
+// never change at all.
 //
 // The production domain is not decided yet (`onetag.app` vs `onetag.co`), so
 // it comes from `EXPO_PUBLIC_TAG_BASE_URL`, with `https://onetag.app` as the
@@ -16,6 +16,12 @@
 // import this module, so it mirrors `resolveTagBaseUrl`. If the two ever
 // disagree, the OS stops opening the app for tag links without any error;
 // __tests__/appConfig.test.ts pins them together.
+//
+// The web surface, supabase/functions/tag-resolve/handler.ts, runs in Deno
+// and can't import this module either. It mirrors TAG_PATH_PREFIX, the short
+// code rule, the base URL and the path shape `parseTagUrl` accepts. Change
+// one here and change it there: __tests__/supabase/tagResolve.test.ts fails
+// until the two agree.
 
 /** The path segment in front of every short code: `/t/<code>`. */
 export const TAG_PATH_PREFIX = 't';

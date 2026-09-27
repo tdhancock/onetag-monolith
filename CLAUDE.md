@@ -28,6 +28,7 @@ store/AppContext.native    global UI state — no server data
 services/                  supabase client and the shared ground features reach: postRows,
                            notificationWrites, profileBootstrap, media/story upload, realtime
 supabase/migrations/       schema
+supabase/functions/        edge functions: delete-user-account, and tag-resolve (the tag host's web page)
 __tests__/                 Jest
 types.ts                   shared domain types (repo root)
 app.config.ts              app.json plus universal links for the tag host (repo root)
@@ -181,7 +182,8 @@ Agreement, along with the rest.
 - **Tag URLs are built in exactly one place**, `lib/tagLinks.ts`, from
   `EXPO_PUBLIC_TAG_BASE_URL`. Never hardcode or assemble one elsewhere — these get printed onto
   physical objects and cannot be changed afterwards. `app.config.ts` derives the universal-link
-  host from the same variable; a test keeps the two in step.
+  host from the same variable, and `supabase/functions/tag-resolve` (Deno, which can't import
+  it) mirrors its rules; tests keep each copy in step.
 
 Migration is strangler-style: **the app must run correctly after every ticket.**
 

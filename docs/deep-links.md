@@ -12,7 +12,7 @@ A tag link opens in one of three ways:
    serve the two files in `public/.well-known/`.
 2. **The custom scheme, `onetag://t/<code>`.** It works whenever the app is installed,
    verified or not. It is the fallback, and it is what the in-app scanner reads.
-3. **No app.** The browser loads the tag host's landing page.
+3. **No app.** The browser loads the tag host's landing page (see [The tag host](#the-tag-host)).
 
 Only `/t/*` opens the app from the tag host. Everything else the app shares uses the custom
 scheme: `onetag://product/<id>`, `onetag://project/<id>`, `onetag://reset-password`.
@@ -52,6 +52,127 @@ Until they are filled in (ONE-97), they carry placeholders:
 A debug keystore's fingerprint verifies nothing in production. Remove any slot you don't
 fill, because a placeholder isn't a fingerprint. `__tests__/wellKnown.test.ts` accepts a
 placeholder or the real shape, nothing else.
+
+The tag host serves these documents from `supabase/functions/tag-resolve/handler.ts`
+(`APPLE_APP_SITE_ASSOCIATION` and `ASSET_LINKS`), because a function can't read `public/`.
+When you fill in a value, change it in both places; `__tests__/supabase/tagResolve.test.ts`
+fails until they agree. The web page's App Store button waits on `APP_STORE_ID` in the same
+file, the listing's numeric id from App Store Connect. Until it's set, the page offers
+Google Play alone.
+
+## The tag host
+
+The tag host answers two kinds of request, and both come from one Supabase Edge Function,
+`supabase/functions/tag-resolve`:
+
+| Path | Response |
+| -- | -- |
+| `/t/<code>` | The landing page for someone without the app: what the tag points to, **Open in OneTag**, and the store listings. Records the Scan. |
+| `/.well-known/apple-app-site-association`, `/.well-known/assetlinks.json` | The two files above, as `application/json`. |
+
+Everything else on the host is free for other uses, such as a marketing site.
+
+The page is one HTML document: inline CSS, no script, and no client-side fetching. It
+reads with the anon key and no session, so RLS decides what a stranger sees: the tag
+through `resolve_tag`, the Destination through its public read, and the Scan through
+the anonymous insert. A private project reads as gone, as it does in the app. Link
+previews (iMessage, Slack, WhatsApp and the rest) get the Open Graph tags but record no
+Scan, and neither do HEAD requests or browser prefetches. The Scan is written after the
+response, so a slow insert never holds up the page.
+
+**Open in OneTag** is a link, never an automatic redirect. With the app installed,
+universal links open it before the browser loads anything. Without it, an automatic
+`onetag://` redirect would show iOS Safari's "address is invalid" alert. So the button
+is `onetag://t/<code>` on iOS, and on Android an `intent://` link that falls back to the
+Play listing.
+
+### Routing the host to the function
+
+The printed URL is `https://<tag host>/t/<code>`, but a function answers at
+`https://<project ref>.supabase.co/functions/v1/tag-resolve/...`. Supabase also serves
+HTML from a function only on a custom domain: on `*.supabase.co`, a `text/html` response
+to a GET is rewritten to `text/plain`. So the host is fronted by a Cloudflare Worker, on
+the routes `<tag host>/t/*` and `<tag host>/.well-known/*`:
+
+```js
+// Cloudflare Worker on the tag host. Routes: <tag host>/t/* and <tag host>/.well-known/*.
+const FUNCTION_URL = 'https://<project ref>.supabase.co/functions/v1/tag-resolve';
+
+export default {
+  async fetch(request) {
+    const { pathname, search } = new URL(request.url);
+
+    // The function picks the Android link and skips link previews by these.
+    const headers = new Headers();
+    for (const name of ['user-agent', 'accept', 'accept-language', 'sec-purpose', 'purpose']) {
+      const value = request.headers.get(name);
+      if (value) headers.set(name, value);
+    }
+
+    const upstream = await fetch(`${FUNCTION_URL}${pathname}${search}`, {
+      method: request.method,
+      headers,
+      redirect: 'manual',
+    });
+
+    // Supabase rewrites the tag page to text/plain on *.supabase.co. It is HTML.
+    const response = new Headers(upstream.headers);
+    if (!pathname.startsWith('/.well-known/')) response.set('content-type', 'text/html; charset=utf-8');
+    return new Response(upstream.body, { status: upstream.status, headers: response });
+  },
+};
+```
+
+Keep it a pass-through:
+
+- **No redirects** on either route: no trailing-slash rules, no `www` rewrite. Apple and
+  Google ignore a redirected well-known file.
+- **No caching of `/t/*`.** Every view records a Scan, and a tag can be paused at any time.
+  The function sends `cache-control: no-store`.
+- The function builds the page's own URL (canonical, `og:url`) from its `TAG_BASE_URL`
+  secret, never from the host the request came through.
+
+The alternative is Supabase's Custom Domain add-on, which is paid and lets a function serve
+HTML, plus a rewrite on the tag host to `/functions/v1/tag-resolve/*`. The paths still
+need rewriting either way, since the function doesn't sit at the host's root.
+
+### Deploying
+
+Edge functions don't ride the `deploy-migrations` workflow; merging deploys nothing here.
+
+```bash
+supabase secrets set TAG_BASE_URL=https://onetag.app
+```
+
+```bash
+supabase functions deploy tag-resolve
+```
+
+`TAG_BASE_URL` has to equal the app's `EXPO_PUBLIC_TAG_BASE_URL`, and it defaults to the
+same `https://onetag.app`. `verify_jwt = false` in `supabase/config.toml` lets browsers in
+without a JWT, and the deploy reads it from there. Then check the host itself:
+
+```bash
+curl -sSI https://onetag.app/t/<code>
+```
+
+Expect `200` and `content-type: text/html; charset=utf-8`. Then check what a link preview
+sees:
+
+```bash
+curl -sS -A "facebookexternalhit/1.1" https://onetag.app/t/<code>
+```
+
+Look for `og:title` and `og:image` in the output.
+
+To run it locally against `npm run db:start`:
+
+```bash
+npx supabase functions serve tag-resolve
+```
+
+Then open `http://127.0.0.1:54321/functions/v1/tag-resolve/t/<code>`. The local gateway
+serves HTML as-is.
 
 ## Testing needs a real build
 
