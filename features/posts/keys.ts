@@ -11,4 +11,9 @@ export const postKeys = {
    * `postKeys.all` reaches the feed along with everything else.
    */
   feed: (userId: string) => [...base.all, 'feed', userId] as const,
+  /**
+   * The feed narrowed to one interest (ONE-49). Beneath `feed(userId)`, so
+   * invalidating the feed reaches every filtered copy of it too.
+   */
+  feedForInterest: (userId: string, interest: string) => [...base.all, 'feed', userId, interest] as const,
 };

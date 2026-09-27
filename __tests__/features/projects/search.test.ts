@@ -49,7 +49,7 @@ describe('searchPublicProjects', () => {
       { id: 'pj-1', owner_profile_id: 'p-1', name: 'Loft', project_type: null, year: '2026', cover_url: 'c.jpg', is_public: true, created_at: '2026-09-26T00:00:00Z' },
     ];
     expect(await searchPublicProjects('loft')).toEqual([
-      { id: 'pj-1', ownerProfileId: 'p-1', name: 'Loft', projectType: null, year: '2026', coverUrl: 'c.jpg', isPublic: true, createdAt: '2026-09-26T00:00:00Z' },
+      { id: 'pj-1', ownerProfileId: 'p-1', name: 'Loft', projectType: null, year: '2026', coverUrl: 'c.jpg', isPublic: true, interestSlug: null, createdAt: '2026-09-26T00:00:00Z' },
     ]);
   });
 });

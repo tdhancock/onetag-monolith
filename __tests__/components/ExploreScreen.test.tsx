@@ -112,6 +112,10 @@ const defaultResults = () => ({
   ],
   projects: [{ id: 'pj-1', name: 'Loft', category: 'Interior', coverUrl: null, ownerUsername: 'ana' }],
 });
+// The interest filter's list (ONE-49), fixed.
+jest.mock('../../features/interests', () => ({
+  useInterestsQuery: () => ({ data: [{ slug: 'custom-homes', name: 'Custom Homes' }, { slug: 'vehicle-builds', name: 'Vehicle Builds' }] }),
+}));
 jest.mock('../../features/hashtags', () => ({ useHashtagsQuery: () => state.hashtags }));
 
 // The grid's infinite query (ONE-47), steered per test.
@@ -120,8 +124,10 @@ const cell = (kind: string, id: string, extra: Record<string, unknown> = {}): Ce
   kind, id, key: `${kind}:${id}`, ownerProfileId: 'p-ana', ownerUsername: 'ana',
   title: `${kind} ${id}`, imageUrl: null, mediaType: kind === 'post' ? 'text' : 'image', tagCount: 0, score: 1, ...extra,
 });
+const mockExploreInterests: (string | null)[] = [];
 const explore = {
   pages: [[] as Cell[]],
+  filteredPages: [[] as Cell[]],
   isPending: false,
   isError: false,
   hasNextPage: false,
@@ -136,7 +142,11 @@ const defaultCells = () => [
   cell('post', '2', { mediaType: 'image', imageUrl: 'https://x/2.jpg', tagCount: 3 }),
 ];
 jest.mock('../../features/explore', () => ({
-  useExploreQuery: () => ({ ...explore, data: explore.isPending ? undefined : { pages: explore.pages } }),
+  useExploreQuery: (_viewer: string, interest: string | null) => {
+    mockExploreInterests.push(interest ?? null);
+    const pages = interest ? explore.filteredPages : explore.pages;
+    return { ...explore, data: explore.isPending ? undefined : { pages } };
+  },
   flattenExplorePages: (pages: { key: string }[][]) => {
     const seen = new Set<string>();
     return pages.flat().filter(i => (seen.has(i.key) ? false : (seen.add(i.key), true)));
@@ -176,7 +186,8 @@ beforeEach(() => {
   state.following = new Set();
   state.hashtags.isLoading = false;
   mockBlocked.clear();
-  Object.assign(explore, { pages: [defaultCells()], isPending: false, isError: false, hasNextPage: false, isFetchingNextPage: false });
+  mockExploreInterests.length = 0;
+  Object.assign(explore, { pages: [defaultCells()], filteredPages: [[]], isPending: false, isError: false, hasNextPage: false, isFetchingNextPage: false });
   Object.assign(results, defaultResults());
   mockSearchCalls.length = 0;
   [mockPush, mockToggle, explore.fetchNextPage, explore.refetch].forEach(m => m.mockClear());
@@ -490,5 +501,25 @@ describe('Explore — grid and result rules', () => {
     ]);
     expect(categoryFilterLabel(null)).toBe('Category');
     expect(categoryFilterLabel('Seating')).toBe('Category: Seating');
+  });
+});
+
+// ─── 7. The interest filter (ONE-49) ────────────────────────────────────
+
+describe('Explore — interest filter', () => {
+  it('sits in the slot above the grid, leading with All', async () => {
+    const el = await mount();
+    const slot = el.querySelector('[data-testid="explore-filter-slot"]')!;
+    expect(slot.querySelector('button[aria-label="Interest: All, selected"]')).not.toBeNull();
+    expect(slot.textContent).toContain('Custom Homes');
+  });
+
+  it('narrows the grid on the server, and explains an empty interest with a way back', async () => {
+    const el = await mount();
+    act(() => button(el, 'Interest: Vehicle Builds')!.click());
+    expect(mockExploreInterests[mockExploreInterests.length - 1]).toBe('vehicle-builds');
+    expect(el.textContent).toContain('Nothing in Vehicle Builds yet');
+    act(() => buttonWithText(el, 'Show all')!.click());
+    expect(cells(el)).toHaveLength(4);
   });
 });

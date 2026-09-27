@@ -35,6 +35,7 @@ import PostSkeleton from '../../components/native/PostSkeleton';
 import HomeHeader from '../../components/native/HomeHeader';
 import StoryReel, { StoryGroup, StoryReelSkeleton } from '../../components/native/StoryReel';
 import StoryCreator from '../../components/native/StoryCreator';
+import InterestFilter, { useInterestName } from '../../components/native/InterestFilter';
 import { Avatar, Button, Card, EmptyState, MonoLabel } from '../../components/native/ui';
 import { VerifiedIcon } from '../../components/native/Icons';
 import {
@@ -82,7 +83,12 @@ export default function HomeFeedScreen() {
   // ─── Feed ──────────────────────────────────────
   // Page state belongs to the query, not to this component and not to a
   // module-level cursor, so a second mount starts from the top on its own.
-  const feedQuery = useFeedQuery(profileId);
+  // The interest filter (ONE-49) is view state: it starts at All on every
+  // launch, and narrows the query on the server rather than a fetched page.
+  const [interest, setInterest] = useState<string | null>(null);
+  const interestName = useInterestName(interest);
+  const feedQuery = useFeedQuery(profileId, interest);
+  // Realtime edits patch the unfiltered feed; a filtered one refetches.
   const feedKey = postKeys.feed(profileId ?? '');
 
   // Blocked authors are filtered here rather than inside the query, so the
@@ -94,7 +100,9 @@ export default function HomeFeedScreen() {
     [feedQuery.data, isUserBlocked],
   );
 
-  const isFeedLoading = Boolean(profileId) && feedQuery.isPending;
+  // Only the first, unfiltered load takes over the screen; switching filters
+  // loads inside the list, under the filter row.
+  const isFeedLoading = Boolean(profileId) && feedQuery.isPending && !interest;
 
   // ─── Stories ───────────────────────────────────
   // The reel is a query (ONE-19). A failed refetch keeps the last good reel
@@ -290,17 +298,33 @@ export default function HomeFeedScreen() {
   // The OneSnap strip's slot: directly under the header, on white, with a
   // hairline beneath. The reel draws its own cards (ONE-67).
   const ListHeader = useCallback(() => (
-    <View style={styles.strip}>
-      <StoryReel
-        storyGroups={storyGroups}
-        allStories={allStories}
-        onViewStories={handleViewStories}
-        leading={<StoryCreator onAddStory={handleAddStory} onViewStories={handleViewStories} />}
-      />
+    <View>
+      <View style={styles.strip}>
+        <StoryReel
+          storyGroups={storyGroups}
+          allStories={allStories}
+          onViewStories={handleViewStories}
+          leading={<StoryCreator onAddStory={handleAddStory} onViewStories={handleViewStories} />}
+        />
+      </View>
+      <InterestFilter selected={interest} onSelect={setInterest} />
     </View>
-  ), [storyGroups, allStories, handleAddStory, handleViewStories]);
+  ), [storyGroups, allStories, handleAddStory, handleViewStories, interest]);
 
   const ListEmpty = useCallback(() => {
+    // A filtered feed: loading under the filter row, or empty with a way back.
+    // An empty filter must never look like a broken feed (ONE-49).
+    if (interest && !feedQuery.isError) {
+      if (feedQuery.isPending) return <PostSkeleton />;
+      return (
+        <EmptyState
+          title={`Nothing in ${interestName} yet`}
+          body="Posts from people you follow about this will show up here."
+          action={{ label: 'Show all', onPress: () => setInterest(null) }}
+        />
+      );
+    }
+
     const state = getHomeEmptyState(isLoading, following.length > 0, feedQuery.isError);
 
     switch (state.kind) {
@@ -377,7 +401,7 @@ export default function HomeFeedScreen() {
           </View>
         );
     }
-  }, [isLoading, following, feedQuery, suggestedUsers, isUserFollowing, follow, handleViewProfile, router]);
+  }, [isLoading, following, feedQuery, suggestedUsers, isUserFollowing, follow, handleViewProfile, router, interest, interestName]);
 
   const ListFooter = useCallback(() => {
     if (!feedQuery.isFetchingNextPage) return null;

@@ -41,14 +41,20 @@ describe('fetchExplorePage', () => {
   it('asks explore_items for the first page with no cursor', async () => {
     mockRpc.mockResolvedValue({ data: [row('post', '1')], error: null });
     const page = await fetchExplorePage(null);
-    expect(mockRpc).toHaveBeenCalledWith('explore_items', { p_after_score: null, p_after_key: null, p_limit: EXPLORE_PAGE_SIZE });
+    expect(mockRpc).toHaveBeenCalledWith('explore_items', { p_after_score: null, p_after_key: null, p_limit: EXPLORE_PAGE_SIZE, p_interest: null });
     expect(page[0].key).toBe('post:1');
   });
 
   it('passes the cursor on for the next page', async () => {
     mockRpc.mockResolvedValue({ data: [], error: null });
     await fetchExplorePage({ score: 42.5, key: 'product:pd' });
-    expect(mockRpc).toHaveBeenCalledWith('explore_items', { p_after_score: 42.5, p_after_key: 'product:pd', p_limit: EXPLORE_PAGE_SIZE });
+    expect(mockRpc).toHaveBeenCalledWith('explore_items', { p_after_score: 42.5, p_after_key: 'product:pd', p_limit: EXPLORE_PAGE_SIZE, p_interest: null });
+  });
+
+  it('narrows to an interest in the query itself (ONE-49)', async () => {
+    mockRpc.mockResolvedValue({ data: [], error: null });
+    await fetchExplorePage(null, 'custom-homes');
+    expect(mockRpc).toHaveBeenCalledWith('explore_items', expect.objectContaining({ p_interest: 'custom-homes' }));
   });
 
   it('throws what the database returned', async () => {

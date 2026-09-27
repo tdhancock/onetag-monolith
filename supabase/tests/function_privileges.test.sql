@@ -56,7 +56,7 @@ SELECT ok(NOT has_function_privilege('anon', 'public.is_project_contributor(uuid
   'anon cannot execute is_project_contributor() (ONE-38)');
 SELECT ok(has_function_privilege('authenticated', 'public.is_project_contributor(uuid)', 'EXECUTE'),
   'authenticated can execute is_project_contributor(): the private-project read policy calls it');
-SELECT ok(NOT has_function_privilege('anon', 'public.explore_items(double precision, text, integer)', 'EXECUTE'),
+SELECT ok(NOT has_function_privilege('anon', 'public.explore_items(double precision, text, integer, text)', 'EXECUTE'),
   'anon cannot execute explore_items() (ONE-47)');
 
 SELECT ok(NOT has_function_privilege('anon', 'public.search_tsquery(text)', 'EXECUTE'),

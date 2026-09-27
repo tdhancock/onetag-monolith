@@ -116,6 +116,11 @@ export interface Post {
      * before publishing has none yet.
      */
     embeddedTags?: EmbeddedTag[];
+    /**
+     * One of the fixed interests (ONE-49), or null for an untagged post.
+     * Chosen, optionally, in the composer.
+     */
+    interestSlug?: string | null;
 }
 
 /**

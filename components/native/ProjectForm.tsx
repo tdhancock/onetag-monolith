@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Button, MonoLabel, Pressable, SettingsRow, TextField } from './ui';
+import InterestFilter from './InterestFilter';
 import { ImageIcon } from './Icons';
 import { pickImageFromLibrary } from '../../services/mediaPicker';
 import {
@@ -115,6 +116,17 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ draft, onChange }) => {
         />
       </View>
 
+      {/* Optional, like the composer's (ONE-49): no forced choice. */}
+      <View style={styles.interest}>
+        <MonoLabel color="textMid" style={styles.interestLabel}>Interest (optional)</MonoLabel>
+        <InterestFilter
+          selected={draft.interestSlug}
+          onSelect={(slug) => set('interestSlug', slug)}
+          leadingLabel="None"
+          label="Interest"
+        />
+      </View>
+
       <SettingsRow
         title="Public"
         subtitle={projectVisibilityDescription(draft.isPublic)}
@@ -135,6 +147,14 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ draft, onChange }) => {
 };
 
 const styles = StyleSheet.create({
+  interest: {
+    paddingVertical: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: color.border,
+  },
+  interestLabel: {
+    paddingHorizontal: space.lg,
+  },
   section: {
     paddingHorizontal: space.lg,
     paddingVertical: space.lg,

@@ -11,10 +11,10 @@ import type { ExploreCursor, ExploreItem } from './types';
  * page state lives in the query. Disabled until there is a viewer — what the
  * grid leaves out depends on who is looking.
  */
-export const useExploreQuery = (viewerId: string | undefined) =>
+export const useExploreQuery = (viewerId: string | undefined, interest: string | null = null) =>
   useInfiniteQuery<ExploreItem[], Error, InfiniteData<ExploreItem[], ExploreCursor>, QueryKey, ExploreCursor>({
-    queryKey: exploreKeys.grid(viewerId ?? ''),
-    queryFn: ({ pageParam }) => fetchExplorePage(pageParam),
+    queryKey: exploreKeys.grid(viewerId ?? '', interest),
+    queryFn: ({ pageParam }) => fetchExplorePage(pageParam, interest),
     initialPageParam: null as ExploreCursor,
     getNextPageParam: nextExploreCursor,
     enabled: Boolean(viewerId),

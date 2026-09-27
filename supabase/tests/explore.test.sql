@@ -119,7 +119,7 @@ SELECT is(
   'the next page picks up exactly after the last row, with no repeats');
 
 RESET ROLE;
-SELECT ok(NOT has_function_privilege('anon', 'public.explore_items(double precision, text, integer)', 'EXECUTE'),
+SELECT ok(NOT has_function_privilege('anon', 'public.explore_items(double precision, text, integer, text)', 'EXECUTE'),
   'Explore is signed in only');
 
 SELECT * FROM finish();

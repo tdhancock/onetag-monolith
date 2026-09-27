@@ -26,11 +26,13 @@ export const mapExploreRow = (row: ExploreItemRow): ExploreItem => ({
  * exclusions (the viewer's own content, blocks both ways, private content)
  * and the paging all live in `explore_items`, so a page is always full-length.
  */
-export const fetchExplorePage = async (cursor: ExploreCursor): Promise<ExploreItem[]> => {
+export const fetchExplorePage = async (cursor: ExploreCursor, interest: string | null = null): Promise<ExploreItem[]> => {
   const { data, error } = await supabase.rpc('explore_items', {
     p_after_score: cursor?.score ?? null,
     p_after_key: cursor?.key ?? null,
     p_limit: EXPLORE_PAGE_SIZE,
+    // Null for All. A slug narrows the grid in the query itself (ONE-49).
+    p_interest: interest,
   });
   if (error) throw error;
   return ((data ?? []) as ExploreItemRow[]).map(mapExploreRow);

@@ -7,5 +7,5 @@ const base = createQueryKeys('explore');
 export const exploreKeys = {
   ...base,
   /** The grid, as one viewer sees it: their own content and blocks shape it. */
-  grid: (viewerId: string) => base.list({ viewerId }),
+  grid: (viewerId: string, interest: string | null = null) => base.list({ viewerId, interest }),
 };

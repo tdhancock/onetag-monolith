@@ -63,6 +63,8 @@ export interface ProjectFields {
   description: string | null;
   year: string | null;
   isPublic: boolean;
+  /** Optional (ONE-49): one of the fixed interests, or null. */
+  interestSlug: string | null;
 }
 
 // ─── Rows ────────────────────────────────────────────────────────────────

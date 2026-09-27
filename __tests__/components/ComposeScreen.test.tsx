@@ -76,6 +76,10 @@ jest.mock('../../features/profiles', () => ({
 }));
 
 const mockMutateAsync = jest.fn();
+// The interest filter's list (ONE-49), fixed.
+jest.mock('../../features/interests', () => ({
+  useInterestsQuery: () => ({ data: [{ slug: 'custom-homes', name: 'Custom Homes' }, { slug: 'vehicle-builds', name: 'Vehicle Builds' }] }),
+}));
 jest.mock('../../features/posts', () => ({
   useCreatePost: () => ({ mutateAsync: mockMutateAsync }),
 }));
@@ -488,5 +492,36 @@ describe('Compose — tagging', () => {
     act(() => (el.querySelector('button[aria-label="Remove photo"]') as HTMLButtonElement).click());
     expect(button(el, 'Tag')).toBeUndefined();
     expect(el.querySelector('[data-embedded-tags]')).toBeNull();
+  });
+});
+
+// ─── 9. Interest (ONE-49) ───────────────────────────────────────────────
+
+describe('Compose — interest', () => {
+  it('publishes without one: the choice is optional', async () => {
+    mockMutateAsync.mockResolvedValue(undefined);
+    const el = mount();
+    type(el, 'hello');
+    await act(async () => { postButton(el).click(); });
+    expect(mockMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ interestSlug: null }));
+  });
+
+  it('publishes with the one chosen', async () => {
+    mockMutateAsync.mockResolvedValue(undefined);
+    const el = mount();
+    type(el, 'hello');
+    act(() => (el.querySelector('button[aria-label="Interest: Custom Homes"]') as HTMLButtonElement).click());
+    await act(async () => { postButton(el).click(); });
+    expect(mockMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ interestSlug: 'custom-homes' }));
+  });
+
+  it('can be cleared back to none', async () => {
+    mockMutateAsync.mockResolvedValue(undefined);
+    const el = mount();
+    type(el, 'hello');
+    act(() => (el.querySelector('button[aria-label="Interest: Custom Homes"]') as HTMLButtonElement).click());
+    act(() => (el.querySelector('button[aria-label="Interest: None"]') as HTMLButtonElement).click());
+    await act(async () => { postButton(el).click(); });
+    expect(mockMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ interestSlug: null }));
   });
 });

@@ -65,6 +65,16 @@ describe('useFeedQuery — key', () => {
     expect(feedOptions('me').queryKey).not.toEqual(feedOptions('you').queryKey);
   });
 
+  it('keys a filtered feed beneath the unfiltered one, so invalidating the feed reaches it (ONE-49)', () => {
+    mockUseInfiniteQuery.mockClear();
+    useFeedQuery(asProfileId('me'), 'custom-homes');
+    const options = mockUseInfiniteQuery.mock.calls[0]![0] as FeedOptions;
+    expect(options.queryKey).toEqual(['posts', 'feed', 'me', 'custom-homes']);
+    mockFetchFeedPage.mockClear();
+    options.queryFn({ pageParam: null });
+    expect(mockFetchFeedPage).toHaveBeenCalledWith({ userId: 'me', pageParam: null, interest: 'custom-homes' });
+  });
+
   it('sits under the domain root, so invalidating postKeys.all reaches it', () => {
     const key = feedOptions('me').queryKey;
     expect(key.slice(0, postKeys.all.length)).toEqual([...postKeys.all]);
@@ -83,7 +93,7 @@ describe('useFeedQuery — paging', () => {
   it('delegates to fetchFeedPage with the user id and the page cursor', () => {
     mockFetchFeedPage.mockClear();
     feedOptions('me').queryFn({ pageParam: null });
-    expect(mockFetchFeedPage).toHaveBeenCalledWith({ userId: 'me', pageParam: null });
+    expect(mockFetchFeedPage).toHaveBeenCalledWith({ userId: 'me', pageParam: null, interest: null });
   });
 
   it('threads a later page cursor through unchanged', () => {
@@ -92,6 +102,7 @@ describe('useFeedQuery — paging', () => {
     expect(mockFetchFeedPage).toHaveBeenCalledWith({
       userId: 'me',
       pageParam: '2026-09-21T10:00:00Z',
+      interest: null,
     });
   });
 

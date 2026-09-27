@@ -25,6 +25,7 @@ import {
   type SearchProject,
 } from '../../features/search';
 import FilterChips from '../../components/native/FilterChips';
+import InterestFilter, { useInterestName } from '../../components/native/InterestFilter';
 import { useDebouncedValue } from '../../lib/useDebouncedValue';
 import { productRoute } from '../../lib/screens/products';
 import { projectRoute } from '../../lib/screens/projects';
@@ -118,7 +119,10 @@ export default function SearchScreen() {
   // Hashtags feed the search results; the grid is its own infinite query
   // (ONE-47), ordered and filtered on the server.
   const { data: hashtags = [], refetch: refetchHashtags } = useHashtagsQuery();
-  const explore = useExploreQuery(profileId);
+  // View state, reset on launch (ONE-49); narrows explore_items itself.
+  const [interest, setInterest] = useState<string | null>(null);
+  const interestName = useInterestName(interest);
+  const explore = useExploreQuery(profileId, interest);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -373,7 +377,7 @@ export default function SearchScreen() {
   }, [explore]);
 
   const renderGrid = () => {
-    if (explore.isPending) return <GridSkeleton />;
+    if (explore.isPending && !interest) return <GridSkeleton />;
 
     if (explore.isError && exploreItems.length === 0) {
       return (
@@ -393,8 +397,12 @@ export default function SearchScreen() {
         numColumns={EXPLORE_COLUMNS}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
-        // The interest filter row's slot (ONE-49), above the grid.
-        ListHeaderComponent={<View testID="explore-filter-slot" />}
+        // The interest filter row, in the slot ONE-47 kept above the grid.
+        ListHeaderComponent={
+          <View testID="explore-filter-slot">
+            <InterestFilter selected={interest} onSelect={setInterest} />
+          </View>
+        }
         ListFooterComponent={explore.isFetchingNextPage ? <GridSkeleton /> : null}
         refreshControl={
           <RefreshControl
@@ -405,11 +413,23 @@ export default function SearchScreen() {
           />
         }
         ListEmptyComponent={
+          interest ? (
+            explore.isPending ? (
+              <GridSkeleton />
+            ) : (
+              <EmptyState
+                title={`Nothing in ${interestName} yet`}
+                body="When people post or share projects about this, they'll show up here."
+                action={{ label: 'Show all', onPress: () => setInterest(null) }}
+              />
+            )
+          ) : (
           <EmptyState
             title="Nothing to explore yet"
             body="Follow people to fill your feed, or be the first to post, list a product or share a project."
             action={{ label: 'Create a post', onPress: () => router.push('/compose') }}
           />
+          )
         }
         contentContainerStyle={styles.fillGrow}
       />
