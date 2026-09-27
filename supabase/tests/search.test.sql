@@ -14,7 +14,7 @@
 -- R: 'one48_r'. Blocked S. A post about kitchens.
 
 BEGIN;
-SELECT plan(15);
+SELECT plan(16);
 
 INSERT INTO auth.users (id, email, raw_user_meta_data) VALUES
   ('00000000-0000-0000-0000-0000000048a0', 's@one48.test', '{"username":"one48_s"}'),
@@ -106,6 +106,10 @@ SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000
 SELECT is(
   (SELECT array_agg(name ORDER BY name) FROM public.search_projects('reclaimed')),
   ARRAY['Loft', 'Vault'], 'a private project appears to its owner');
+
+SELECT is(
+  (SELECT array_agg(name ORDER BY name) FROM public.search_projects('reclaimed', NULL, 30, true)),
+  ARRAY['Loft'], 'public-only leaves out even the owner''s private project — the tag picker''s search');
 
 RESET ROLE;
 

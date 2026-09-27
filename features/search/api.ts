@@ -56,8 +56,23 @@ export const searchProducts = async (query: string, category: string | null = nu
     }),
   );
 
-export const searchProjects = async (query: string, category: string | null = null): Promise<SearchProject[]> =>
-  (await rows<any>('search_projects', { p_query: query, p_category: category, p_limit: SEARCH_RESULT_LIMIT })).map(
+/**
+ * `publicOnly` leaves out even the caller's own private projects — for the
+ * composer's tag picker, since a tag may only point at a public project.
+ */
+export const searchProjects = async (
+  query: string,
+  category: string | null = null,
+  publicOnly = false,
+): Promise<SearchProject[]> =>
+  (
+    await rows<any>('search_projects', {
+      p_query: query,
+      p_category: category,
+      p_limit: SEARCH_RESULT_LIMIT,
+      p_public_only: publicOnly,
+    })
+  ).map(
     (r) => ({
       id: r.id,
       name: r.name,

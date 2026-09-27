@@ -9,5 +9,6 @@ export const searchKeys = {
   profiles: (term: string) => base.list({ type: 'profiles', term }),
   posts: (term: string) => base.list({ type: 'posts', term }),
   products: (term: string, category: string | null) => base.list({ type: 'products', term, category }),
-  projects: (term: string, category: string | null) => base.list({ type: 'projects', term, category }),
+  projects: (term: string, category: string | null, publicOnly = false) =>
+    base.list({ type: 'projects', term, category, publicOnly }),
 };

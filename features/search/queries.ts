@@ -31,11 +31,11 @@ export const useProductResultsQuery = (term: string, category: string | null) =>
   });
 };
 
-export const useProjectResultsQuery = (term: string, category: string | null) => {
+export const useProjectResultsQuery = (term: string, category: string | null, publicOnly = false) => {
   const t = term.trim();
   return useQuery({
-    queryKey: searchKeys.projects(t, category),
-    queryFn: () => searchProjects(t, category),
+    queryKey: searchKeys.projects(t, category, publicOnly),
+    queryFn: () => searchProjects(t, category, publicOnly),
     enabled: t.length > 0,
     ...options,
   });

@@ -163,9 +163,16 @@ $$;
 
 -- ─── Projects: full text over name and description ────────────────────
 --
--- A project's category is its project_type.
+-- A project's category is its project_type. p_public_only leaves out even
+-- the caller's own private projects: the composer's tag picker uses it,
+-- since a tag may only point at a public project (ONE-44).
 
-CREATE OR REPLACE FUNCTION public.search_projects(p_query TEXT, p_category TEXT DEFAULT NULL, p_limit INTEGER DEFAULT 30)
+CREATE OR REPLACE FUNCTION public.search_projects(
+    p_query TEXT,
+    p_category TEXT DEFAULT NULL,
+    p_limit INTEGER DEFAULT 30,
+    p_public_only BOOLEAN DEFAULT false
+)
 RETURNS TABLE (
     id UUID,
     name TEXT,
@@ -187,6 +194,7 @@ AS $$
     AND pj.search_vector @@ q.query
     AND (p_category IS NULL OR pj.project_type = p_category)
     AND (pj.is_public OR public.owns_profile(pj.owner_profile_id) OR public.is_project_contributor(pj.id))
+    AND (pj.is_public OR NOT p_public_only)
     AND NOT public.hidden_by_block(pj.owner_profile_id)
   ORDER BY ts_rank(pj.search_vector, q.query) DESC, pj.created_at DESC
   LIMIT least(greatest(coalesce(p_limit, 30), 1), 60);
@@ -207,5 +215,5 @@ REVOKE ALL ON FUNCTION public.search_posts(TEXT, INTEGER) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.search_posts(TEXT, INTEGER) TO authenticated;
 REVOKE ALL ON FUNCTION public.search_products(TEXT, TEXT, INTEGER) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.search_products(TEXT, TEXT, INTEGER) TO authenticated;
-REVOKE ALL ON FUNCTION public.search_projects(TEXT, TEXT, INTEGER) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.search_projects(TEXT, TEXT, INTEGER) TO authenticated;
+REVOKE ALL ON FUNCTION public.search_projects(TEXT, TEXT, INTEGER, BOOLEAN) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.search_projects(TEXT, TEXT, INTEGER, BOOLEAN) TO authenticated;

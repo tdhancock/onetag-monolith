@@ -24,8 +24,14 @@ it('searches each type through its own function, with the category where there i
     ['search_profiles', { p_query: 'ana', p_limit: SEARCH_RESULT_LIMIT }],
     ['search_posts', { p_query: 'kitchen', p_limit: SEARCH_RESULT_LIMIT }],
     ['search_products', { p_query: 'oak', p_category: 'Seating', p_limit: SEARCH_RESULT_LIMIT }],
-    ['search_projects', { p_query: 'loft', p_category: null, p_limit: SEARCH_RESULT_LIMIT }],
+    ['search_projects', { p_query: 'loft', p_category: null, p_limit: SEARCH_RESULT_LIMIT, p_public_only: false }],
   ]);
+});
+
+it('asks for public projects only when the tag picker does (ONE-93)', async () => {
+  mockRpc.mockResolvedValue({ data: [], error: null });
+  await searchProjects('loft', null, true);
+  expect(mockRpc).toHaveBeenCalledWith('search_projects', expect.objectContaining({ p_public_only: true }));
 });
 
 it('maps each row onto its result shape', async () => {
