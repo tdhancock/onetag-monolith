@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
 import { useCurrentProfile } from '../features/profiles';
 import { useCreatePost } from '../features/posts';
+import { useCreateEmbeddedTags, type NewEmbeddedTag } from '../features/tags';
 import { MediaUploadError } from '../services/mediaUpload';
 import { cleanHtml } from '../lib/cleanHtml';
 import {
@@ -26,13 +27,26 @@ import {
 } from '../services/mediaPicker';
 import { Avatar, Button, IconButton, ICON_BUTTON_SIZE, MonoLabel } from '../components/native/ui';
 import ComposeMedia from '../components/native/ComposeMedia';
+import TagPlacer from '../components/native/TagPlacer';
+import TagDestinationPicker from '../components/native/TagDestinationPicker';
 import CharacterRing from '../components/native/CharacterRing';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
 import { ImageIcon } from '../components/native/Icons';
 import { canPublish } from '../lib/screens/compose';
+import {
+  placeTag,
+  moveTag,
+  removeTag,
+  setTagDestination,
+  previewTags,
+  tagsToWrite,
+  TAGS_FAILED_TITLE,
+  TAGS_FAILED_MESSAGE,
+  type DraftTag,
+} from '../lib/screens/composeTags';
 import { postingAsLabel, profileKindLabel } from '../lib/screens/profile';
 import { color, space, type } from '../theme/tokens';
-import type { Post } from '../types';
+import type { EmbeddedTagDestination, Post, ProfileId } from '../types';
 
 /** What PostCard renders when a post carries no ratio. Kept in step with it. */
 const FALLBACK_ASPECT_RATIO = 1080 / 1350;
@@ -62,6 +76,7 @@ export default function ComposeScreen() {
   // could not be uploaded, which is what keeps this screen open with the
   // draft intact (ONE-56).
   const createPost = useCreatePost(profileId);
+  const createTags = useCreateEmbeddedTags();
   const inputRef = useRef<TextInput>(null);
 
   const [content, setContent] = useState('');
@@ -71,12 +86,65 @@ export default function ComposeScreen() {
     attachmentFromParams(mediaUri, paramMediaType, mediaWidth, mediaHeight),
   );
 
+  // Embedded Tags on the photo (ONE-46): drafts in local state until the post
+  // exists, since a tag needs its host post's id.
+  const [tags, setTags] = useState<DraftTag[]>([]);
+  const [tagging, setTagging] = useState(false);
+  /** The tag whose destination picker is open. */
+  const [pickingFor, setPickingFor] = useState<string | null>(null);
+
   // A different photo, or none, is a fresh attempt: the failure note was about
-  // the one that is gone.
+  // the one that is gone, and so were the tags placed on it.
   const setAttachment = (media: PickedMedia | null) => {
     setAttachmentState(media);
     setUploadFailed(false);
+    setTags([]);
+    setTagging(false);
+    setPickingFor(null);
   };
+
+  const handlePlaceTag = (xPct: number, yPct: number) => {
+    const placed = placeTag(tags, xPct, yPct);
+    if (!placed.ok) {
+      Alert.alert('That’s the limit', placed.message);
+      return;
+    }
+    setTags(placed.drafts);
+    setPickingFor(placed.key);
+  };
+
+  const handlePickDestination = (destination: EmbeddedTagDestination) => {
+    if (pickingFor) setTags((current) => setTagDestination(current, pickingFor, destination));
+    setPickingFor(null);
+  };
+
+  // Closed without a choice: a newly placed tag with nowhere to point goes.
+  const handleClosePicker = () => {
+    setTags((current) => current.filter((t) => t.key !== pickingFor || t.destination !== null));
+    setPickingFor(null);
+  };
+
+  /**
+   * Write the post's tags once it exists. Never rejects: the post is already
+   * out, so a failure is the author's to retry or leave — never a reason to
+   * say nothing was posted.
+   */
+  const writeTags = (hostPostId: string, ownerProfileId: ProfileId, toWrite: NewEmbeddedTag[]) =>
+    new Promise<void>((resolve) => {
+      const attempt = () => {
+        createTags
+          .mutateAsync({ hostPostId, ownerProfileId, tags: toWrite })
+          .then(() => resolve())
+          .catch((error) => {
+            console.error('Failed to save the post’s tags', error);
+            Alert.alert(TAGS_FAILED_TITLE, TAGS_FAILED_MESSAGE, [
+              { text: 'Leave without tags', style: 'cancel', onPress: () => resolve() },
+              { text: 'Try again', onPress: attempt },
+            ]);
+          });
+      };
+      attempt();
+    });
 
   // The keyboard comes up once the modal has finished opening, not with
   // `autoFocus`. Raising it during the opening animation, before the screen had
@@ -131,7 +199,14 @@ export default function ComposeScreen() {
         isVerified: userProfile.isVerified || false,
       };
 
-      await createPost.mutateAsync(newPost);
+      const published = await createPost.mutateAsync(newPost);
+
+      // Tags go in once the post has an id, and only on a photo post.
+      const toWrite = attachment ? tagsToWrite(tags) : [];
+      if (toWrite.length > 0 && profileId) {
+        await writeTags(published.id, profileId, toWrite);
+      }
+
       // The spinner stays up until the screen has gone. Clearing it here left
       // Post live, over the same draft, for the moment before closing, and a
       // second tap published the post twice.
@@ -242,12 +317,26 @@ export default function ComposeScreen() {
 
           {attachment && (
             <View style={styles.media}>
-              <ComposeMedia
-                uri={attachment.uri}
-                aspectRatio={previewAspectRatio}
-                onRemove={() => setAttachment(null)}
-                uploadFailed={uploadFailed}
-              />
+              {tagging ? (
+                <TagPlacer
+                  uri={attachment.uri}
+                  aspectRatio={previewAspectRatio}
+                  tags={tags}
+                  onPlace={handlePlaceTag}
+                  onMove={(key, x, y) => setTags((current) => moveTag(current, key, x, y))}
+                  onRemove={(key) => setTags((current) => removeTag(current, key))}
+                  onChoose={setPickingFor}
+                />
+              ) : (
+                // The preview: the tags as viewers will see them (ONE-46).
+                <ComposeMedia
+                  uri={attachment.uri}
+                  aspectRatio={previewAspectRatio}
+                  onRemove={() => setAttachment(null)}
+                  uploadFailed={uploadFailed}
+                  tags={previewTags(tags)}
+                />
+              )}
             </View>
           )}
 
@@ -262,6 +351,17 @@ export default function ComposeScreen() {
                 onPress={handleAttachMedia}
               />
             )}
+            {/* Tagging needs a photo to tag: a text-only post has no tagging step. */}
+            {attachment && (
+              <Button
+                size="sm"
+                variant={tagging ? 'primary' : 'outline'}
+                onPress={() => setTagging((on) => !on)}
+                accessibilityLabel={tagging ? 'Done tagging' : 'Tag profiles, products or projects in this photo'}
+              >
+                {tagging ? 'Done' : 'Tag'}
+              </Button>
+            )}
             <View style={styles.fill} />
             {content.length > 0 && <CharacterRing length={content.length} />}
           </View>
@@ -270,6 +370,8 @@ export default function ComposeScreen() {
           <Pressable onPress={() => inputRef.current?.focus()} accessible={false} style={styles.fill} />
         </ScrollView>
       </KeyboardAvoider>
+
+      <TagDestinationPicker visible={pickingFor !== null} onPick={handlePickDestination} onClose={handleClosePicker} />
     </SafeAreaView>
   );
 }

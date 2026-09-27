@@ -2,8 +2,10 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { IconButton } from './ui';
+import EmbeddedTags, { useImageContentRect } from './EmbeddedTags';
 import { XIcon } from './Icons';
 import { color, space, type, withAlpha } from '../../theme/tokens';
+import type { EmbeddedTag } from '../../types';
 
 interface ComposeMediaProps {
   uri: string;
@@ -13,6 +15,11 @@ interface ComposeMediaProps {
   onRemove?: () => void;
   /** The last publish failed because this photo could not be uploaded. */
   uploadFailed?: boolean;
+  /**
+   * Tags placed on the photo, previewed exactly as viewers will see them —
+   * through the same `EmbeddedTags` overlay, without taps (ONE-46).
+   */
+  tags?: EmbeddedTag[];
 }
 
 /** The note under a photo whose upload failed (ONE-56). */
@@ -24,10 +31,13 @@ export const UPLOAD_FAILED_NOTE = "Photo didn't upload. Try again.";
  *
  * Self-contained so placing Embedded Tags on the photo (ONE-46) can build on it.
  */
-const ComposeMedia: React.FC<ComposeMediaProps> = ({ uri, aspectRatio, onRemove, uploadFailed = false }) => (
+const ComposeMedia: React.FC<ComposeMediaProps> = ({ uri, aspectRatio, onRemove, uploadFailed = false, tags = [] }) => {
+  const media = useImageContentRect();
+  return (
   <View>
-    <View style={[styles.frame, { aspectRatio }]}>
+    <View style={[styles.frame, { aspectRatio }]} onLayout={media.onLayout}>
       <Image
+        onLoad={media.onLoad}
         source={{ uri }}
         style={styles.image}
         // `contain`, as the feed frames it: an over-wide or over-tall photo is
@@ -35,6 +45,7 @@ const ComposeMedia: React.FC<ComposeMediaProps> = ({ uri, aspectRatio, onRemove,
         contentFit="contain"
         accessibilityLabel="Attached photo"
       />
+      <EmbeddedTags tags={tags} contentRect={media.contentRect} interactive={false} />
       {onRemove ? (
         <IconButton
           icon={<XIcon color={color.inverse} size={18} strokeWidth={2} />}
@@ -50,7 +61,8 @@ const ComposeMedia: React.FC<ComposeMediaProps> = ({ uri, aspectRatio, onRemove,
       </Text>
     ) : null}
   </View>
-);
+  );
+};
 
 const styles = StyleSheet.create({
   frame: {

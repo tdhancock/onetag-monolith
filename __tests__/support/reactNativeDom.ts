@@ -156,6 +156,15 @@ export const ActivityIndicator: React.FC<Record<string, unknown>> = props =>
 
 export const Alert = { alert: jest.fn() };
 
+/**
+ * Gestures never arrive in jsdom. `create` records each config, so a suite
+ * that needs a drag reads the handlers from `PanResponder.create.mock.calls`
+ * and calls them itself.
+ */
+export const PanResponder = {
+  create: jest.fn((_config: Record<string, unknown>) => ({ panHandlers: {} })),
+};
+
 /** Listeners register and never fire; a suite that needs a keyboard event captures the handler. */
 export const Keyboard = {
   addListener: jest.fn(() => ({ remove: jest.fn() })),

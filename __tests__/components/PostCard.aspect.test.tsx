@@ -46,6 +46,8 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), back: jes
 jest.mock('../../features/moderation', () => ({ reportPost: jest.fn() }));
 jest.mock('../../features/admin', () => ({ useIsAdmin: () => false }));
 jest.mock('../../features/auth', () => ({ useAuthUserId: () => undefined }));
+// The Embedded Tags overlay's scan write (ONE-45); these posts carry no tags.
+jest.mock('../../features/tags', () => ({ useRecordScan: () => ({ mutate: jest.fn() }) }));
 // The acting profile comes from features/profiles since ONE-22, not the context.
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({

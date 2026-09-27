@@ -110,6 +110,33 @@ export interface Post {
     isSaved?: boolean;
     isVerified?: boolean;
     timestamp?: string;
+    /**
+     * The Embedded Tags pinned to this post's image (ONE-45), read with the
+     * post in the same request. Optional because a post built client-side
+     * before publishing has none yet.
+     */
+    embeddedTags?: EmbeddedTag[];
+}
+
+/**
+ * Where an Embedded Tag points: the same three routable kinds as
+ * `TagDestination` in features/tags, plus what the tap-through card shows.
+ * Structurally a `TagDestination`, so `routeForDestination` takes it as is.
+ */
+export type EmbeddedTagDestination = (
+    | { kind: 'profile'; profileId: string; username: string; profileType: 'individual' | 'business' }
+    | { kind: 'product'; productId: string }
+    | { kind: 'project'; projectId: string }
+) & { name: string; imageUrl: string | null };
+
+/** A Tag pinned to a point on a post's image, positioned in percent of the image content. */
+export interface EmbeddedTag {
+    id: string;
+    /** 0–100, from the image content's left edge. */
+    xPct: number;
+    /** 0–100, from the image content's top edge. */
+    yPct: number;
+    destination: EmbeddedTagDestination;
 }
 
 export interface NotificationSender {

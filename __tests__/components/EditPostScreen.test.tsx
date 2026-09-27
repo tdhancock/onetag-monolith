@@ -42,6 +42,8 @@ jest.mock('../../features/profiles', () => ({
 
 const mockMutateAsync = jest.fn();
 const mockFetchPost = jest.fn();
+// ComposeMedia's tag preview reaches the scan write; editing records none (ONE-46).
+jest.mock('../../features/tags', () => ({ useRecordScan: () => ({ mutate: jest.fn() }) }));
 jest.mock('../../features/posts', () => ({
   useUpdatePost: () => ({ mutateAsync: mockMutateAsync }),
   fetchPostById: (id: string) => mockFetchPost(id),

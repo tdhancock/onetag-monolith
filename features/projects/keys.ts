@@ -12,6 +12,8 @@ export const projectKeys = {
   contributed: (contributorProfileId: string) => base.list({ contributorProfileId }),
   /** The projects that Link one product. A list, so a project's change reaches it. */
   usingProduct: (productId: string) => base.list({ productId }),
+  /** A picker's search across every account's public projects. */
+  search: (query: string) => base.list({ search: query }),
   /** One project's contributors. */
   contributors: (projectId: string) => [...base.all, 'contributors', projectId] as const,
   /** The products one project Links. */

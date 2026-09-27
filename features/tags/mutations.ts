@@ -1,12 +1,13 @@
 // Write hooks for the tags domain.
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createTag, deleteTag, recordScan, setTagActive, updateTag } from './api';
+import { createEmbeddedTags, createTag, deleteTag, recordScan, setTagActive, updateTag } from './api';
 import { tagKeys } from './keys';
-import type { NewTag, OwnedTag, TagUpdates } from './types';
+import type { NewEmbeddedTag, NewTag, OwnedTag, TagUpdates } from './types';
 import type { ProfileId } from '../../types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
 import { scanKeys } from '../scans';
+import { postKeys } from '../posts';
 
 export interface RecordScanInput {
   tagId: string;
@@ -136,6 +137,29 @@ export const useTagActiveToggle = (ownerProfileId: ProfileId | undefined) => {
       const active = activeAfterFlip(queryClient.getQueryData<OwnedTag[]>(key), tagId);
       if (active === undefined) throw new Error('Tag not loaded.');
       return setTagActive(tagId, active);
+    },
+  });
+};
+
+export interface CreateEmbeddedTagsInput {
+  hostPostId: string;
+  /** The profile that published the post. */
+  ownerProfileId: ProfileId;
+  tags: NewEmbeddedTag[];
+}
+
+/**
+ * Embed tags in a post the composer just published (ONE-46). Not optimistic:
+ * the post is already out, and a failure is reported to the author with a
+ * retry rather than rolled back. On success every cached post list and the
+ * post itself refetch, so the tags appear where the post does.
+ */
+export const useCreateEmbeddedTags = () => {
+  const queryClient = useQueryClient();
+  return useMutation<void, unknown, CreateEmbeddedTagsInput>({
+    mutationFn: ({ hostPostId, ownerProfileId, tags }) => createEmbeddedTags(hostPostId, ownerProfileId, tags),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: postKeys.all });
     },
   });
 };

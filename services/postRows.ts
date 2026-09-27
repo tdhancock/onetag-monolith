@@ -6,7 +6,7 @@
 // do (features/README.md, rule 1). A service is the shared ground, as with
 // profileBootstrap.ts. features/posts re-exports both, unchanged.
 
-import type { Post } from '../types';
+import type { EmbeddedTag, EmbeddedTagDestination, Post } from '../types';
 
 export const POST_SELECT_QUERY = `
     id,
@@ -27,7 +27,19 @@ export const POST_SELECT_QUERY = `
     reposts:reposts(count),
     viewer_like:likes(user_id),
     viewer_repost:reposts(user_id),
-    viewer_save:saves(profile_id)
+    viewer_save:saves(profile_id),
+    embedded_tags:tags!host_post_id(
+        id,
+        active,
+        tag_x_pct,
+        tag_y_pct,
+        dest_profile_id,
+        dest_product_id,
+        dest_project_id,
+        dest_profile:profiles!dest_profile_id(id, username, full_name, avatar_url, profile_type),
+        dest_product:products!dest_product_id(id, name, product_media(url, media_type, sort_order)),
+        dest_project:projects!dest_project_id(id, name, cover_url)
+    )
 `;
 
 /**
@@ -142,7 +154,70 @@ export const mapPostData = (p: any): Post => {
     isLiked: hasViewerRow(p.viewer_like),
     isReposted: hasViewerRow(p.viewer_repost),
     isSaved: hasViewerRow(p.viewer_save),
+    embeddedTags: mapEmbeddedTags(p.embedded_tags),
   };
+};
+
+// ─── Embedded Tags (ONE-45) ─────────────────────────────────────────────
+//
+// Read in POST_SELECT_QUERY beside the counts, so a feed page of twenty posts
+// is one request, not twenty-one. `tags!host_post_id` only ever finds embedded
+// tags — no other kind has a host post (ONE-44) — and RLS makes each readable
+// wherever its post is.
+
+const one = <T>(embed: T | T[] | null | undefined): T | null =>
+  Array.isArray(embed) ? embed[0] ?? null : embed ?? null;
+
+/** The first photo by sort order: a product's representative image. */
+const productImage = (media: unknown): string | null => {
+  if (!Array.isArray(media)) return null;
+  const photo = [...media]
+    .filter((m: any) => m && m.media_type !== 'video' && typeof m.url === 'string')
+    .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0];
+  return photo ? photo.url : null;
+};
+
+const embeddedDestination = (row: any): EmbeddedTagDestination | null => {
+  const profile = one<any>(row.dest_profile);
+  if (row.dest_profile_id && profile) {
+    return {
+      kind: 'profile',
+      profileId: profile.id,
+      username: profile.username,
+      profileType: profile.profile_type === 'business' ? 'business' : 'individual',
+      name: profile.full_name || profile.username,
+      imageUrl: profile.avatar_url ?? null,
+    };
+  }
+  const product = one<any>(row.dest_product);
+  if (row.dest_product_id && product) {
+    return { kind: 'product', productId: product.id, name: product.name, imageUrl: productImage(product.product_media) };
+  }
+  const project = one<any>(row.dest_project);
+  if (row.dest_project_id && project) {
+    return { kind: 'project', projectId: project.id, name: project.name, imageUrl: project.cover_url ?? null };
+  }
+  // Gone, or a project made private since it was tagged: nothing to show.
+  return null;
+};
+
+/**
+ * The live tags on a post that still have somewhere to go. A paused tag, or
+ * one whose destination the viewer cannot see, is left off rather than drawn
+ * as a tag that leads nowhere.
+ */
+export const mapEmbeddedTags = (rows: unknown): EmbeddedTag[] => {
+  if (!Array.isArray(rows)) return [];
+  const tags: EmbeddedTag[] = [];
+  for (const row of rows as any[]) {
+    if (!row || row.active === false) continue;
+    const destination = embeddedDestination(row);
+    const xPct = Number(row.tag_x_pct);
+    const yPct = Number(row.tag_y_pct);
+    if (!destination || !Number.isFinite(xPct) || !Number.isFinite(yPct)) continue;
+    tags.push({ id: row.id, xPct, yPct, destination });
+  }
+  return tags;
 };
 
 /** A viewer-scoped embed is an array: one row if the viewer is in it. */

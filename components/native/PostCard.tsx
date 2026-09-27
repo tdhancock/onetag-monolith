@@ -7,6 +7,7 @@ import { useCurrentProfile } from '../../features/profiles';
 import { useLikePost, useRepostPost, useSavePost, useDeletePost } from '../../features/posts';
 import { Avatar, IconButton, ICON_BUTTON_SIZE, Sheet, SheetRow } from './ui';
 import RenderUserContent from './RenderUserContent';
+import EmbeddedTags, { useImageContentRect } from './EmbeddedTags';
 import {
   HeartIcon,
   CommentIcon,
@@ -235,6 +236,7 @@ const PostCard: React.FC<PostCardProps> = ({
   const [isExpanded, setIsExpanded] = useState(detail);
 
   const heartScale = useRef(new Animated.Value(0)).current;
+  const media = useImageContentRect();
 
   const isTextOnly = post.media_type === 'text';
   const isImage = post.media_type === 'image';
@@ -360,14 +362,17 @@ const PostCard: React.FC<PostCardProps> = ({
           </View>
         ) : (
           post.media && (
-            <View style={[styles.media, { aspectRatio }]}>
+            <View style={[styles.media, { aspectRatio }]} onLayout={media.onLayout}>
               <Image
                 source={{ uri: post.media }}
                 placeholder={post.media_preview_url ? { uri: post.media_preview_url } : undefined}
                 style={styles.mediaImage}
                 contentFit="contain"
                 transition={300}
+                onLoad={media.onLoad}
               />
+              {/* Tags sit over the picture itself, not the letterbox (ONE-45). */}
+              <EmbeddedTags tags={post.embeddedTags ?? []} contentRect={media.contentRect} interactive={!isPreview} />
             </View>
           )
         )}
