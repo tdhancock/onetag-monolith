@@ -114,13 +114,15 @@ interface ForeignKey {
 }
 
 /**
- * Every foreign key any migration declares to a profile or to an account,
- * inline on a column or as a table constraint. A key dropped later still
- * counts: each one declared has to say what happens on delete.
+ * Every foreign key the migrations declare to a profile or to an account,
+ * inline on a column or as a table constraint, as each column last declares
+ * it: a later migration re-creating a key (ONE-98 re-created reports.reviewed_by)
+ * replaces the earlier declaration. A key dropped and never re-declared still
+ * counts, as it was last declared.
  */
 const foreignKeysToPeople = (): ForeignKey[] => {
   const dir = join(ROOT, 'supabase', 'migrations');
-  const keys: ForeignKey[] = [];
+  const keys = new Map<string, ForeignKey>();
   for (const file of readdirSync(dir).filter((name) => name.endsWith('.sql')).sort()) {
     const sql = readFileSync(join(dir, file), 'utf8').replace(/--.*$/gm, '');
     for (const statement of sql.split(';')) {
@@ -129,12 +131,13 @@ const foreignKeysToPeople = (): ForeignKey[] => {
       const references =
         /(?:(\w+)\s+UUID\b[^,;()]*?|FOREIGN KEY\s*\(\s*(\w+)\s*\)\s*)REFERENCES\s+(?:public\.profiles|auth\.users)\s*\(\s*id\s*\)([^,;]*)/gi;
       for (const match of statement.matchAll(references)) {
+        const column = `${table}.${match[1] ?? match[2]}`;
         const onDelete = /ON DELETE (CASCADE|SET NULL|NO ACTION|RESTRICT|SET DEFAULT)/i.exec(match[3])?.[1].toUpperCase() ?? null;
-        keys.push({ column: `${table}.${match[1] ?? match[2]}`, onDelete, file });
+        keys.set(column, { column, onDelete, file });
       }
     }
   }
-  return keys;
+  return [...keys.values()];
 };
 
 /** Kept, not deleted, when their profile goes: the row belongs to someone else. */
@@ -143,13 +146,9 @@ const SET_NULL_ON_PURPOSE = [
   'scans.scanner_profile_id',
   // A message between two other people keeps its text when the profile it shared goes.
   'messages.shared_profile_id',
+  // A report keeps its history when the admin who reviewed it goes (ONE-98).
+  'reports.reviewed_by',
 ];
-
-/** Known to block deleting an account, each with the ticket that fixes it. */
-const KNOWN_GAPS: Record<string, string> = {
-  // Only an admin reviews a report, so only an admin's account can't be deleted.
-  'reports.reviewed_by': 'ONE-98',
-};
 
 describe('every foreign key to a profile or an account', () => {
   const keys = foreignKeysToPeople();
@@ -159,24 +158,15 @@ describe('every foreign key to a profile or an account', () => {
     expect(keys).toContainEqual(expect.objectContaining({ column: 'profiles.user_id', onDelete: 'CASCADE' }));
   });
 
-  it('cascades, sets null on purpose, or is a known gap with a ticket', () => {
+  it('cascades, or sets null on purpose: anything else stops an account being deleted', () => {
     const unaccounted = keys.filter(
-      (key) =>
-        key.onDelete !== 'CASCADE' &&
-        !(key.onDelete === 'SET NULL' && SET_NULL_ON_PURPOSE.includes(key.column)) &&
-        !(key.column in KNOWN_GAPS),
+      (key) => key.onDelete !== 'CASCADE' && !(key.onDelete === 'SET NULL' && SET_NULL_ON_PURPOSE.includes(key.column)),
     );
     expect(unaccounted).toEqual([]);
   });
 
   it('sets null only where that is the point', () => {
     const setNull = keys.filter((key) => key.onDelete === 'SET NULL').map((key) => key.column);
-    expect([...new Set(setNull)].sort()).toEqual([...SET_NULL_ON_PURPOSE].sort());
-  });
-
-  it('keeps each known gap open until its ticket closes it', () => {
-    for (const column of Object.keys(KNOWN_GAPS)) {
-      expect(keys.filter((key) => key.column === column).map((key) => key.onDelete)).toEqual([null]);
-    }
+    expect(setNull.sort()).toEqual([...SET_NULL_ON_PURPOSE].sort());
   });
 });

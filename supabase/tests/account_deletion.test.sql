@@ -9,12 +9,13 @@
 -- Everything runs in one transaction and rolls back.
 --
 -- Account X: individual XI (signup) and business XB. The account deleted.
--- Account Y: individual YI, who follows, messages, tags and contributes
---            alongside X.
+--            XI has also reviewed a report, as an admin would.
+-- Account Y: individual YI, who follows, messages, tags, contributes and
+--            reports alongside X.
 -- Account Z: individual ZI, who receives a message from Y sharing XB.
 
 BEGIN;
-SELECT plan(22);
+SELECT plan(23);
 
 -- ─── Fixtures (as the database owner) ─────────────────────────────────
 
@@ -96,8 +97,11 @@ SELECT tag_embedded, yi, 'embedded', product_xb, post_y, 40, 60 FROM ids;
 INSERT INTO public.scans (tag_id, scanner_profile_id) SELECT tag_xb, yi FROM ids;
 INSERT INTO public.scans (tag_id, scanner_profile_id) SELECT tag_y, xi FROM ids;
 
--- A report, a push token, and blocks both ways: the last two on the account.
+-- Reports: one X filed, and one X reviewed (ONE-98). Then a push token, and
+-- blocks both ways: the last two on the account.
 INSERT INTO public.reports (reporter_id, target_type, target_id, reason) SELECT xi, 'post', post_y, 'spam' FROM ids;
+INSERT INTO public.reports (reporter_id, target_type, target_id, reason, status, reviewed_at, reviewed_by)
+SELECT yi, 'user', zi, 'impersonation', 'reviewed', now(), xi FROM ids;
 INSERT INTO public.push_tokens (user_id, token) SELECT x, 'ExponentPushToken[one88]' FROM ids;
 INSERT INTO public.blocks (blocker_id, blocked_id) SELECT x, y FROM ids;
 INSERT INTO public.blocks (blocker_id, blocked_id) SELECT z, x FROM ids;
@@ -188,6 +192,10 @@ SELECT is((SELECT count(*) FROM public.messages m, ids
            WHERE m.sender_id = ids.yi AND m.receiver_id = ids.zi AND m.shared_profile_id IS NULL), 1::bigint,
   'a message between two other people that shared their profile stays, without the profile');
 
+SELECT is((SELECT count(*) FROM public.reports r, ids
+           WHERE r.reporter_id = ids.yi AND r.status = 'reviewed' AND r.reviewed_by IS NULL), 1::bigint,
+  'a report they reviewed stays reviewed, with no reviewer, and did not stop the deletion');
+
 SELECT ok(
   EXISTS (SELECT 1 FROM public.profiles p, ids WHERE p.id = ids.yi)
   AND EXISTS (SELECT 1 FROM public.posts p, ids WHERE p.id = ids.post_y)
@@ -198,9 +206,8 @@ SELECT ok(
 -- ─── Every foreign key to a profile or an account says what happens ───
 --
 -- The cascade above holds only while each one does. These are the ones that
--- don't cascade: two kept on purpose, and reviewed_by, which blocks deleting
--- an account whose profile reviewed a report (only admins review reports;
--- ONE-98 makes it SET NULL).
+-- don't cascade, each set null on purpose. A NO ACTION key here would stop an
+-- account's deletion outright, as reviewed_by did until ONE-98.
 
 -- confdeltype: c cascade, n set null, a no action.
 SELECT is(
@@ -214,7 +221,7 @@ SELECT is(
        AND k.connamespace = 'public'::regnamespace
        AND k.confdeltype <> 'c'
    ) fks),
-  ARRAY['messages.shared_profile_id n', 'reports.reviewed_by a', 'scans.scanner_profile_id n'],
+  ARRAY['messages.shared_profile_id n', 'reports.reviewed_by n', 'scans.scanner_profile_id n'],
   'every other foreign key to a profile or an account cascades');
 
 SELECT * FROM finish();

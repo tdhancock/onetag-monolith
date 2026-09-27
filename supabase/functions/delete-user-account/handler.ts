@@ -11,10 +11,11 @@
 // ONE-21 those tables are keyed by profile id, so the loop matched nothing but
 // the profiles row, and one failure half-way left an account half deleted.
 //
-// Two references outlive the account on purpose, set to null rather than
+// Three references outlive the account on purpose, set to null rather than
 // deleted: a scan it made stays in the tag owner's counts, anonymous
-// (scans.scanner_profile_id), and a message between two other people that
-// shared its profile keeps its text (messages.shared_profile_id).
+// (scans.scanner_profile_id); a message between two other people that shared
+// its profile keeps its text (messages.shared_profile_id); and a report an
+// admin's profile reviewed keeps its history (reports.reviewed_by, ONE-98).
 // supabase/tests/account_deletion.test.sql deletes a two-profile account
 // against a real database, and __tests__/supabase/delete-user-account.test.ts
 // checks that every migration's foreign key to a profile or an account says
