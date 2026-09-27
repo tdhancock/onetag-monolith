@@ -140,24 +140,6 @@ export const fetchPostById = async (
   }
 };
 
-/** Recent posts from everyone, for the Explore grid. */
-/**
- * The posts Explore's grid shows. Throws on failure, as `fetchFeedPage` does:
- * returning `[]` made an outage look like an empty app, and Explore's Retry
- * could never appear.
- */
-export const fetchTrendingPosts = async (viewerId?: string): Promise<Post[]> => {
-  const { data, error } = await scopeToViewer(
-    supabase.from('posts').select(POST_SELECT_QUERY),
-    viewerId,
-  )
-    .order('created_at', { ascending: false })
-    .limit(FEED_PAGE_SIZE + 1);
-
-  if (error) throw error;
-  return (data || []).map(mapPostData);
-};
-
 // ---------------------------------------------------------------------------
 // Toggles
 // ---------------------------------------------------------------------------

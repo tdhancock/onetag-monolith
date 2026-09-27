@@ -12,7 +12,6 @@ export {
   adminDeletePost,
   fetchFeedPage,
   fetchPostById,
-  fetchTrendingPosts,
   nextFeedCursor,
   getFeedUserIds,
   mapPostData,
