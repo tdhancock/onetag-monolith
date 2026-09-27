@@ -266,7 +266,7 @@ describe("the account's folders", () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
-      await uploadMedia('file:///photo.jpg', CALLER);
+      await uploadMedia('file:///photo.jpg', CALLER).catch(() => undefined);
       await uploadStoryMedia(new Blob(['x'], { type: 'image/jpeg' }), CALLER).catch(() => undefined);
       for (const folder of DESTINATION_MEDIA_FOLDERS) {
         await uploadDestinationImage('file:///photo.jpg', asAuthUserId(CALLER), folder).catch(() => undefined);

@@ -39,81 +39,33 @@ export function assertRemoteMediaUrl(url: string | null | undefined): void {
 }
 
 /**
- * Upload a local media file (from expo-image-picker or camera) to Supabase Storage.
- * Uses fetch().arrayBuffer() which works reliably on React Native.
- * Returns the public URL of the uploaded file.
+ * The bucket post and OneSnap media live in, under the account's folder:
+ * storage RLS requires the auth user id there.
+ */
+export const POST_MEDIA_BUCKET = 'post-media';
+
+/** A name nothing else in the folder has. */
+export const uniqueFileName = (ext: string): string =>
+    `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+/**
+ * Upload a post's local media file (from the picker or the camera) and return
+ * its public URL. Reads it with fetch().arrayBuffer(), which works on React
+ * Native.
+ *
+ * One bucket, one path, `<auth user id>/posts/<name>`, and a refused upload
+ * throws (ONE-100). It used to try three buckets and three paths and then
+ * return the image inline as a data: URL. The insert refused that anyway, so
+ * the guesses only turned a clear storage error into a vaguer one later.
  */
 export async function uploadMedia(localUri: string, userId: string): Promise<string> {
     const { arrayBuffer, contentType, ext } = await readLocalFile(localUri);
+    const filePath = `${userId}/posts/${uniqueFileName(ext)}`;
 
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await supabase.storage
+        .from(POST_MEDIA_BUCKET)
+        .upload(filePath, arrayBuffer, { cacheControl: '3600', upsert: false, contentType });
+    if (error) throw new MediaUploadError("Your photo couldn't be uploaded.", error);
 
-    // Try uploading to the 'post-media' bucket first (same bucket the web app uses)
-    const candidatePaths = [
-        `${userId}/posts/${fileName}`,
-        `posts/${userId}/${fileName}`,
-        `public/${userId}/${fileName}`,
-    ];
-
-    const bucketCandidates = ['post-media', 'media', 'uploads'];
-
-    let lastError: unknown = null;
-
-    for (const bucket of bucketCandidates) {
-        for (const filePath of candidatePaths) {
-            const { error } = await supabase.storage
-                .from(bucket)
-                .upload(filePath, arrayBuffer, {
-                    cacheControl: '3600',
-                    upsert: false,
-                    contentType,
-                });
-
-            if (!error) {
-                const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
-                return data.publicUrl;
-            }
-
-            lastError = error;
-            // If it's not a policy/bucket error, throw immediately
-            if (!isLikelyStoragePolicyError(error) && !isStorageBucketMissingError(error)) {
-                throw error;
-            }
-            // If it's a bucket-missing error for this bucket, try next bucket
-            if (isStorageBucketMissingError(error)) {
-                break; // skip remaining paths for this bucket, try next bucket
-            }
-        }
-    }
-
-    // All buckets failed — fall back to data URL
-    console.warn('All storage buckets unavailable, falling back to data URL.');
-    return arrayBufferToDataUrl(arrayBuffer, contentType);
+    return supabase.storage.from(POST_MEDIA_BUCKET).getPublicUrl(filePath).data.publicUrl;
 }
-
-/**
- * Convert ArrayBuffer to base64 data URL — fallback when storage is unavailable.
- */
-function arrayBufferToDataUrl(buffer: ArrayBuffer, contentType: string): string {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    const base64 = btoa(binary);
-    return `data:${contentType};base64,${base64}`;
-}
-
-export const isLikelyStoragePolicyError = (error: unknown): boolean => {
-    const message = String((error as { message?: unknown })?.message || error).toLowerCase();
-    return (
-        message.includes('row-level security policy') ||
-        message.includes('not authorized') ||
-        message.includes('permission denied')
-    );
-};
-
-export const isStorageBucketMissingError = (error: unknown): boolean => {
-    const message = String((error as { message?: unknown })?.message || error).toLowerCase();
-    return message.includes('bucket') && message.includes('not found');
-};

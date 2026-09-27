@@ -10,8 +10,7 @@
 
 import { supabase } from '../../services/supabase.native';
 import { ensureProfileRowForUser } from '../../services/profileBootstrap';
-import { isLikelyStoragePolicyError, isStorageBucketMissingError } from '../../services/mediaUpload';
-import { blobToDataUrl, buildTextStoryDataUri, uploadStoryMedia } from '../../services/storyUpload';
+import { uploadStoryMedia } from '../../services/storyUpload';
 import type { Story, StoryViewer } from './types';
 import type { ProfileId } from '../../types';
 
@@ -148,28 +147,10 @@ export const uploadStory = async (
     throw new Error('Could not create or find a profile row for this account.');
   }
 
-  let mediaUrl: string | null = null;
-  if (file) {
-    try {
-      // Account-scoped: storage RLS keys the path on auth.uid(), not a profile.
-      const { bucket, filePath } = await uploadStoryMedia(file, user.id);
-      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(filePath);
-      if (!urlData) throw new Error('Could not get public URL for story.');
-      mediaUrl = urlData.publicUrl;
-    } catch (uploadError) {
-      if (isLikelyStoragePolicyError(uploadError) || isStorageBucketMissingError(uploadError)) {
-        console.warn('Story media upload skipped due storage policy/bucket constraints.', uploadError);
-        try {
-          mediaUrl = await blobToDataUrl(file);
-        } catch (dataUrlError) {
-          console.warn('Could not convert story media to inline data URL.', dataUrlError);
-          mediaUrl = buildTextStoryDataUri(caption || 'Story');
-        }
-      } else {
-        throw uploadError;
-      }
-    }
-  }
+  // Account-scoped: storage RLS keys the path on auth.uid(), not a profile. A
+  // refused upload throws and nothing is written (ONE-100): the photo is never
+  // stored inline in the row, nor swapped for a picture of its caption.
+  const mediaUrl = file ? await uploadStoryMedia(file, user.id) : null;
 
   // A text story is a row with no media: its words and its gradient (ONE-78).
   // It used to fail on media_url's old NOT NULL and retry as an SVG picture of

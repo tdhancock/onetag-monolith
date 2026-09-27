@@ -74,17 +74,17 @@ export const handleRequest = async (request: Request, deps: AccountDeletion): Pr
 // So an account's files are the ones under `accountMediaPrefixes`, and removing
 // them never needs to look at anyone else's.
 
-/**
- * The buckets the migrations create. The post and OneSnap uploaders try other
- * buckets too, as fallbacks, but a bucket that doesn't exist holds nothing.
- */
+/** The buckets the migrations create, and so the only ones that can hold a file. */
 export const MEDIA_BUCKETS = ['avatars', 'post-media'];
 
 /**
- * The folders an uploader may put in front of the account's id: the avatar's,
- * the post and OneSnap uploaders' fallbacks, and the Destination folders
- * (services/destinationMedia.ts's DESTINATION_MEDIA_FOLDERS). The test drives
- * every uploader through every path it tries, and fails if one isn't covered.
+ * The folders that can sit in front of the account's id: the avatar's, and
+ * the Destination folders (services/destinationMedia.ts's
+ * DESTINATION_MEDIA_FOLDERS). Also `posts`, `stories` and `public`: until
+ * ONE-100 the post and OneSnap uploaders fell back to them, in both buckets,
+ * and files from then may still be there. Drop those three only once no stored
+ * object can be under them. The test drives every uploader through every path
+ * it tries, and fails if one isn't covered.
  */
 export const FOLDERS_BEFORE_ACCOUNT = ['avatars', 'posts', 'stories', 'public', 'products', 'projects'];
 
