@@ -42,11 +42,19 @@ describe('the table', () => {
     );
   });
 
-  it('carries the four business fields and a creation time', () => {
-    for (const column of ['category TEXT', 'website TEXT', 'location TEXT', 'logo_url TEXT']) {
+  it('carries the business fields and a creation time', () => {
+    for (const column of ['category TEXT', 'website TEXT', 'location TEXT']) {
       expect(sql).toContain(column);
     }
     expect(sql).toContain('created_at TIMESTAMPTZ NOT NULL DEFAULT now()');
+  });
+
+  it('no longer carries logo_url: a business is represented by its avatar (ONE-81)', () => {
+    const drop = readdirSync(MIGRATIONS).find((name) => name.endsWith('_drop_business_logo.sql'));
+    expect(drop).toBeDefined();
+    expect(drop! > file).toBe(true);
+    const dropSql = readFileSync(join(MIGRATIONS, drop!), 'utf8').replace(/--.*$/gm, '').replace(/\s+/g, ' ');
+    expect(dropSql).toContain('ALTER TABLE public.business_profiles DROP COLUMN logo_url;');
   });
 
   it('keeps anything but a web link out of the website', () => {
@@ -57,7 +65,7 @@ describe('the table', () => {
     expect(sql).not.toMatch(/owner_type|owner_id/);
   });
 
-  it('adds no storage bucket — a logo lives in avatars', () => {
+  it('adds no storage bucket', () => {
     expect(sql).not.toContain('storage.buckets');
     expect(sql).not.toContain('storage.objects');
   });

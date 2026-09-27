@@ -40,14 +40,13 @@ import type {
  * second round trip for a business profile's category and website. An
  * individual profile simply comes back with nothing embedded.
  */
-export const PROFILE_SELECT = '*, business_profiles(category, website, location, logo_url)';
+export const PROFILE_SELECT = '*, business_profiles(category, website, location)';
 
 /** A business row as the client reads it. */
 const mapBusinessRow = (row: BusinessProfileRow): BusinessProfileFields => ({
     category: row.category,
     website: row.website,
     location: row.location,
-    logoUrl: row.logo_url,
 });
 
 export const mapProfileRow = (row: ProfileRow): UserProfile => {
@@ -79,7 +78,6 @@ export const mapBusinessUpdatesToRow = (updates: BusinessProfileUpdates): Partia
     if (updates.category !== undefined) row.category = updates.category;
     if (updates.website !== undefined) row.website = updates.website;
     if (updates.location !== undefined) row.location = updates.location;
-    if (updates.logoUrl !== undefined) row.logo_url = updates.logoUrl;
     return row;
 };
 
@@ -246,7 +244,7 @@ export const createProfile = async (input: NewProfile): Promise<UserProfile> => 
     const created = mapProfileRow(data as ProfileRow);
 
     if (created.profileType === 'business') {
-        created.business = { category: null, website: null, location: null, logoUrl: null };
+        created.business = { category: null, website: null, location: null };
     }
 
     return created;

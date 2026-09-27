@@ -49,7 +49,7 @@ const row = (overrides: Partial<ProfileRow> = {}): ProfileRow => ({
   ...overrides,
 });
 
-const BUSINESS_ROW = { category: 'Cafe', website: 'https://ana.example', location: 'Lisbon', logo_url: null };
+const BUSINESS_ROW = { category: 'Cafe', website: 'https://ana.example', location: 'Lisbon' };
 
 beforeEach(() => mockFrom.mockReset());
 
@@ -57,7 +57,7 @@ beforeEach(() => mockFrom.mockReset());
 
 describe('reading a profile with its business fields', () => {
   it('asks for the business row inside the profile select, so it is one request', () => {
-    expect(PROFILE_SELECT).toBe('*, business_profiles(category, website, location, logo_url)');
+    expect(PROFILE_SELECT).toBe('*, business_profiles(category, website, location)');
   });
 
   it('fetches someone by username in a single query that embeds their business fields', async () => {
@@ -71,7 +71,7 @@ describe('reading a profile with its business fields', () => {
     expect(mockFrom).toHaveBeenCalledTimes(1);
     expect(mockFrom).toHaveBeenCalledWith('profiles');
     expect(select).toHaveBeenCalledWith(PROFILE_SELECT);
-    expect(profile!.business).toEqual({ category: 'Cafe', website: 'https://ana.example', location: 'Lisbon', logoUrl: null });
+    expect(profile!.business).toEqual({ category: 'Cafe', website: 'https://ana.example', location: 'Lisbon' });
   });
 
   it("reads the account's own profiles with the same select", async () => {
@@ -83,7 +83,7 @@ describe('reading a profile with its business fields', () => {
   });
 
   it('maps the business row onto a business profile, as an object or a one-element array', () => {
-    const expected = { category: 'Cafe', website: 'https://ana.example', location: 'Lisbon', logoUrl: null };
+    const expected = { category: 'Cafe', website: 'https://ana.example', location: 'Lisbon' };
     expect(mapProfileRow(row({ profile_type: 'business', business_profiles: BUSINESS_ROW })).business).toEqual(expected);
     expect(mapProfileRow(row({ profile_type: 'business', business_profiles: [BUSINESS_ROW] })).business).toEqual(expected);
   });
@@ -106,11 +106,11 @@ describe('saving business fields', () => {
     const upsert = jest.fn(() => Promise.resolve({ error: null }));
     mockFrom.mockReturnValue({ upsert });
 
-    await updateBusinessProfile(asProfileId('p-biz'), { category: 'Bakery', website: 'https://b.example', logoUrl: 'https://cdn/x.png' });
+    await updateBusinessProfile(asProfileId('p-biz'), { category: 'Bakery', website: 'https://b.example' });
 
     expect(mockFrom).toHaveBeenCalledWith('business_profiles');
     expect(upsert).toHaveBeenCalledWith(
-      { profile_id: 'p-biz', category: 'Bakery', website: 'https://b.example', logo_url: 'https://cdn/x.png' },
+      { profile_id: 'p-biz', category: 'Bakery', website: 'https://b.example' },
       { onConflict: 'profile_id' },
     );
   });
@@ -130,7 +130,7 @@ describe('saving business fields', () => {
 // ─── 3. What a profile shows, and the website rules ─────────────────────
 
 describe('businessDetailsFor', () => {
-  const business = { category: ' Cafe ', website: 'https://ana.example/', location: '', logoUrl: null };
+  const business = { category: ' Cafe ', website: 'https://ana.example/', location: '' };
 
   it('is null for an individual profile, whatever it carries', () => {
     expect(businessDetailsFor({ profileType: 'individual', business })).toBeNull();
