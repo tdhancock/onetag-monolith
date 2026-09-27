@@ -30,6 +30,9 @@ services/                  supabase client and the shared ground features reach:
 supabase/migrations/       schema
 __tests__/                 Jest
 types.ts                   shared domain types (repo root)
+app.config.ts              app.json plus universal links for the tag host (repo root)
+public/.well-known/        the files the tag host serves so the OS opens the app for /t/*
+docs/deep-links.md         how tag links reach the app, and how to verify universal links
 scripts/                   CI gates
 ```
 
@@ -177,7 +180,8 @@ Agreement, along with the rest.
   `public.owns_profile()`; `npm run db:test` runs the pgTAP RLS suite against the local stack.
 - **Tag URLs are built in exactly one place**, `lib/tagLinks.ts`, from
   `EXPO_PUBLIC_TAG_BASE_URL`. Never hardcode or assemble one elsewhere — these get printed onto
-  physical objects and cannot be changed afterwards.
+  physical objects and cannot be changed afterwards. `app.config.ts` derives the universal-link
+  host from the same variable; a test keeps the two in step.
 
 Migration is strangler-style: **the app must run correctly after every ticket.**
 

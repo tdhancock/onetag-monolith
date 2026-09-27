@@ -10,6 +10,12 @@
 // The production domain is not decided yet (`onetag.app` vs `onetag.co`), so
 // it comes from `EXPO_PUBLIC_TAG_BASE_URL`, with `https://onetag.app` as the
 // development default. Expo inlines `EXPO_PUBLIC_*` at build time.
+//
+// app.config.ts derives the universal-link host (iOS `applinks:`, the Android
+// App Links filter) from the same variable and the same default. It can't
+// import this module, so it mirrors `resolveTagBaseUrl`. If the two ever
+// disagree, the OS stops opening the app for tag links without any error;
+// __tests__/appConfig.test.ts pins them together.
 
 /** The path segment in front of every short code: `/t/<code>`. */
 export const TAG_PATH_PREFIX = 't';
