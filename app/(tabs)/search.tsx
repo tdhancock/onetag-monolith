@@ -10,72 +10,38 @@ import {
   Keyboard,
   StyleSheet,
 } from 'react-native';
-import { Image } from 'expo-image';
-import TaggedBadge from '../../components/native/TaggedBadge';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
 import { useFollowState, useToggleFollow, useCurrentProfile, searchUsers } from '../../features/profiles';
-import { fetchTrendingPosts as getTrendingPosts } from '../../features/posts';
+import { useExploreQuery, flattenExplorePages, type ExploreItem } from '../../features/explore';
+import ExploreCard from '../../components/native/ExploreCard';
 import { useHashtagsQuery } from '../../features/hashtags';
 import { Button, EmptyState, ListRow, MonoLabel, Pressable, Skeleton, TextField } from '../../components/native/ui';
 import { SearchIcon } from '../../components/native/Icons';
 import {
   EXPLORE_COLUMNS,
   EXPLORE_GRID_GAP,
+  exploreRoute,
   exploreTileGapRight,
   exploreTileSize,
   hashtagPostCount,
   matchingHashtags,
   noResultsLabel,
 } from '../../lib/screens/explore';
-import { firstLine } from '../../lib/screens/profile';
 import { color, space, type } from '../../theme/tokens';
-import type { Post, SimpleUser, Hashtag } from '../../types';
+import type { SimpleUser, Hashtag } from '../../types';
 
 const tileSize = exploreTileSize(Dimensions.get('window').width);
-/** Tiles shown while the grid loads: four rows. */
-const SKELETON_TILES = EXPLORE_COLUMNS * 4;
+/** Cells shown while the grid loads: three rows. */
+const SKELETON_TILES = EXPLORE_COLUMNS * 3;
 /** Placeholder people rows while a search is in flight. */
 const SKELETON_ROWS = 3;
 const HASH_TILE_SIZE = 40;
 
 // ─── Sub-components ──────────────────────────────
 
-/** One square of the trending grid: the photo, or a text post's first line. */
-const ExploreTile: React.FC<{ post: Post; index: number; onPress: () => void }> = React.memo(
-  ({ post, index, onPress }) => {
-    const isTextPost = post.media_type === 'text' || !post.media;
-    return (
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={`Post by ${post.username}`}
-        style={[styles.tile, { marginRight: exploreTileGapRight(index) }]}
-      >
-        {isTextPost ? (
-          <View style={styles.textTile}>
-            <Text style={styles.textTileCopy} numberOfLines={5}>
-              {firstLine(post.content)}
-            </Text>
-          </View>
-        ) : (
-          <Image
-            // The preview is a 50px blur-up, not something to show on its own.
-            source={{ uri: post.media }}
-            placeholder={post.media_preview_url ? { uri: post.media_preview_url } : undefined}
-            style={styles.fill}
-            contentFit="cover"
-            transition={200}
-          />
-        )}
-        {!isTextPost && <TaggedBadge count={post.embeddedTags?.length ?? 0} compact />}
-      </Pressable>
-    );
-  },
-);
-
-/** The grid's shape, pulsing, while trending posts load. */
+/** The grid's shape, pulsing, while it loads. */
 const GridSkeleton: React.FC = () => (
   <View style={styles.skeletonGrid}>
     {Array.from({ length: SKELETON_TILES }, (_, i) => (
@@ -120,55 +86,22 @@ export default function SearchScreen() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
 
-  const [trendingPosts, setTrendingPosts] = useState<Post[]>([]);
   const [userResults, setUserResults] = useState<SimpleUser[]>([]);
   const [isUserSearchLoading, setIsUserSearchLoading] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   // ─── Data loading ──────────────────────────────
 
-  // Hashtags come from the query cache; trending posts are still on the old
-  // path until the feed migration ticket moves them.
-  const {
-    data: hashtags = [],
-    isLoading: hashtagsLoading,
-    refetch: refetchHashtags,
-  } = useHashtagsQuery();
-
-  const loadExploreData = useCallback(async () => {
-    try {
-      const postsData = await getTrendingPosts();
-      setTrendingPosts(postsData);
-      setLoadFailed(false);
-    } catch (error) {
-      console.error('Search data load error:', error);
-      setLoadFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // The grid waits on both sources, exactly as it did when they loaded
-  // together.
-  const isExploreLoading = loading || hashtagsLoading;
-
-  useEffect(() => {
-    loadExploreData();
-  }, [loadExploreData]);
+  // Hashtags feed the search results; the grid is its own infinite query
+  // (ONE-47), ordered and filtered on the server.
+  const { data: hashtags = [], refetch: refetchHashtags } = useHashtagsQuery();
+  const explore = useExploreQuery(profileId);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([loadExploreData(), refetchHashtags()]);
+    await Promise.all([explore.refetch(), refetchHashtags()]);
     setRefreshing(false);
-  }, [loadExploreData, refetchHashtags]);
-
-  const retry = useCallback(() => {
-    setLoading(true);
-    void loadExploreData();
-    void refetchHashtags();
-  }, [loadExploreData, refetchHashtags]);
+  }, [explore, refetchHashtags]);
 
   // ─── User search with debounce ─────────────────
 
@@ -205,9 +138,11 @@ export default function SearchScreen() {
 
   const filteredHashtags = useMemo(() => matchingHashtags(hashtags, searchTerm), [hashtags, searchTerm]);
 
-  const visibleExplorePosts = useMemo(
-    () => trendingPosts.filter(p => !isUserBlocked(p.username)),
-    [trendingPosts, isUserBlocked],
+  // The server leaves out blocked accounts either way (explore_items). This
+  // covers a block made since the page loaded, until the next refetch.
+  const exploreItems = useMemo(
+    () => flattenExplorePages(explore.data?.pages ?? []).filter(item => !isUserBlocked(item.ownerUsername)),
+    [explore.data, isUserBlocked],
   );
 
   // ─── Navigation ────────────────────────────────
@@ -216,8 +151,8 @@ export default function SearchScreen() {
     router.push(`/user/${username}`);
   }, [router]);
 
-  const handleViewPost = useCallback((post: Post) => {
-    router.push(`/post/${post.id}`);
+  const handleOpenItem = useCallback((item: ExploreItem) => {
+    router.push(exploreRoute(item) as never);
   }, [router]);
 
   const cancelSearch = () => {
@@ -299,31 +234,47 @@ export default function SearchScreen() {
   // ─── Render explore grid ───────────────────────
 
   const renderExploreItem = useCallback(
-    ({ item, index }: { item: Post; index: number }) => (
-      <ExploreTile post={item} index={index} onPress={() => handleViewPost(item)} />
+    ({ item, index }: { item: ExploreItem; index: number }) => (
+      <ExploreCard
+        item={item}
+        size={tileSize}
+        gapRight={exploreTileGapRight(index)}
+        gapBottom={EXPLORE_GRID_GAP}
+        onPress={() => handleOpenItem(item)}
+      />
     ),
-    [handleViewPost],
+    [handleOpenItem],
   );
 
-  const renderGrid = () => {
-    if (isExploreLoading) return <GridSkeleton />;
+  const loadMore = useCallback(() => {
+    // One page at a time: onEndReached can fire again before the page lands.
+    if (explore.hasNextPage && !explore.isFetchingNextPage) void explore.fetchNextPage();
+  }, [explore]);
 
-    if (loadFailed && visibleExplorePosts.length === 0) {
+  const renderGrid = () => {
+    if (explore.isPending) return <GridSkeleton />;
+
+    if (explore.isError && exploreItems.length === 0) {
       return (
         <EmptyState
           title="Couldn't load Explore"
           body="Check your connection and try again."
-          action={{ label: 'Retry', onPress: retry }}
+          action={{ label: 'Retry', onPress: () => void explore.refetch() }}
         />
       );
     }
 
     return (
       <FlatList
-        data={visibleExplorePosts}
+        data={exploreItems}
         renderItem={renderExploreItem}
-        keyExtractor={item => item.id}
+        keyExtractor={item => item.key}
         numColumns={EXPLORE_COLUMNS}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        // The interest filter row's slot (ONE-49), above the grid.
+        ListHeaderComponent={<View testID="explore-filter-slot" />}
+        ListFooterComponent={explore.isFetchingNextPage ? <GridSkeleton /> : null}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -335,7 +286,7 @@ export default function SearchScreen() {
         ListEmptyComponent={
           <EmptyState
             title="Nothing to explore yet"
-            body="As more posts are created, they will appear here."
+            body="Follow people to fill your feed, or be the first to post, list a product or share a project."
             action={{ label: 'Create a post', onPress: () => router.push('/compose') }}
           />
         }
@@ -440,23 +391,6 @@ const styles = StyleSheet.create({
   hashGlyph: {
     fontFamily: type.bodyBold,
     fontSize: 17,
-    color: color.text,
-  },
-  tile: {
-    width: tileSize,
-    height: tileSize,
-    marginBottom: EXPLORE_GRID_GAP,
-    backgroundColor: color.bgPanel,
-  },
-  textTile: {
-    flex: 1,
-    padding: space.sm,
-    justifyContent: 'center',
-  },
-  textTileCopy: {
-    fontFamily: type.bodyMedium,
-    fontSize: 13,
-    lineHeight: 18,
     color: color.text,
   },
   skeletonGrid: {

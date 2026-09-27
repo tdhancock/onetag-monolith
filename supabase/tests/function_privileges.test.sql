@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(17);
+SELECT plan(18);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -56,6 +56,8 @@ SELECT ok(NOT has_function_privilege('anon', 'public.is_project_contributor(uuid
   'anon cannot execute is_project_contributor() (ONE-38)');
 SELECT ok(has_function_privilege('authenticated', 'public.is_project_contributor(uuid)', 'EXECUTE'),
   'authenticated can execute is_project_contributor(): the private-project read policy calls it');
+SELECT ok(NOT has_function_privilege('anon', 'public.explore_items(double precision, text, integer)', 'EXECUTE'),
+  'anon cannot execute explore_items() (ONE-47)');
 
 SELECT * FROM finish();
 ROLLBACK;

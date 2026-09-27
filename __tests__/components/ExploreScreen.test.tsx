@@ -4,10 +4,11 @@
 //
 // target: __tests__/components/ExploreScreen.test.tsx
 //
-// The Explore tab, re-skinned (ONE-71), mounted: a light search bar over the
-// white three-column trending grid; People and Hashtags under mono headers
-// while typing, with Follow inline; Cancel clearing back to the grid; and the
-// loading, empty and no-results states. Plus the grid's geometry.
+// The Explore tab, mounted: a light search bar (ONE-71) over the two-column
+// discovery grid of posts, products and projects (ONE-47); People and
+// Hashtags under mono headers while typing, with Follow inline; Cancel
+// clearing back to the grid; and the loading, empty, paging and no-results
+// states. Plus the grid's geometry and routing.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -27,15 +28,22 @@ jest.mock('react-native', () => {
     renderItem: (info: { item: unknown; index: number }) => React.ReactNode;
     keyExtractor: (item: unknown) => string;
     ListEmptyComponent?: unknown;
+    ListHeaderComponent?: unknown;
+    ListFooterComponent?: unknown;
+    onEndReached?: () => void;
   }) =>
     React.createElement(
       'div',
       { 'data-list': 'true' },
+      slot(props.ListHeaderComponent),
       props.data.length === 0
         ? slot(props.ListEmptyComponent)
         : props.data.map((item, index) =>
             React.createElement(React.Fragment, { key: props.keyExtractor(item) }, props.renderItem({ item, index })),
           ),
+      slot(props.ListFooterComponent),
+      // The end of the list, reached on demand.
+      props.onEndReached ? React.createElement('button', { 'data-end': 'true', onClick: props.onEndReached }) : null,
     );
   const ScrollView = (props: { children?: React.ReactNode }) => React.createElement('div', { 'data-scroll': 'true' }, props.children);
   return {
@@ -59,7 +67,8 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
 // Stable across renders, as the real one is (a useCallback in features/blocks).
-const mockApp = { isUserBlocked: () => false };
+const mockBlocked = new Set<string>();
+const mockApp = { isUserBlocked: (u: string) => mockBlocked.has(u) };
 jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }));
 
 const state = {
@@ -78,15 +87,41 @@ jest.mock('../../features/profiles', () => ({
 }));
 jest.mock('../../features/hashtags', () => ({ useHashtagsQuery: () => state.hashtags }));
 
-const post = (id: string, extra: Record<string, unknown> = {}) => ({
-  id, username: 'ana', avatar: null, content: `Post ${id}\nmore`, media_type: 'text', likes: 0, reposts: 0, replies: 0, ...extra,
+// The grid's infinite query (ONE-47), steered per test.
+type Cell = Record<string, unknown> & { key: string };
+const cell = (kind: string, id: string, extra: Record<string, unknown> = {}): Cell => ({
+  kind, id, key: `${kind}:${id}`, ownerProfileId: 'p-ana', ownerUsername: 'ana',
+  title: `${kind} ${id}`, imageUrl: null, mediaType: kind === 'post' ? 'text' : 'image', tagCount: 0, score: 1, ...extra,
 });
-const mockTrending = jest.fn(() => Promise.resolve([post('1'), post('2', { media_type: 'image', media: 'https://x/2.jpg' }), post('3'), post('4')] as unknown[]));
-jest.mock('../../features/posts', () => ({ fetchTrendingPosts: () => mockTrending() }));
+const explore = {
+  pages: [[] as Cell[]],
+  isPending: false,
+  isError: false,
+  hasNextPage: false,
+  isFetchingNextPage: false,
+  fetchNextPage: jest.fn(),
+  refetch: jest.fn(() => Promise.resolve()),
+};
+const defaultCells = () => [
+  cell('post', '1', { title: 'Post 1\nmore' }),
+  cell('product', 'pd-1', { title: 'Lamp', imageUrl: 'https://x/lamp.jpg' }),
+  cell('project', 'pj-1', { title: 'Loft' }),
+  cell('post', '2', { mediaType: 'image', imageUrl: 'https://x/2.jpg', tagCount: 3 }),
+];
+jest.mock('../../features/explore', () => ({
+  useExploreQuery: () => ({ ...explore, data: explore.isPending ? undefined : { pages: explore.pages } }),
+  flattenExplorePages: (pages: { key: string }[][]) => {
+    const seen = new Set<string>();
+    return pages.flat().filter(i => (seen.has(i.key) ? false : (seen.add(i.key), true)));
+  },
+}));
 
 import SearchScreen from '../../app/(tabs)/search';
 import { Keyboard } from 'react-native';
 import {
+  exploreCellLabel,
+  exploreKindLabel,
+  exploreRoute,
   exploreTileGapRight,
   exploreTileSize,
   hashtagPostCount,
@@ -111,8 +146,9 @@ async function mount(): Promise<HTMLDivElement> {
 beforeEach(() => {
   state.following = new Set();
   state.hashtags.isLoading = false;
-  mockTrending.mockImplementation(() => Promise.resolve([post('1'), post('2', { media_type: 'image', media: 'https://x/2.jpg' }), post('3'), post('4')]));
-  [mockPush, mockToggle, mockSearchUsers].forEach(m => m.mockClear());
+  mockBlocked.clear();
+  Object.assign(explore, { pages: [defaultCells()], isPending: false, isError: false, hasNextPage: false, isFetchingNextPage: false });
+  [mockPush, mockToggle, mockSearchUsers, explore.fetchNextPage, explore.refetch].forEach(m => m.mockClear());
 });
 
 afterEach(() => {
@@ -147,61 +183,113 @@ const typeQuery = async (el: HTMLElement, value: string) => {
   await act(async () => { await new Promise(r => setTimeout(r, 350)); });
 };
 
-// ─── 4. At rest ─────────────────────────────────────────────────────────
+// ─── 4. At rest: the discovery grid (ONE-47) ────────────────────────────
 
-describe('Explore — at rest', () => {
-  it('shows a light search field over the trending grid', async () => {
+const cells = (el: HTMLElement) => Array.from(el.querySelectorAll('button[data-testid^="explore-cell-"]')) as HTMLElement[];
+
+describe('Explore — the discovery grid', () => {
+  it('shows a light search field over a grid mixing posts, products and projects', async () => {
     const el = await mount();
     const input = search(el);
     expect(input.getAttribute('placeholder')).toBe('Search');
     expect(input.style.backgroundColor).toBe(rgb(color.bgPanel));
-    expect(el.querySelectorAll('button[aria-label="Post by ana"]')).toHaveLength(4);
+    expect(cells(el)).toHaveLength(4);
     expect(buttonWithText(el, 'Cancel')).toBeUndefined();
   });
 
-  it('lays square tiles three to a row, with a 1pt gap and none at the row end', async () => {
+  it('says what each cell is, without tapping it', async () => {
     const el = await mount();
-    const tiles = Array.from(el.querySelectorAll('button[aria-label="Post by ana"]')) as HTMLElement[];
-    expect(tiles[0]!.style.width).toBe(tiles[0]!.style.height);
-    expect(tiles[0]!.style.marginRight).toBe('1px');
-    expect(tiles[2]!.style.marginRight).toBe('0px');
+    expect(cells(el).map(c => c.querySelector('span[style*="uppercase"]')?.textContent)).toEqual([
+      'Post', 'Product', 'Project', 'Post',
+    ]);
+    expect(button(el, 'Product: Lamp')).not.toBeNull();
   });
 
-  it('shows a text post\'s first line on the panel', async () => {
+  it('lays square cells two to a row, with a 1pt gap and none at the row end', async () => {
     const el = await mount();
-    const tile = el.querySelectorAll('button[aria-label="Post by ana"]')[0] as HTMLElement;
-    expect(tile.textContent).toBe('Post 1');
+    const [first, second] = cells(el);
+    expect(first.style.width).toBe(first.style.height);
+    expect(first.style.marginRight).toBe('1px');
+    expect(second.style.marginRight).toBe('0px');
   });
 
-  it('opens a post from its tile', async () => {
+  it('shows a text post\'s opening lines on the panel', async () => {
     const el = await mount();
-    act(() => (el.querySelectorAll('button[aria-label="Post by ana"]')[2] as HTMLButtonElement).click());
-    expect(mockPush).toHaveBeenCalledWith('/post/3');
+    expect(cells(el)[0].textContent).toContain('Post 1');
   });
 
-  it('shows "Nothing to explore yet" with Create a post when there is nothing', async () => {
-    mockTrending.mockImplementation(() => Promise.resolve([]));
+  it('shows the tag count on a post with embedded tags', async () => {
+    const el = await mount();
+    expect(cells(el)[3].textContent).toContain('3 TAGGED');
+    expect(cells(el)[0].textContent).not.toContain('TAGGED');
+  });
+
+  it('opens each item on its own screen', async () => {
+    const el = await mount();
+    for (const c of cells(el)) act(() => (c as HTMLButtonElement).click());
+    expect(mockPush.mock.calls.map(call => call[0])).toEqual(['/post/1', '/product/pd-1', '/project/pj-1', '/post/2']);
+  });
+
+  it('leaves out an account blocked since the page loaded', async () => {
+    mockBlocked.add('ana');
+    const el = await mount();
+    expect(cells(el)).toHaveLength(0);
+  });
+
+  it('shows each item once across pages', async () => {
+    explore.pages = [[cell('post', '1'), cell('post', '2')], [cell('post', '2'), cell('product', 'pd-1')]];
+    const el = await mount();
+    expect(cells(el).map(c => c.getAttribute('data-testid'))).toEqual([
+      'explore-cell-post:1', 'explore-cell-post:2', 'explore-cell-product:pd-1',
+    ]);
+  });
+
+  it('asks for the next page at the end, only when there is one and none is in flight', async () => {
+    explore.hasNextPage = true;
+    const el = await mount();
+    act(() => (el.querySelector('button[data-end]') as HTMLButtonElement).click());
+    expect(explore.fetchNextPage).toHaveBeenCalledTimes(1);
+
+    act(() => root!.unmount());
+    root = null;
+    explore.fetchNextPage.mockClear();
+    explore.isFetchingNextPage = true;
+    const busy = await mount();
+    act(() => (busy.querySelector('button[data-end]') as HTMLButtonElement).click());
+    explore.isFetchingNextPage = false;
+    explore.hasNextPage = false;
+    expect(explore.fetchNextPage).not.toHaveBeenCalled();
+  });
+
+  it('reserves a slot above the grid for the interest filter row', async () => {
+    const el = await mount();
+    const slot = el.querySelector('[data-testid="explore-filter-slot"]')!;
+    expect(slot).not.toBeNull();
+    expect(slot.compareDocumentPosition(cells(el)[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('offers a next step on an empty platform rather than a blank grid', async () => {
+    explore.pages = [[]];
     const el = await mount();
     expect(el.textContent).toContain('Nothing to explore yet');
+    expect(el.textContent).toContain('Follow people');
     act(() => buttonWithText(el, 'Create a post')!.click());
     expect(mockPush).toHaveBeenCalledWith('/compose');
   });
 
-  it('shows a skeleton grid while loading', async () => {
-    state.hashtags.isLoading = true;
+  it('shows a skeleton grid while the first page loads', async () => {
+    explore.isPending = true;
     const el = await mount();
-    expect(el.querySelectorAll('div[data-animated="true"]').length).toBeGreaterThanOrEqual(9);
+    expect(el.querySelectorAll('div[data-animated="true"]').length).toBeGreaterThanOrEqual(6);
   });
 
   it('offers Retry when the grid fails to load', async () => {
-    mockTrending.mockImplementation(() => Promise.reject(new Error('offline')));
-    const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    explore.isError = true;
+    explore.pages = [];
     const el = await mount();
     expect(el.textContent).toContain("Couldn't load Explore");
-    mockTrending.mockImplementation(() => Promise.resolve([post('1')]));
-    await act(async () => { buttonWithText(el, 'Retry')!.click(); });
-    expect(el.querySelectorAll('button[aria-label="Post by ana"]')).toHaveLength(1);
-    spy.mockRestore();
+    act(() => buttonWithText(el, 'Retry')!.click());
+    expect(explore.refetch).toHaveBeenCalled();
   });
 });
 
@@ -244,19 +332,31 @@ describe('Explore — searching', () => {
     act(() => button(el, 'Cancel search')!.click());
     expect(search(el).value).toBe('');
     expect(Keyboard.dismiss).toHaveBeenCalled();
-    expect(el.querySelectorAll('button[aria-label="Post by ana"]')).toHaveLength(4);
+    expect(cells(el)).toHaveLength(4);
   });
 });
 
 // ─── 6. Pure rules ──────────────────────────────────────────────────────
 
 describe('Explore — grid and result rules', () => {
-  it('sizes three tiles and two 1pt gaps to the full width', () => {
-    expect(exploreTileSize(376) * 3 + 2).toBe(376);
+  it('sizes two cells and one 1pt gap to the full width', () => {
+    expect(exploreTileSize(375) * 2 + 1).toBe(375);
   });
 
-  it('puts a gap after every tile but the last in a row', () => {
-    expect([0, 1, 2, 3, 4, 5].map(exploreTileGapRight)).toEqual([1, 1, 0, 1, 1, 0]);
+  it('puts a gap after the first cell in each row, none after the second', () => {
+    expect([0, 1, 2, 3].map(exploreTileGapRight)).toEqual([1, 0, 1, 0]);
+  });
+
+  it('routes each kind to its own screen', () => {
+    expect(exploreRoute({ kind: 'post', id: 'a b' })).toBe('/post/a%20b');
+    expect(exploreRoute({ kind: 'product', id: 'pd' })).toBe('/product/pd');
+    expect(exploreRoute({ kind: 'project', id: 'pj' })).toBe('/project/pj');
+  });
+
+  it('labels each kind, and announces a cell with its tags', () => {
+    expect(['post', 'product', 'project'].map(k => exploreKindLabel(k as 'post'))).toEqual(['Post', 'Product', 'Project']);
+    expect(exploreCellLabel({ kind: 'post', title: 'x', ownerUsername: 'ana', tagCount: 2 })).toBe('Post by @ana, 2 tagged');
+    expect(exploreCellLabel({ kind: 'project', title: 'Loft', ownerUsername: 'b', tagCount: 0 })).toBe('Project: Loft');
   });
 
   it('matches hashtags case-insensitively, and nothing for a blank query', () => {
