@@ -8,7 +8,8 @@
 // discovery grid of posts, products and projects (ONE-47); People and
 // Hashtags under mono headers while typing, with Follow inline; Cancel
 // clearing back to the grid; and the loading, empty, paging and no-results
-// states. Plus the grid's geometry and routing.
+// states. Plus the grid's geometry and routing, and search across profiles,
+// posts, products and projects in tabs (ONE-48).
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -76,15 +77,41 @@ const state = {
   hashtags: { data: [{ tag: 'kitchens', postCount: 12 }, { tag: 'decks', postCount: 1 }], isLoading: false, refetch: jest.fn(() => Promise.resolve()) },
 };
 const mockToggle = jest.fn();
-const mockSearchUsers = jest.fn((_q: string) =>
-  Promise.resolve([{ id: 'p-ana', username: 'ana', full_name: 'Ana Silva', avatar_url: null }] as unknown[]),
-);
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profile: { username: 'me' }, profileId: 'p-me' }),
   useFollowState: () => ({ isFollowing: (u: string) => state.following.has(u) }),
   useToggleFollow: () => ({ toggle: mockToggle, isPending: false }),
-  searchUsers: (q: string) => mockSearchUsers(q),
 }));
+
+// Search results (ONE-48): each hook records the term and category it was
+// given, and answers from `results` whatever the term, unless told to find
+// nothing.
+const results = {
+  profiles: [] as Record<string, unknown>[],
+  posts: [] as Record<string, unknown>[],
+  products: [] as Record<string, unknown>[],
+  projects: [] as Record<string, unknown>[],
+};
+const mockSearchCalls: { type: string; term: string; category?: string | null }[] = [];
+const answer = (type: keyof typeof results, term: string, category?: string | null) => {
+  mockSearchCalls.push({ type, term, category });
+  return { data: term ? results[type] : undefined, isPending: !term, isFetching: false };
+};
+jest.mock('../../features/search', () => ({
+  useProfileResultsQuery: (t: string) => answer('profiles', t),
+  usePostResultsQuery: (t: string) => answer('posts', t),
+  useProductResultsQuery: (t: string, c: string | null) => answer('products', t, c),
+  useProjectResultsQuery: (t: string, c: string | null) => answer('projects', t, c),
+}));
+const defaultResults = () => ({
+  profiles: [{ id: 'p-ana', username: 'ana', name: 'Ana Silva', avatarUrl: null, isVerified: false, profileType: 'individual' }],
+  posts: [{ id: 'po-1', content: 'Kitchen reveal\nmore', imageUrl: null, mediaType: 'text', authorUsername: 'ana', authorAvatarUrl: null }],
+  products: [
+    { id: 'pd-1', name: 'Oak Lamp', category: 'Lighting', imageUrl: null, businessUsername: 'oakco', businessName: 'Oak Co' },
+    { id: 'pd-2', name: 'Oak Stool', category: 'Seating', imageUrl: null, businessUsername: 'oakco', businessName: 'Oak Co' },
+  ],
+  projects: [{ id: 'pj-1', name: 'Loft', category: 'Interior', coverUrl: null, ownerUsername: 'ana' }],
+});
 jest.mock('../../features/hashtags', () => ({ useHashtagsQuery: () => state.hashtags }));
 
 // The grid's infinite query (ONE-47), steered per test.
@@ -124,6 +151,8 @@ import {
   exploreRoute,
   exploreTileGapRight,
   exploreTileSize,
+  categoriesOf,
+  categoryFilterLabel,
   hashtagPostCount,
   matchingHashtags,
   noResultsLabel,
@@ -148,7 +177,9 @@ beforeEach(() => {
   state.hashtags.isLoading = false;
   mockBlocked.clear();
   Object.assign(explore, { pages: [defaultCells()], isPending: false, isError: false, hasNextPage: false, isFetchingNextPage: false });
-  [mockPush, mockToggle, mockSearchUsers, explore.fetchNextPage, explore.refetch].forEach(m => m.mockClear());
+  Object.assign(results, defaultResults());
+  mockSearchCalls.length = 0;
+  [mockPush, mockToggle, explore.fetchNextPage, explore.refetch].forEach(m => m.mockClear());
 });
 
 afterEach(() => {
@@ -293,23 +324,91 @@ describe('Explore — the discovery grid', () => {
   });
 });
 
-// ─── 5. Searching ───────────────────────────────────────────────────────
+// ─── 5. Searching (ONE-48) ──────────────────────────────────────────────
+
+/** Mono labels outside a button: the section headers. */
+const sectionHeaders = (el: HTMLElement) =>
+  Array.from(el.querySelectorAll('span'))
+    .filter(sp => sp.style.textTransform === 'uppercase' && !sp.closest('button'))
+    .map(h => h.textContent);
 
 describe('Explore — searching', () => {
-  it('shows People and Hashtags under mono headers, with Follow inline', async () => {
+  it('shows every type under All, with Follow inline on profiles', async () => {
     const el = await mount();
     await typeQuery(el, 'k');
-    // Mono labels outside a button: the section headers, not Follow's label.
-    const headers = Array.from(el.querySelectorAll('span')).filter(
-      s => s.style.textTransform === 'uppercase' && !s.closest('button'),
-    );
-    expect(headers.map(h => h.textContent)).toEqual(['People', 'Hashtags']);
+    expect(sectionHeaders(el)).toEqual(['Profiles', 'Hashtags', 'Posts', 'Products', 'Projects']);
     expect(el.textContent).toContain('Ana Silva');
     expect(el.textContent).toContain('#kitchens');
-    expect(el.textContent).toContain('12 posts');
+    expect(el.textContent).toContain('Kitchen reveal');
+    expect(el.textContent).toContain('Oak Lamp');
+    expect(el.textContent).toContain('Loft');
 
     act(() => buttonWithText(el, 'Follow')!.click());
     expect(mockToggle).toHaveBeenCalledWith({ userId: 'p-ana', username: 'ana' });
+  });
+
+  it('shows a product under Products as well as All', async () => {
+    const el = await mount();
+    await typeQuery(el, 'oak');
+    act(() => buttonWithText(el, 'Products')!.click());
+    expect(sectionHeaders(el)).toEqual(['Products']);
+    expect(el.textContent).toContain('Oak Lamp');
+    expect(el.textContent).not.toContain('Ana Silva');
+  });
+
+  it('shows a few of each on All, with a way into the full tab', async () => {
+    results.profiles = ['a', 'b', 'c', 'd'].map(u => ({ id: u, username: u, name: u, avatarUrl: null, isVerified: false, profileType: 'individual' }));
+    const el = await mount();
+    await typeQuery(el, 'x');
+    expect(el.querySelectorAll('button[aria-label^="View "]')).toHaveLength(3);
+    act(() => button(el, 'See all profiles')!.click());
+    expect(el.querySelectorAll('button[aria-label^="View "]')).toHaveLength(4);
+  });
+
+  it('narrows products to a category from the filter sheet', async () => {
+    const el = await mount();
+    await typeQuery(el, 'oak');
+    act(() => buttonWithText(el, 'Products')!.click());
+    act(() => buttonWithText(el, 'Category')!.click());
+    expect(el.textContent).toContain('Filter by category');
+    const sheet = el.querySelector('[data-modal]') as HTMLElement;
+    const seating = Array.from(sheet.querySelectorAll('button')).find(b => b.textContent?.includes('Seating'))!;
+    act(() => seating.click());
+    expect(mockSearchCalls.filter(c => c.type === 'products').pop()).toEqual({ type: 'products', term: 'oak', category: 'Seating' });
+    expect(buttonWithText(el, 'Category: Seating')).toBeDefined();
+  });
+
+  it('waits for typing to pause before searching', async () => {
+    const el = await mount();
+    const input = search(el);
+    act(() => input.focus());
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    for (const value of ['k', 'ki', 'kit']) {
+      act(() => { setter.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })); });
+    }
+    await act(async () => { await new Promise(r => setTimeout(r, 350)); });
+    const terms = new Set(mockSearchCalls.map(c => c.term));
+    expect(terms).toEqual(new Set(['', 'kit']));
+  });
+
+  it('opens every kind of result on its own screen', async () => {
+    const el = await mount();
+    await typeQuery(el, 'k');
+    act(() => button(el, "View ana's profile")!.click());
+    act(() => (el.querySelector('button[aria-label^="Post by @ana"]') as HTMLButtonElement).click());
+    act(() => (el.querySelector('button[aria-label^="Product: Oak Lamp"]') as HTMLButtonElement).click());
+    act(() => (el.querySelector('button[aria-label^="Project: Loft"]') as HTMLButtonElement).click());
+    expect(mockPush.mock.calls.map(c => c[0])).toEqual(['/user/ana', '/post/po-1', '/product/pd-1', '/project/pj-1']);
+  });
+
+  it('leaves out an account blocked since the results loaded', async () => {
+    mockBlocked.add('ana');
+    const el = await mount();
+    await typeQuery(el, 'k');
+    expect(el.textContent).not.toContain('Ana Silva');
+    expect(el.textContent).not.toContain('Kitchen reveal');
+    expect(el.textContent).not.toContain('Loft');
+    expect(el.textContent).toContain('Oak Lamp');
   });
 
   it('reads "Following" in outline for someone already followed', async () => {
@@ -319,11 +418,22 @@ describe('Explore — searching', () => {
     expect(buttonWithText(el, 'Following')).toBeDefined();
   });
 
-  it('says so when nothing matches', async () => {
-    mockSearchUsers.mockImplementationOnce(() => Promise.resolve([]));
+  it('says so when nothing matches, and suggests broadening', async () => {
+    Object.assign(results, { profiles: [], posts: [], products: [], projects: [] });
     const el = await mount();
     await typeQuery(el, 'zzz');
     expect(el.textContent).toContain('No results for "zzz"');
+    expect(el.textContent).toContain('Try fewer words');
+    expect(cells(el)).toHaveLength(0);
+  });
+
+  it('brings the grid back when the input is cleared, distinct from no results', async () => {
+    const el = await mount();
+    await typeQuery(el, 'k');
+    expect(cells(el)).toHaveLength(0);
+    await typeQuery(el, '');
+    expect(cells(el)).toHaveLength(4);
+    expect(el.textContent).not.toContain('No results');
   });
 
   it('Cancel clears the query, dismisses the keyboard and brings the grid back', async () => {
@@ -372,5 +482,13 @@ describe('Explore — grid and result rules', () => {
 
   it('quotes the trimmed query when nothing matches', () => {
     expect(noResultsLabel(' deck ')).toBe('No results for "deck"');
+  });
+
+  it('offers the categories present in the results, once each, alphabetically', () => {
+    expect(categoriesOf([{ category: 'Seating' }, { category: null }, { category: 'Lighting' }, { category: 'Seating' }])).toEqual([
+      'Lighting', 'Seating',
+    ]);
+    expect(categoryFilterLabel(null)).toBe('Category');
+    expect(categoryFilterLabel('Seating')).toBe('Category: Seating');
   });
 });
