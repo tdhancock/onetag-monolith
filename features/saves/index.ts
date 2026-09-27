@@ -8,7 +8,6 @@ export {
   saveTarget,
   unsaveTarget,
   toggleSave,
-  getSavedPosts,
   fetchSavedItems,
   mapSaveRow,
   saveKeyOf,

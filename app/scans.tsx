@@ -1,9 +1,9 @@
 import React from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCurrentProfile } from '../features/profiles';
-import { useMyScanHistoryQuery, useProfileScanHistoryQuery, type ScanHistoryEntry } from '../features/scans';
+import { useMyScanHistoryQuery, type ScanHistoryEntry } from '../features/scans';
 import { EmptyState, ListRow, MonoLabel, Pressable } from '../components/native/ui';
 import {
   publicScanHistoryDescription,
@@ -14,33 +14,19 @@ import {
 } from '../lib/screens/scanHistory';
 import { color, space, type } from '../theme/tokens';
 
-const param = (value: string | string[] | undefined): string | undefined =>
-  typeof value === 'string' && value ? value : undefined;
-
 /**
- * Scan History (ONE-35): where the Tags a profile scanned led, most recent
- * first, each destination once with how often and when last. Every row routes
- * to its destination, as scanning the tag again would.
- *
- * With no `profile` param it is the active profile's own history, whatever
- * its setting. With one, it is that profile's public history — reached only
- * from a profile that made it public; the database returns nothing otherwise.
+ * Scan History (ONE-35): where the Tags the active profile scanned led, most
+ * recent first, each destination once with how often and when last. Every row
+ * routes to its destination, as scanning the tag again would. It is always
+ * your own, whatever its setting; someone else's public history is a tab on
+ * their profile (ONE-43).
  */
 export default function ScanHistoryScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ profile?: string | string[]; username?: string | string[] }>();
   const { profileId, profile } = useCurrentProfile();
+  const history = useMyScanHistoryQuery(profileId);
 
-  const otherId = param(params.profile);
-  const isOwn = !otherId || otherId === profileId;
-  const username = param(params.username);
-
-  const mine = useMyScanHistoryQuery(isOwn ? profileId : undefined);
-  const theirs = useProfileScanHistoryQuery(isOwn ? undefined : otherId, !isOwn);
-  const history = isOwn ? mine : theirs;
-
-  const title = isOwn ? 'Scan history' : username ? `@${username}'s scans` : 'Scans';
-  const header = <Stack.Screen options={{ headerShown: true, title }} />;
+  const header = <Stack.Screen options={{ headerShown: true, title: 'Scan history' }} />;
 
   if (history.isPending) {
     return (
@@ -64,7 +50,7 @@ export default function ScanHistoryScreen() {
     );
   }
 
-  const visibility = isOwn ? (
+  const visibility = (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${publicScanHistoryDescription(Boolean(profile.scanHistoryPublic))} Change in Settings`}
@@ -76,7 +62,7 @@ export default function ScanHistoryScreen() {
         {publicScanHistoryDescription(Boolean(profile.scanHistoryPublic))} Change in Settings.
       </Text>
     </Pressable>
-  ) : null;
+  );
 
   const renderItem = ({ item, index }: { item: ScanHistoryEntry; index: number }) => {
     const route = routeForEntry(item);
@@ -100,10 +86,7 @@ export default function ScanHistoryScreen() {
         renderItem={renderItem}
         ListHeaderComponent={visibility}
         ListEmptyComponent={
-          <EmptyState
-            title={SCAN_HISTORY_EMPTY_STATE.title}
-            body={isOwn ? SCAN_HISTORY_EMPTY_STATE.body : 'Nothing has been scanned yet.'}
-          />
+          <EmptyState title={SCAN_HISTORY_EMPTY_STATE.title} body={SCAN_HISTORY_EMPTY_STATE.body} />
         }
         contentContainerStyle={styles.list}
       />

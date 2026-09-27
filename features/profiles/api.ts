@@ -1,8 +1,8 @@
 // Pure Supabase access for the profiles domain.
 //
 // Everything about a person: their own identity row, other people's profiles,
-// the posts and reposts on a profile screen, follower and following lists,
-// and follow/unfollow itself. Moved out of the old shared service module in
+// the posts on a profile screen, follower and following lists, and
+// follow/unfollow itself. Moved out of the old shared service module in
 // ONE-15; the implementations are unchanged except where noted below.
 //
 // No React, no hooks, nothing from another feature's internals.
@@ -149,42 +149,6 @@ export const getUserPostCount = async (userId: string): Promise<number> => {
         .select('id', { count: 'exact', head: true })
         .eq('user_id', userId);
     return error ? 0 : count || 0;
-};
-
-export const getUserReposts = async (userId: string): Promise<Post[]> => {
-    try {
-        const { data: repostIdsData, error: repostsError } = await supabase
-            .from('reposts')
-            .select('post_id, created_at')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false });
-
-        if (repostsError) throw repostsError;
-        if (!repostIdsData || repostIdsData.length === 0) return [];
-        
-        const postIds = repostIdsData.map(r => r.post_id);
-        const repostOrderMap = new Map<string, number>(repostIdsData.map((r: any) => [r.post_id, new Date(r.created_at).getTime()]));
-
-        const { data: postsData, error: postsError } = await supabase
-            .from('posts')
-            .select(POST_SELECT_QUERY)
-            .in('id', postIds);
-
-        if (postsError) throw postsError;
-        if (!postsData) return [];
-        const sortedPosts = [...postsData].sort((a, b) => {
-            // FIX: `repostOrderMap.get()` can return `undefined`. Using `?? 0` as a fallback ensures that `timeA` and `timeB` are always numbers, preventing a type error during the subtraction operation.
-            const timeA = repostOrderMap.get(a.id) ?? 0;
-            const timeB = repostOrderMap.get(b.id) ?? 0;
-            return timeB - timeA;
-        });
-
-        return sortedPosts.map(mapPostData);
-
-    } catch (error) {
-        console.error("Error fetching user reposts:", (error as Error).message || error);
-        return [];
-    }
 };
 
 /**

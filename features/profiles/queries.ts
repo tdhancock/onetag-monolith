@@ -8,7 +8,6 @@ import {
   getUserProfile,
   getUserPosts,
   getUserPostCount,
-  getUserReposts,
   getFollowerUsers,
   getFollowingUsers,
   getFollowerCount,
@@ -166,14 +165,6 @@ export const useProfilePostCountQuery = (userId: string | undefined) =>
   useQuery<number>({
     queryKey: profileKeys.postCount(userId ?? ''),
     queryFn: () => getUserPostCount(userId!),
-    enabled: Boolean(userId),
-  });
-
-/** The reposts tab on a profile screen. */
-export const useProfileRepostsQuery = (userId: string | undefined) =>
-  useQuery<Post[]>({
-    queryKey: profileKeys.reposts(userId ?? ''),
-    queryFn: () => getUserReposts(userId!),
     enabled: Boolean(userId),
   });
 
