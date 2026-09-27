@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["APPLE_TEAM_ID.com.onetag.app"],
+        "components": [
+          {
+            "/": "/t/*",
+            "comment": "A Tag: /t/<short code>. Nothing else on the tag host opens the app."
+          }
+        ]
+      }
+    ]
+  }
+}
