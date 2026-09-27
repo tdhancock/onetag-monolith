@@ -42,6 +42,12 @@ CREATE INDEX projects_interest_slug_created_at ON public.projects (interest_slug
 
 -- ─── explore_items, filterable by interest ────────────────────────────
 --
+-- Only the last 90 days are scored (ONE-95). The score depends on counts,
+-- so no index can serve the ORDER BY and every candidate is scored on
+-- every page; the window keeps that bounded as content accumulates.
+-- Anything older would need 2^90 engagements to outrank a new item under
+-- this score, so the grid is the same as without it.
+--
 -- As ONE-47 left it, plus p_interest: null for "All"; a slug narrows the
 -- grid to posts and projects with that interest, in the query itself, so a
 -- filtered page is still full-length. Products carry no interest, so a
@@ -104,7 +110,8 @@ AS $$
         + (SELECT count(*) FROM public.saves s WHERE s.saved_post_id = po.id) AS engagement
     FROM public.posts po
     JOIN visible_owner o ON o.id = po.user_id
-    WHERE NOT o.is_private
+    WHERE po.created_at > now() - interval '90 days'
+      AND NOT o.is_private
       AND (p_interest IS NULL OR po.interest_slug = p_interest)
 
     UNION ALL
@@ -124,7 +131,8 @@ AS $$
       (SELECT count(*) FROM public.saves s WHERE s.saved_product_id = pd.id)
     FROM public.products pd
     JOIN visible_owner o ON o.id = pd.business_profile_id
-    WHERE p_interest IS NULL
+    WHERE pd.created_at > now() - interval '90 days'
+      AND p_interest IS NULL
 
     UNION ALL
 
@@ -141,7 +149,8 @@ AS $$
       (SELECT count(*) FROM public.saves s WHERE s.saved_project_id = pj.id)
     FROM public.projects pj
     JOIN visible_owner o ON o.id = pj.owner_profile_id
-    WHERE pj.is_public
+    WHERE pj.created_at > now() - interval '90 days'
+      AND pj.is_public
       AND (p_interest IS NULL OR pj.interest_slug = p_interest)
   ),
   scored AS (

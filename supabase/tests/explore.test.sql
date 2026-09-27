@@ -13,7 +13,7 @@
 -- Y: V blocked Y. Post FROMY.
 
 BEGIN;
-SELECT plan(12);
+SELECT plan(13);
 
 INSERT INTO auth.users (id, email, raw_user_meta_data) VALUES
   ('00000000-0000-0000-0000-0000000047a0', 'v@one47.test', '{"username":"one47_v"}'),
@@ -50,7 +50,8 @@ INSERT INTO public.posts (id, user_id, content, image_url, media_type, created_a
   ('47000000-0000-0000-0000-000000000004', (SELECT a FROM ids), 'new', 'n.jpg', 'image', now()),
   ('47000000-0000-0000-0000-000000000005', (SELECT p FROM ids), 'secret', 's.jpg', 'image', now()),
   ('47000000-0000-0000-0000-000000000006', (SELECT x FROM ids), 'fromx', 'x.jpg', 'image', now()),
-  ('47000000-0000-0000-0000-000000000007', (SELECT y FROM ids), 'fromy', 'y.jpg', 'image', now());
+  ('47000000-0000-0000-0000-000000000007', (SELECT y FROM ids), 'fromy', 'y.jpg', 'image', now()),
+  ('47000000-0000-0000-0000-000000000008', (SELECT a FROM ids), 'ancient', 'z.jpg', 'image', now() - interval '100 days');
 
 INSERT INTO public.products (id, business_profile_id, name) VALUES
   ('47000000-0000-0000-0000-0000000000a1', (SELECT bb FROM ids), 'Lamp');
@@ -87,6 +88,9 @@ SELECT is((SELECT count(*)::int FROM grid WHERE id = '47000000-0000-0000-0000-00
   'content from an account that blocked the viewer never appears');
 SELECT is((SELECT count(*)::int FROM grid WHERE id = '47000000-0000-0000-0000-000000000007'), 0,
   'content from an account the viewer blocked never appears');
+
+SELECT is((SELECT count(*)::int FROM grid WHERE id = '47000000-0000-0000-0000-000000000008'), 0,
+  'only the last 90 days are scored: a 100-day-old post is out of the grid (ONE-95)');
 
 SELECT is((SELECT tag_count FROM grid WHERE id = '47000000-0000-0000-0000-000000000002'), 2,
   'a post carries its count of live embedded tags');

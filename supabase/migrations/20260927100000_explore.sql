@@ -8,6 +8,12 @@
 --
 --   score = hours since 1970 at creation + 24 × log2(1 + engagement)
 --
+-- Only the last 90 days are scored (ONE-95). The score depends on counts,
+-- so no index can serve the ORDER BY and every candidate is scored on
+-- every page; the window keeps that bounded as content accumulates.
+-- Anything older would need 2^90 engagements to outrank a new item under
+-- this score, so the grid is the same as without it.
+--
 -- Recency is the base, and each doubling of engagement is worth one day of
 -- recency: a post with 7 engagements ranks like an unengaged post made three
 -- days later. Nothing is precomputed and nothing runs on a schedule — no
@@ -85,7 +91,8 @@ AS $$
         + (SELECT count(*) FROM public.saves s WHERE s.saved_post_id = po.id) AS engagement
     FROM public.posts po
     JOIN visible_owner o ON o.id = po.user_id
-    WHERE NOT o.is_private
+    WHERE po.created_at > now() - interval '90 days'
+      AND NOT o.is_private
 
     UNION ALL
 
@@ -104,6 +111,7 @@ AS $$
       (SELECT count(*) FROM public.saves s WHERE s.saved_product_id = pd.id)
     FROM public.products pd
     JOIN visible_owner o ON o.id = pd.business_profile_id
+    WHERE pd.created_at > now() - interval '90 days'
 
     UNION ALL
 
@@ -120,7 +128,8 @@ AS $$
       (SELECT count(*) FROM public.saves s WHERE s.saved_project_id = pj.id)
     FROM public.projects pj
     JOIN visible_owner o ON o.id = pj.owner_profile_id
-    WHERE pj.is_public
+    WHERE pj.created_at > now() - interval '90 days'
+      AND pj.is_public
   ),
   scored AS (
     SELECT
