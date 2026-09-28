@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, TextInput, FlatList, RefreshControl, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { View, Text, TextInput, FlatList, RefreshControl, ActivityIndicator, StyleSheet } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
@@ -12,6 +12,7 @@ import {
   useMarkChatRead,
   useMarkAllMessagesRead,
   useDeleteConversation,
+  useOlderMessages,
   isPendingMessage,
 } from '../features/messages';
 import { cleanHtml } from '../lib/cleanHtml';
@@ -85,6 +86,10 @@ export default function MessagesScreen() {
   const chatUsers = conversations.data ?? [];
   const thread = useThreadQuery(userId, chatWith?.id);
   const messages = thread.data ?? EMPTY_MESSAGES;
+  // The list is inverted, newest first, so a thread opens on its latest
+  // messages and scrolling up to its end loads the page before (ONE-110).
+  const newestFirst = useMemo(() => [...messages].reverse(), [messages]);
+  const older = useOlderMessages(userId, chatWith?.id, messages.length);
   const unreadChats = useUnreadChats(userId);
 
   const sendMessage = useSendMessage(userId);
@@ -238,7 +243,9 @@ export default function MessagesScreen() {
     const canSend = newMessage.trim().length > 0;
     const displayName = chatWith.name || chatWith.username;
 
-    const renderMessage = ({ item: msg, index }: { item: Message; index: number }) => {
+    const renderMessage = ({ item: msg, index: listIndex }: { item: Message; index: number }) => {
+      // The list runs newest first; the layout rules read the thread oldest first.
+      const index = messages.length - 1 - listIndex;
       const mine = msg.sender_id === profileId;
       const pending = isPendingMessage(msg);
       return (
@@ -281,9 +288,20 @@ export default function MessagesScreen() {
       }
       return (
         <FlatList
-          data={messages}
+          data={newestFirst}
+          inverted
           keyExtractor={item => item.id}
           renderItem={renderMessage}
+          onEndReached={older.loadOlder}
+          onEndReachedThreshold={0.5}
+          // Inverted, the footer sits above the oldest message.
+          ListFooterComponent={
+            older.isLoading ? (
+              <View style={styles.olderLoading}>
+                <ActivityIndicator size="small" color={color.textMuted} accessibilityLabel="Loading earlier messages" />
+              </View>
+            ) : null
+          }
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.threadList}
         />
@@ -591,9 +609,11 @@ const styles = StyleSheet.create({
     color: color.text,
   },
   threadList: {
-    flexGrow: 1,
-    justifyContent: 'flex-end',
     paddingVertical: space.md,
+  },
+  olderLoading: {
+    paddingVertical: space.md,
+    alignItems: 'center',
   },
   threadSkeleton: {
     flex: 1,

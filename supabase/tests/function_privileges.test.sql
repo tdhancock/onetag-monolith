@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(44);
+SELECT plan(47);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -93,8 +93,8 @@ SELECT ok(NOT has_function_privilege('anon', 'public.feed_posts(uuid, timestampt
   'anon cannot execute feed_posts() (ONE-106)');
 SELECT ok(NOT has_function_privilege('anon', 'public.reel_stories(uuid, timestamptz)', 'EXECUTE'),
   'anon cannot execute reel_stories() (ONE-106)');
-SELECT ok(NOT has_function_privilege('anon', 'public.chat_partners(uuid)', 'EXECUTE'),
-  'anon cannot execute chat_partners() (ONE-106)');
+SELECT ok(NOT has_function_privilege('anon', 'public.chat_list(uuid)', 'EXECUTE'),
+  'anon cannot execute chat_list() (ONE-110)');
 SELECT ok(NOT has_function_privilege('anon', 'public.blocked_profiles(uuid)', 'EXECUTE'),
   'anon cannot execute blocked_profiles() (ONE-106)');
 SELECT ok(NOT has_function_privilege('anon', 'public.accounts_for_usernames(text[])', 'EXECUTE'),
@@ -117,6 +117,13 @@ SELECT ok(NOT has_function_privilege('authenticated', 'public.notify(text, uuid,
   'authenticated cannot execute notify() (ONE-107)');
 SELECT ok(NOT has_function_privilege('authenticated', 'public.notify_mentions(text, uuid, uuid, uuid)', 'EXECUTE'),
   'authenticated cannot execute notify_mentions() (ONE-107)');
+
+SELECT ok(NOT has_function_privilege('anon', 'public.messages_thread(uuid, uuid, timestamptz, uuid, integer)', 'EXECUTE'),
+  'anon cannot execute messages_thread() (ONE-110)');
+SELECT ok(NOT has_function_privilege('anon', 'public.following_usernames(uuid)', 'EXECUTE'),
+  'anon cannot execute following_usernames() (ONE-110)');
+SELECT ok(NOT has_function_privilege('anon', 'public.requested_usernames(uuid)', 'EXECUTE'),
+  'anon cannot execute requested_usernames() (ONE-110)');
 
 SELECT * FROM finish();
 ROLLBACK;

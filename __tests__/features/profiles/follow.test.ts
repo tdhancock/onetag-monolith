@@ -10,14 +10,17 @@
 // have to move together and go back together. A count left one too high after
 // a failed follow is the kind of wrong number nobody thinks to distrust.
 
+const mockRpc = jest.fn();
 jest.mock('../../../services/supabase.native', () => ({
-  supabase: { from: jest.fn(), auth: { getUser: jest.fn() } },
+  supabase: { from: jest.fn(), rpc: (...args: unknown[]) => mockRpc(...args), auth: { getUser: jest.fn() } },
 }));
 
 import { QueryClient, MutationObserver } from '@tanstack/react-query';
 import { toggleMutationOptions } from '../../../lib/optimisticToggle';
 import { profileKeys } from '../../../features/profiles/keys';
 import { followToggleKind } from '../../../features/profiles/mutations';
+import { getFollowingList, getRequestedList } from '../../../features/profiles/api';
+import type { ProfileId } from '../../../types';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────
 
@@ -296,5 +299,34 @@ describe('asking to follow', () => {
   it('keeps requests under their own key, beside follow state', () => {
     expect(requestedKey).not.toEqual(listKey);
     expect(requestedKey[0]).toBe(profileKeys.all[0]);
+  });
+});
+
+// ─── Follow state past 1,000 (ONE-110) ──────────────────────────────────
+
+describe('reading follow state', () => {
+  const viewer = VIEWER as ProfileId;
+  beforeEach(() => mockRpc.mockReset());
+
+  it('reads every followed handle as one array, which no row cap reaches', async () => {
+    const handles = Array.from({ length: 3000 }, (_, i) => `user_${i}`);
+    mockRpc.mockResolvedValue({ data: handles, error: null });
+
+    await expect(getFollowingList(viewer)).resolves.toHaveLength(3000);
+    expect(mockRpc).toHaveBeenCalledWith('following_usernames', { p_viewer: VIEWER });
+  });
+
+  it('reads pending requests the same way', async () => {
+    mockRpc.mockResolvedValue({ data: ['layla'], error: null });
+
+    await expect(getRequestedList(viewer)).resolves.toEqual(['layla']);
+    expect(mockRpc).toHaveBeenCalledWith('requested_usernames', { p_requester: VIEWER });
+  });
+
+  it('keeps each read\'s failure behaviour: following reads empty, requests throw', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'down' } });
+
+    await expect(getFollowingList(viewer)).resolves.toEqual([]);
+    await expect(getRequestedList(viewer)).rejects.toEqual({ message: 'down' });
   });
 });

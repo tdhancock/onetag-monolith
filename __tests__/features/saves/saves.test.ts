@@ -32,13 +32,13 @@ import {
   type SaveRow,
 } from '../../../features/saves';
 import { toggleMutationOptions } from '../../../lib/optimisticToggle';
-import { fetchSavedItems, inBatches, IDS_PER_REQUEST } from '../../../features/saves/api';
+import { fetchSavedItems, inBatches, IDS_PER_REQUEST, SAVES_PER_REQUEST } from '../../../features/saves/api';
 
 /** A query builder whose every method chains, and which awaits to `result`. */
 function builder(result: unknown) {
   const calls: Record<string, unknown[][]> = {};
   const chain: Record<string, unknown> = {};
-  for (const method of ['select', 'eq', 'not', 'order', 'in', 'insert', 'delete', 'maybeSingle']) {
+  for (const method of ['select', 'eq', 'not', 'order', 'in', 'range', 'insert', 'delete', 'maybeSingle']) {
     chain[method] = (...args: unknown[]) => {
       (calls[method] ??= []).push(args);
       return chain;
@@ -93,7 +93,8 @@ describe('reading and writing saves', () => {
     const saves = await fetchSaves('p-ana');
     expect(mockFrom).toHaveBeenCalledWith('saves');
     expect(read.calls.eq).toEqual([['profile_id', 'p-ana']]);
-    expect(read.calls.order).toEqual([['saved_at', { ascending: false }]]);
+    expect(read.calls.order).toEqual([['saved_at', { ascending: false }], ['id', { ascending: false }]]);
+    expect(read.calls.range).toEqual([[0, SAVES_PER_REQUEST - 1]]);
     expect(saves.map((s) => s.target)).toEqual([{ kind: 'product', id: 'prod-1' }]);
   });
 
@@ -300,5 +301,78 @@ describe('a Saves tab with hundreds of saves', () => {
     expect(batchesAsked.flat().sort()).toEqual(saved.map((row) => row.saved_post_id).sort());
     // Every save listed, newest first, as fetchSaves ordered them.
     expect(items.map((item) => item.saveId)).toEqual(saved.map((row) => row.id));
+  });
+});
+
+// ─── 5. Past the API's 1,000 rows (ONE-110) ─────────────────────────────
+
+describe('a Saves tab with thousands of saves', () => {
+  const many = (n: number): SaveRow[] =>
+    Array.from({ length: n }, (_, i) => ({
+      ...ROW,
+      id: `s-${i}`,
+      saved_product_id: `prod-${i}`,
+      saved_at: new Date(Date.UTC(2026, 8, 1) - i * 60_000).toISOString(),
+    }));
+
+  /** `saves`, served as the API does: at most `cap` rows a request, with the total. */
+  const serve = (rows: SaveRow[], cap: number) => {
+    const ranges: number[][] = [];
+    mockFrom.mockImplementation(() => {
+      const read = builder(undefined);
+      let range = [0, rows.length - 1];
+      read.chain.range = (from: number, to: number) => {
+        range = [from, to];
+        ranges.push(range);
+        return read.chain;
+      };
+      read.chain.then = (resolve: (v: unknown) => unknown) =>
+        Promise.resolve({
+          data: rows.slice(range[0], Math.min(range[1] + 1, range[0] + cap)),
+          count: rows.length,
+          error: null,
+        }).then(resolve);
+      return read.chain;
+    });
+    return ranges;
+  };
+
+  it('lists all 3,000, newest first, reading a page at a time', async () => {
+    const rows = many(3000);
+    const ranges = serve(rows, 1000);
+
+    const saves = await fetchSaves('p-ana');
+
+    expect(saves).toHaveLength(3000);
+    expect(saves.map((save) => save.id)).toEqual(rows.map((row) => row.id));
+    expect(ranges).toEqual([[0, 999], [1000, 1999], [2000, 2999]]);
+  });
+
+  it('still reaches the end when the server returns fewer rows than asked', async () => {
+    const rows = many(1200);
+    const ranges = serve(rows, 500);
+
+    const saves = await fetchSaves('p-ana');
+
+    expect(saves).toHaveLength(1200);
+    expect(ranges.map(([from]) => from)).toEqual([0, 500, 1000]);
+  });
+
+  it('keeps a save once when one made mid-read pushes it onto the next page', async () => {
+    const rows = many(1001);
+    let request = 0;
+    mockFrom.mockImplementation(() => {
+      const read = builder(undefined);
+      read.chain.range = () => read.chain;
+      // The second page starts with the first page's last row again.
+      const pages = [rows.slice(0, 1000), [rows[999], rows[1000]]];
+      read.chain.then = (resolve: (v: unknown) => unknown) =>
+        Promise.resolve({ data: pages[request++] ?? [], count: 1002, error: null }).then(resolve);
+      return read.chain;
+    });
+
+    const saves = await fetchSaves('p-ana');
+
+    expect(saves.map((save) => save.id)).toEqual(rows.map((row) => row.id));
   });
 });

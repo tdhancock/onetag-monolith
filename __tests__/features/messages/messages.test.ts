@@ -11,6 +11,7 @@ const mockMarkChat = jest.fn();
 const mockMarkAll = jest.fn();
 const mockDeleteConversation = jest.fn();
 const mockFetchMessageById = jest.fn();
+const mockFetchOlder = jest.fn();
 
 jest.mock('../../../services/supabase.native', () => ({
   supabase: { from: jest.fn() },
@@ -22,6 +23,8 @@ jest.mock('../../../features/messages/api', () => ({
   markAllMessagesAsRead: (...args: unknown[]) => mockMarkAll(...args),
   deleteConversationForBothSides: (...args: unknown[]) => mockDeleteConversation(...args),
   fetchMessageById: (...args: unknown[]) => mockFetchMessageById(...args),
+  fetchOlderMessages: (...args: unknown[]) => mockFetchOlder(...args),
+  THREAD_PAGE_SIZE: 100,
   hydrateMessageRow: (row: object) => ({
     sharedPost: null,
     sharedUser: null,
@@ -38,13 +41,14 @@ import { MutationObserver, QueryClient } from '@tanstack/react-query';
 import { messageKeys } from '../../../features/messages/keys';
 import {
   deleteConversationOptions,
+  loadOlderMessagesOptions,
   markAllMessagesReadOptions,
   markChatReadOptions,
   sendMessageOptions,
 } from '../../../features/messages/mutations';
-import { appendToThread, isPendingMessage, reconcileSentMessage } from '../../../features/messages/cache';
+import { appendToThread, isPendingMessage, prependToThread, reconcileSentMessage } from '../../../features/messages/cache';
 import { applyIncomingMessage } from '../../../features/messages/realtime';
-import { unreadMessageCountOf } from '../../../features/messages/queries';
+import { loadedDepth, unreadMessageCountOf } from '../../../features/messages/queries';
 import { isPersistable } from '../../../lib/queryClient';
 import type { Message, Post, SimpleUser } from '../../../types';
 
@@ -97,6 +101,7 @@ beforeEach(() => {
   mockMarkAll.mockReset();
   mockDeleteConversation.mockReset();
   mockFetchMessageById.mockReset();
+  mockFetchOlder.mockReset();
 });
 
 // ─── 1. Sending ─────────────────────────────────────────────────────────
@@ -351,5 +356,58 @@ describe('persistence', () => {
     for (const key of [THREAD, UNREAD, CONVERSATIONS]) {
       expect(isPersistable(key)).toBe(false);
     }
+  });
+});
+
+// ─── 6. Scrolling back (ONE-110) ────────────────────────────────────────
+
+describe('scrolling back through a long thread', () => {
+  it('puts the page before the oldest message at the top, in order', async () => {
+    const client = newClient();
+    client.setQueryData(THREAD, [message('m3'), message('m4')]);
+    mockFetchOlder.mockResolvedValue([message('m1'), message('m2')]);
+
+    await run(client, loadOlderMessagesOptions(client, ME), THEM);
+
+    expect(mockFetchOlder).toHaveBeenCalledWith(ME, THEM, expect.objectContaining({ id: 'm3' }));
+    expect(idsOf(client)).toEqual(['m1', 'm2', 'm3', 'm4']);
+  });
+
+  it('pages from the oldest message the server has, never a pending one', async () => {
+    const client = newClient();
+    client.setQueryData(THREAD, [message('temp-message-1'), message('m7')]);
+    mockFetchOlder.mockResolvedValue([]);
+
+    await run(client, loadOlderMessagesOptions(client, ME), THEM);
+
+    expect(mockFetchOlder).toHaveBeenCalledWith(ME, THEM, expect.objectContaining({ id: 'm7' }));
+  });
+
+  it("doesn't read at all for a thread that hasn't loaded", async () => {
+    const client = newClient();
+
+    await run(client, loadOlderMessagesOptions(client, ME), THEM);
+
+    expect(mockFetchOlder).not.toHaveBeenCalled();
+    expect(threadOf(client)).toBeUndefined();
+  });
+
+  it('keeps a message once when it is already in the thread', () => {
+    const thread = [message('m2'), message('m3')];
+    expect(prependToThread(thread, [message('m1'), message('m2')]).map((m) => m.id)).toEqual(['m1', 'm2', 'm3']);
+  });
+
+  it('links a reply to the message it answers once that message arrives', () => {
+    const reply = message('m9', { reply_to: 'm1', repliedMessage: null });
+    const [, linked] = prependToThread([reply], [message('m1')]);
+    expect(linked.repliedMessage?.id).toBe('m1');
+  });
+
+  it('refetches as deep as the thread has loaded, and never less than a page', () => {
+    const loaded = Array.from({ length: 250 }, (_, i) => message(`m${i}`));
+    expect(loadedDepth(undefined)).toBe(100);
+    expect(loadedDepth([message('m1')])).toBe(100);
+    expect(loadedDepth(loaded)).toBe(250);
+    expect(loadedDepth([...loaded, message('temp-message-1')])).toBe(250);
   });
 });

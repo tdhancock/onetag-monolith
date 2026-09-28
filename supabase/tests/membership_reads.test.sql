@@ -80,11 +80,12 @@ SELECT is(
 
 -- ─── Messages ─────────────────────────────────────────────────────────
 
+-- chat_list replaced chat_partners (ONE-110); lists_past_the_cap pins its order.
 SELECT is(
-  (SELECT array_agg(username ORDER BY username) FROM public.chat_partners((SELECT v FROM ids))),
+  (SELECT array_agg(username ORDER BY username) FROM public.chat_list((SELECT v FROM ids))),
   ARRAY['one106_a', 'one106_b'], 'everyone I have messaged, either way');
 SELECT is(
-  (SELECT array_agg(username ORDER BY username) FROM public.chat_partners((SELECT a FROM ids))),
+  (SELECT array_agg(username ORDER BY username) FROM public.chat_list((SELECT a FROM ids))),
   ARRAY['one106_v'], 'asked for someone else, only their conversations with me show');
 
 -- ─── Blocks ───────────────────────────────────────────────────────────
@@ -118,7 +119,7 @@ SELECT ok(NOT has_function_privilege('anon', 'public.feed_posts(uuid, timestampt
 SELECT ok(
   has_function_privilege('authenticated', 'public.feed_posts(uuid, timestamptz, text, integer)', 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.reel_stories(uuid, timestamptz)', 'EXECUTE')
-  AND has_function_privilege('authenticated', 'public.chat_partners(uuid)', 'EXECUTE')
+  AND has_function_privilege('authenticated', 'public.chat_list(uuid)', 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.blocked_profiles(uuid)', 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.accounts_for_usernames(text[])', 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.suggested_profiles(uuid, integer)', 'EXECUTE'),

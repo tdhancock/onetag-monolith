@@ -15,12 +15,17 @@ import type { Conversation, Message } from './types';
  *
  * The shared-post join selects the totals `mapPostData` reads (ONE-109); the profile
  * join selects exactly what a `SimpleUser` needs.
+ *
+ * The post's author names the column it follows, as every embed does:
+ * `likes` and `reposts` also link posts to profiles, and a bare `profiles`
+ * made the API refuse the whole read as ambiguous, so no thread loaded
+ * (found in ONE-110).
  */
 export const MESSAGE_SELECT_QUERY = `
     *,
     sharedPost:shared_post_id (
       *,
-      profiles (username, avatar_url, full_name, is_verified),
+      profiles!user_id (username, avatar_url, full_name, is_verified),
       stats:explore_scores(likes, comments, reposts)
     ),
     sharedUser:shared_profile_id(id, username, full_name, avatar_url, is_verified, bio)
@@ -59,19 +64,74 @@ export const linkReplies = (messages: Message[]): Message[] =>
       : message,
   );
 
-/** One conversation between two users, oldest first. */
-export const fetchThread = async (userId: string, otherUserId: string): Promise<Message[]> => {
+/** How many messages a thread opens with, and how many each scroll back adds. */
+export const THREAD_PAGE_SIZE = 100;
+
+/** The most `messages_thread` returns to one request. */
+const THREAD_MAX_REQUEST = 200;
+
+/** Where a page of a thread ends: the oldest message already showing. */
+export type ThreadCursor = Pick<Message, 'id' | 'created_at'>;
+
+/**
+ * Up to `limit` messages of a conversation from before `before`, newest first.
+ *
+ * `messages_thread` pages in the database. The whole conversation in one read
+ * stopped at the API's 1,000 rows, oldest first, so a long thread lost its
+ * newest messages (ONE-110).
+ */
+const fetchThreadPage = async (
+  userId: string,
+  otherUserId: string,
+  before: ThreadCursor | null,
+  limit: number,
+): Promise<Message[]> => {
   const { data, error } = await supabase
-    .from('messages')
+    .rpc('messages_thread', {
+      p_profile: userId,
+      p_other: otherUserId,
+      p_before: before?.created_at ?? null,
+      p_before_id: before?.id ?? null,
+      p_limit: limit,
+    })
     .select(MESSAGE_SELECT_QUERY)
-    .or(
-      `and(sender_id.eq.${userId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${userId})`,
-    )
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false });
 
   if (error) throw error;
-  return linkReplies((data || []).map(hydrateMessageRow));
+  return ((data || []) as any[]).map(hydrateMessageRow);
 };
+
+/**
+ * A conversation's newest messages, oldest first.
+ *
+ * `depth` is how many: a page when the thread opens, and as many as it holds
+ * when it refetches, so a refetch never takes away the older messages
+ * someone scrolled back to.
+ */
+export const fetchThread = async (
+  userId: string,
+  otherUserId: string,
+  depth: number = THREAD_PAGE_SIZE,
+): Promise<Message[]> => {
+  const newestFirst: Message[] = [];
+  let before: ThreadCursor | null = null;
+  while (newestFirst.length < depth) {
+    const limit = Math.min(depth - newestFirst.length, THREAD_MAX_REQUEST);
+    const page = await fetchThreadPage(userId, otherUserId, before, limit);
+    newestFirst.push(...page);
+    if (page.length < limit) break;
+    before = page[page.length - 1];
+  }
+  return linkReplies(newestFirst.reverse());
+};
+
+/** The page of a conversation before `before`, oldest first — what scrolling back loads. */
+export const fetchOlderMessages = async (
+  userId: string,
+  otherUserId: string,
+  before: ThreadCursor,
+): Promise<Message[]> => (await fetchThreadPage(userId, otherUserId, before, THREAD_PAGE_SIZE)).reverse();
 
 /** One message by id, hydrated — for a realtime insert that shares a post or profile. */
 export const fetchMessageById = async (messageId: string): Promise<Message | undefined> => {
@@ -85,46 +145,28 @@ export const fetchMessageById = async (messageId: string): Promise<Message | und
   return hydrateMessageRow(data);
 };
 
-/** Everyone the user has exchanged a message with, most recent conversation first. */
+/**
+ * Everyone the user has exchanged a message with, most recent conversation first.
+ *
+ * `chat_list` finds each partner and their latest message in the database.
+ * Reading the messages here to do it stopped at the API's 1,000 rows, so a
+ * conversation older than that sank as if it had no messages (ONE-110).
+ */
 export const getChatListUsers = async (userId: string): Promise<Conversation[]> => {
-  const { data: messages, error: messagesError } = await supabase
-    .from('messages')
-    .select('sender_id, receiver_id, created_at')
-    .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
-    .order('created_at', { ascending: false });
+  const { data, error } = await supabase
+    .rpc('chat_list', { p_profile: userId })
+    .select('id, full_name, username, avatar_url, is_verified, last_message_at')
+    .order('last_message_at', { ascending: false });
 
-  if (messagesError) throw messagesError;
+  if (error) throw error;
 
-  // Newest first, so the first time a partner appears is their latest message.
-  const latestMessageTimestamps = new Map<string, string>();
-  for (const message of messages || []) {
-    const partnerId = message.sender_id === userId ? message.receiver_id : message.sender_id;
-    if (!latestMessageTimestamps.has(partnerId)) {
-      latestMessageTimestamps.set(partnerId, message.created_at);
-    }
-  }
-
-  if (latestMessageTimestamps.size === 0) return [];
-
-  // `chat_partners` finds them in the database: their ids as `.in('id', …)`
-  // went in the URL, which broke at about 200 conversations (ONE-106).
-  const { data: profiles, error: profilesError } = await supabase
-    .rpc('chat_partners', { p_profile: userId })
-    .select('id, full_name, username, avatar_url, is_verified');
-
-  if (profilesError) throw profilesError;
-
-  const users: Conversation[] = ((profiles || []) as any[]).map((u: any) => ({
+  return ((data || []) as any[]).map((u: any) => ({
     id: u.id,
     name: u.full_name,
     username: u.username,
     avatar: u.avatar_url,
     isVerified: u.is_verified,
   }));
-
-  // A fallback of 0 keeps a missing timestamp from producing NaN in the sort.
-  const timeOf = (id: string) => new Date(latestMessageTimestamps.get(id) || 0).getTime();
-  return users.sort((a, b) => timeOf(b.id) - timeOf(a.id));
 };
 
 /**

@@ -46,16 +46,36 @@ export const mapSaveRow = (row: SaveRow): Save | null => {
   };
 };
 
-/** Every save a profile has made, newest first. */
-export const fetchSaves = async (profileId: string): Promise<Save[]> => {
-  const { data, error } = await supabase
-    .from('saves')
-    .select(SAVE_SELECT)
-    .eq('profile_id', profileId)
-    .order('saved_at', { ascending: false });
+/** How many saves one request asks for — the API's own cap, `max_rows`. */
+export const SAVES_PER_REQUEST = 1000;
 
-  if (error) throw error;
-  return ((data ?? []) as SaveRow[]).map(mapSaveRow).filter((save): save is Save => save !== null);
+/**
+ * Every save a profile has made, newest first.
+ *
+ * Read a page at a time until the count is reached: one read stopped at the
+ * API's 1,000 rows, and the oldest saves past that disappeared (ONE-110).
+ * Counting, rather than stopping at a short page, holds whatever `max_rows`
+ * is set to. A save made mid-read can shift a row onto the next page, so
+ * rows are kept once each.
+ */
+export const fetchSaves = async (profileId: string): Promise<Save[]> => {
+  const rows = new Map<string, SaveRow>();
+  for (let from = 0; ; ) {
+    const { data, error, count } = await supabase
+      .from('saves')
+      .select(SAVE_SELECT, { count: 'exact' })
+      .eq('profile_id', profileId)
+      .order('saved_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, from + SAVES_PER_REQUEST - 1);
+
+    if (error) throw error;
+    const page = (data ?? []) as SaveRow[];
+    for (const row of page) if (!rows.has(row.id)) rows.set(row.id, row);
+    from += page.length;
+    if (page.length === 0 || from >= (count ?? 0)) break;
+  }
+  return [...rows.values()].map(mapSaveRow).filter((save): save is Save => save !== null);
 };
 
 /** Postgres' unique violation: already saved, which is what was asked for. */

@@ -325,20 +325,17 @@ export const getFollowingCount = async (userId: string): Promise<number> => {
     return error ? 0 : count || 0;
 };
 
+/**
+ * The usernames the viewer follows, lowercased.
+ *
+ * One array from the database, which no row cap reaches. Reading the follows
+ * stopped at the API's 1,000 rows, and past that a Follow button read wrong
+ * (ONE-110).
+ */
 export const getFollowingList = async (userId: ProfileId): Promise<string[]> => {
-    const { data, error } = await supabase.from('follows').select('profiles!followed_id(username)').eq('follower_id', userId);
+    const { data, error } = await supabase.rpc('following_usernames', { p_viewer: userId });
     if (error) return [];
-    const unique = new Set<string>();
-    for (const item of data || []) {
-        const profile = Array.isArray(item?.profiles)
-            ? item.profiles[0]
-            : item?.profiles;
-        const username = profile?.username;
-        if (typeof username === 'string' && username.trim().length > 0) {
-            unique.add(username.toLowerCase());
-        }
-    }
-    return Array.from(unique);
+    return (data as string[] | null) ?? [];
 };
 
 export const getFollowerUsers = async (userId: string): Promise<SimpleUser[]> => {
@@ -426,21 +423,14 @@ export const unfollowUser = async (follower_id: ProfileId, followed_id: string):
 // one, and refuses a request to a public profile, so the app asking the wrong
 // way is refused rather than quietly let through.
 
-/** The usernames the viewer has asked to follow and is waiting on, lowercased. */
+/**
+ * The usernames the viewer has asked to follow and is waiting on, lowercased:
+ * one array, as `getFollowingList` (ONE-110).
+ */
 export const getRequestedList = async (requesterId: ProfileId): Promise<string[]> => {
-    const { data, error } = await supabase
-        .from('follow_requests')
-        .select('target:profiles!target_profile_id(username)')
-        .eq('requester_profile_id', requesterId);
+    const { data, error } = await supabase.rpc('requested_usernames', { p_requester: requesterId });
     if (error) throw error;
-    const unique = new Set<string>();
-    for (const item of (data || []) as any[]) {
-        const target = Array.isArray(item?.target) ? item.target[0] : item?.target;
-        if (typeof target?.username === 'string' && target.username.trim().length > 0) {
-            unique.add(target.username.toLowerCase());
-        }
-    }
-    return Array.from(unique);
+    return (data as string[] | null) ?? [];
 };
 
 /**
