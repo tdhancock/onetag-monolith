@@ -72,15 +72,53 @@ export const TAG_MARKER_SIZE = 18;
 /** The minimum touch target, in points, on both platforms' guidelines. */
 export const TAG_HIT_SIZE = 44;
 
+// ─── Name labels ────────────────────────────────────────────────────────
+
+/** The gap between a marker and the name label beside it. */
+export const TAG_LABEL_GAP = 4;
+
+/** A name label's height, in points; it is centred on its marker. */
+export const TAG_LABEL_HEIGHT = 24;
+
+/**
+ * Which side of its marker a tag's name label goes on: the right, unless the
+ * tag sits in the right part of the picture, where a label would run off it.
+ */
+export const tagLabelSide = (rect: Rect, xPct: number): 'left' | 'right' =>
+  rect.width > 0 && clampPct(xPct) > 55 ? 'left' : 'right';
+
+/**
+ * Where a tag's name label sits in the media view: centred on the marker's
+ * height, starting just past its edge on the chosen side. `right` is measured
+ * from the view's right edge, which the letterbox leaves as wide as its left.
+ */
+export const tagLabelPosition = (
+  rect: Rect,
+  xPct: number,
+  yPct: number,
+): { top: number; left?: number; right?: number } => {
+  const point = pointForPct(rect, xPct, yPct);
+  const top = point.y - TAG_LABEL_HEIGHT / 2;
+  const reach = TAG_MARKER_SIZE / 2 + TAG_LABEL_GAP;
+  if (tagLabelSide(rect, xPct) === 'right') return { top, left: point.x + reach };
+  const viewWidth = rect.x * 2 + rect.width;
+  return { top, right: viewWidth - (point.x - reach) };
+};
+
 // ─── Copy ───────────────────────────────────────────────────────────────
 
 /**
- * The badge on media carrying tags. "Tagged" and "tap", never "shop" or
- * "buy": commerce is permanently out of scope.
+ * The badge on media carrying tags. "Tagged", never "shop" or "buy":
+ * commerce is permanently out of scope.
+ *
+ * On a post it is the switch for the tags' name labels, and says which way it
+ * goes: SHOW while they are hidden, HIDE while they show. A grid thumbnail's
+ * badge, `labels` left out, is the count alone.
  */
-export const taggedBadgeLabel = (count: number, compact = false): string | null => {
+export const taggedBadgeLabel = (count: number, labels?: 'hidden' | 'shown'): string | null => {
   if (count <= 0) return null;
-  return compact ? `${count} TAGGED` : `${count} TAGGED · TAP TO SEE`;
+  if (!labels) return `${count} TAGGED`;
+  return `${count} TAGGED · ${labels === 'hidden' ? 'SHOW' : 'HIDE'}`;
 };
 
 /** What kind of Destination a tag leads to, in the glossary's words. */

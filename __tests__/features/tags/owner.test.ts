@@ -128,9 +128,12 @@ describe('fetchMyTags', () => {
       active: true,
       createdAt: '2026-09-24T10:00:00Z',
       destination: { kind: 'profile', profileId: 'p-studio', username: 'ana_studio', name: 'Ana Studio', profileType: 'business' },
+      hostPostId: null,
       scanCount: 0,
       lastScannedAt: null,
     });
+    // An Embedded Tag carries the post it sits on.
+    expect(mapTagRow({ ...ROW, tag_type: 'embedded', host_post_id: 'post-9' }).hostPostId).toBe('post-9');
     // A one-element array embed reads the same; a missing one is no destination.
     expect(mapTagRow({ ...ROW, dest_profile: [ROW.dest_profile as never] }).destination).toMatchObject({ username: 'ana_studio' });
     expect(mapTagRow({ ...ROW, dest_profile: null }).destination).toBeNull();

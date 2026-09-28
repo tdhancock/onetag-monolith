@@ -101,6 +101,8 @@ export interface OwnedTag {
   createdAt: string;
   /** Null when the destination is gone, or is a kind this build doesn't read. */
   destination: OwnedTagDestination | null;
+  /** The post an Embedded Tag sits on. Physical and Digital Tags have none. */
+  hostPostId?: string | null;
   scanCount: number;
   lastScannedAt: string | null;
 }
@@ -149,6 +151,7 @@ export interface TagRow {
   dest_profile_id: string | null;
   dest_product_id?: string | null;
   dest_project_id?: string | null;
+  host_post_id?: string | null;
   /** A one-to-one embed arrives as an object; an older server or a mock may hand back an array. */
   dest_profile?: DestinationProfileRow | DestinationProfileRow[] | null;
   dest_product?: DestinationNamedRow | DestinationNamedRow[] | null;

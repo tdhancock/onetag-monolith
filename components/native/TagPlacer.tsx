@@ -4,14 +4,24 @@ import type { GestureResponderEvent } from 'react-native';
 import { Image } from 'expo-image';
 import { IconButton, MonoLabel, Pressable } from './ui';
 import { XIcon } from './Icons';
-import { useImageContentRect } from './EmbeddedTags';
-import { pctForPoint, pointForPct, TAG_HIT_SIZE, TAG_MARKER_SIZE, type Rect } from '../../lib/screens/embeddedTags';
+import { TagName, useImageContentRect } from './EmbeddedTags';
+import {
+  pctForPoint,
+  pointForPct,
+  tagLabelSide,
+  TAG_HIT_SIZE,
+  TAG_LABEL_GAP,
+  TAG_LABEL_HEIGHT,
+  TAG_MARKER_SIZE,
+  type Rect,
+} from '../../lib/screens/embeddedTags';
 import { tagCountLabel, type DraftTag } from '../../lib/screens/composeTags';
 import { destinationTypeLabel } from '../../lib/screens/embeddedTags';
 import { color, space, type } from '../../theme/tokens';
 
 // Placing Embedded Tags on the composer's photo (ONE-46). Tap the photo to
-// place a tag, drag one to move it, remove one from the list beneath. Every
+// place a tag, drag one to move it, remove one from the list beneath. Each
+// marker carries its destination's name, so the author sees what's where. Every
 // position is read against the picture's content rect — the same measurement
 // viewers' tags are drawn against (ONE-45) — so what the author sees here is
 // what everyone sees.
@@ -138,9 +148,19 @@ const DraggableMarker: React.FC<DraggableMarkerProps> = ({ tag, rect, onMove }) 
       ]}
     >
       <View style={[styles.marker, !tag.destination && styles.markerPending]} />
+      {/* Its name rides with it while it's dragged. */}
+      <View
+        pointerEvents="none"
+        style={[styles.name, tagLabelSide(rect, tag.xPct) === 'right' ? styles.nameRight : styles.nameLeft]}
+      >
+        <TagName name={tag.destination ? tag.destination.name : 'Choose…'} pending={!tag.destination} />
+      </View>
     </View>
   );
 };
+
+/** How far a name sits from the centre of its marker's touch area. */
+const NAME_REACH = TAG_HIT_SIZE / 2 + TAG_MARKER_SIZE / 2 + TAG_LABEL_GAP;
 
 const styles = StyleSheet.create({
   frame: {
@@ -176,6 +196,16 @@ const styles = StyleSheet.create({
   markerPending: {
     backgroundColor: color.inverse,
     borderColor: color.text,
+  },
+  name: {
+    position: 'absolute',
+    top: TAG_HIT_SIZE / 2 - TAG_LABEL_HEIGHT / 2,
+  },
+  nameRight: {
+    left: NAME_REACH,
+  },
+  nameLeft: {
+    right: NAME_REACH,
   },
   listHeader: {
     paddingTop: space.md,

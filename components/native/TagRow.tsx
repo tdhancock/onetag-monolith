@@ -67,7 +67,10 @@ const TagRow: React.FC<TagRowProps> = ({ tag, onPress, onToggleActive, divider =
     >
       <View style={styles.text}>
         <View style={styles.labels}>
-          <MonoLabel color="textMid">{`${TAG_TYPE_LABEL[tag.tagType]} · ${tag.shortCode}`}</MonoLabel>
+          {/* An Embedded Tag's code is never printed or shared: say where it is instead. */}
+          <MonoLabel color="textMid">
+            {`${TAG_TYPE_LABEL[tag.tagType]} · ${tag.tagType === 'embedded' ? 'On a post' : tag.shortCode}`}
+          </MonoLabel>
           {tag.active ? null : <InactiveBadge />}
         </View>
         <Text style={[styles.title, !tag.active && styles.inactiveTitle]} numberOfLines={1}>

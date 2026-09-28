@@ -14,7 +14,7 @@ import { useApp } from '../store/AppContext.native';
 import { profileKeys, useCurrentProfile } from '../features/profiles';
 import { postKeys, useUpdatePost } from '../features/posts';
 import { fetchPostById as getPostById } from '../features/posts';
-import { embeddedTagWriter } from '../features/tags';
+import { embeddedTagWriter, tagKeys } from '../features/tags';
 import { Avatar, Button, EmptyState, Skeleton } from '../components/native/ui';
 import ComposeMedia from '../components/native/ComposeMedia';
 import CharacterRing from '../components/native/CharacterRing';
@@ -156,10 +156,11 @@ export default function EditPostScreen() {
     } finally {
       setIsSaving(false);
       // The post and every list that embeds it show its tags, whichever steps
-      // landed.
+      // landed, and so does the author's Tags dashboard.
       if (tagsChanged) {
         void queryClient.invalidateQueries({ queryKey: postKeys.all });
         void queryClient.invalidateQueries({ queryKey: profileKeys.all });
+        void queryClient.invalidateQueries({ queryKey: tagKeys.lists() });
       }
     }
   }, [post, content, canSave, captionChanged, tagsChanged, profileId, savedTags, tags, updatePost, addToast, router, queryClient]);

@@ -154,12 +154,16 @@ export const TAGS_FILTERED_EMPTY_STATE = {
  * kills every copy of its code for good. Deactivating is the reversible
  * alternative, and the confirmation says so.
  */
+const DELETE_CONSEQUENCE: Record<TagType, (shortCode: string) => string> = {
+  physical: (shortCode) => `Anything printed with ${shortCode} will stop working for everyone, permanently. `,
+  digital: () => `Every copy of this tag's link will stop working for everyone, permanently. `,
+  embedded: () => `It comes off your post's photo, permanently. `,
+};
+
 export const deleteTagConfirm = (tag: Pick<OwnedTag, 'tagType' | 'shortCode'>) => ({
   title: 'Delete this tag?',
   body:
-    (tag.tagType === 'physical'
-      ? `Anything printed with ${tag.shortCode} will stop working for everyone, permanently. `
-      : `Every copy of this tag's link will stop working for everyone, permanently. `) +
+    DELETE_CONSEQUENCE[tag.tagType](tag.shortCode) +
     'Its scan count is deleted too. To stop it for now, make it inactive instead: that can be undone.',
   confirm: 'Delete permanently',
 });

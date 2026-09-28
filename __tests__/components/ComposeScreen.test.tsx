@@ -97,6 +97,7 @@ jest.mock('../../components/native/EmbeddedTags', () => {
     __esModule: true,
     default: (props: { tags: unknown[]; interactive?: boolean }) =>
       React.createElement('div', { 'data-embedded-tags': String(props.tags.length), 'data-interactive': String(props.interactive) }),
+    TagName: ({ name }: { name: string }) => React.createElement('span', null, name),
     useImageContentRect: () => ({ contentRect: { x: 0, y: 0, width: 400, height: 225 }, onLayout: () => {}, onLoad: () => {} }),
   };
 });

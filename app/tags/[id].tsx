@@ -30,7 +30,9 @@ import { color, space, type } from '../../theme/tokens';
 
 /**
  * One tag, as its owner manages it (ONE-34): its QR code or link, where it
- * points, how often it has been scanned, and the controls.
+ * points, how often it has been scanned, and the controls. An Embedded Tag
+ * lives on a post's photo and is tapped there, never shared, so it offers its
+ * post instead of a link to copy.
  *
  * Only the name, the note and whether it is active can change. The short code
  * is printed on objects and the destination is what people scanned to reach —
@@ -85,6 +87,7 @@ export default function TagDetailScreen() {
         onExport={() => router.push(tagExportRoute(tag.id))}
         onReplace={() => router.push(replacementRoute(tag))}
         onOpenDestination={destinationRoute ? () => router.push(destinationRoute) : undefined}
+        onOpenPost={tag.hostPostId ? () => router.push(`/post/${tag.hostPostId}`) : undefined}
         onDeleted={() => {
           addToast('Tag deleted.', 'info');
           router.back();
@@ -99,12 +102,14 @@ function TagDetail({
   onExport,
   onReplace,
   onOpenDestination,
+  onOpenPost,
   onDeleted,
 }: {
   tag: OwnedTag;
   onExport: () => void;
   onReplace: () => void;
   onOpenDestination?: () => void;
+  onOpenPost?: () => void;
   onDeleted: () => void;
 }) {
   const { addToast } = useApp();
@@ -174,6 +179,17 @@ function TagDetail({
                 Export QR code
               </Button>
             </>
+          ) : tag.tagType === 'embedded' ? (
+            <>
+              <Text style={styles.embeddedNote}>
+                It sits on your post's photo. Tapping it there takes people to its destination.
+              </Text>
+              {onOpenPost ? (
+                <Button variant="outline" fullWidth onPress={onOpenPost} style={styles.primaryAction}>
+                  View post
+                </Button>
+              ) : null}
+            </>
           ) : (
             <>
               <Text style={styles.link} selectable accessibilityLabel={`Tag link, ${url}`}>
@@ -218,7 +234,10 @@ function TagDetail({
 
         {/* Shown, never editable: see the screen's comment. */}
         <SettingsSection title="Tag">
-          <SettingsRow title="Short code" control={<Text style={styles.code}>{tag.shortCode}</Text>} divider />
+          {/* A code is for printing and sharing, which an Embedded Tag never is. */}
+          {tag.tagType === 'embedded' ? null : (
+            <SettingsRow title="Short code" control={<Text style={styles.code}>{tag.shortCode}</Text>} divider />
+          )}
           <SettingsRow
             title="Destination"
             subtitle={destinationLabel(tag.destination)}
@@ -326,6 +345,13 @@ const styles = StyleSheet.create({
   },
   linkAction: {
     flex: 1,
+  },
+  embeddedNote: {
+    marginTop: space.md,
+    fontFamily: type.body,
+    fontSize: 15,
+    lineHeight: 21,
+    color: color.textMid,
   },
   code: {
     fontFamily: type.mono,

@@ -298,6 +298,21 @@ describe('the dashboard', () => {
     expect(el.textContent).toContain('Ana Studio · @ana_studio');
   });
 
+  it('says an Embedded Tag is on a post, never its code, which is never printed or shared', async () => {
+    mockDb.tags['p-studio'].push(row({
+        id: 't-embed',
+        tag_type: 'embedded',
+        format: null,
+        name: null,
+        short_code: 'EMB23456',
+        host_post_id: 'post-9',
+        created_at: '2026-09-25T00:00:00Z',
+      }));
+    const el = await mount(<TagsDashboardScreen />);
+    expect(el.textContent).toContain('Embedded · On a post');
+    expect(el.textContent).not.toContain('EMB23456');
+  });
+
   it('marks an inactive tag with a solid badge, not a tint', async () => {
     const el = await mount(<TagsDashboardScreen />);
     const badges = el.querySelectorAll('[aria-label="Inactive"]');
@@ -404,6 +419,26 @@ describe("a tag's detail", () => {
     expect(byText(el, 'Copy link')).toBeDefined();
     expect(byText(el, 'Share link')).toBeDefined();
     expect(el.textContent).not.toContain('Create a replacement');
+  });
+
+  it('offers an Embedded Tag its post, not a link to share or its code', async () => {
+    mockDb.tags['p-studio'].push(row({
+        id: 't-embed',
+        tag_type: 'embedded',
+        format: null,
+        name: null,
+        short_code: 'EMB23456',
+        host_post_id: 'post-9',
+        created_at: '2026-09-25T00:00:00Z',
+      }));
+    mockParams.current = { id: 't-embed' };
+    const el = await mount(<TagDetailScreen />);
+    expect(el.querySelector('[data-qr]')).toBeNull();
+    expect(byText(el, 'Copy link')).toBeUndefined();
+    expect(byText(el, 'Share link')).toBeUndefined();
+    expect(el.textContent).not.toContain('EMB23456');
+    click(byText(el, 'View post'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/post/post-9');
   });
 
   it('saves the name and note, and nothing else', async () => {

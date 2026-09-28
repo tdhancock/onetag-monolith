@@ -27,6 +27,7 @@ const mockRect = { x: 0, y: 0, width: 400, height: 225 };
 jest.mock('../../components/native/EmbeddedTags', () => ({
   __esModule: true,
   default: () => null,
+  TagName: ({ name }: { name: string }) => require('react').createElement('span', { 'data-tag-name': 'true' }, name),
   useImageContentRect: () => ({ contentRect: mockRect, onLayout: () => {}, onLoad: () => {} }),
 }));
 
@@ -121,5 +122,13 @@ describe('placed tags', () => {
     const el = mount();
     act(() => (el.querySelector('button[aria-label="Tag 2: choose what it points to"]') as HTMLButtonElement).click());
     expect(handlers.onChoose).toHaveBeenCalledWith('b');
+  });
+
+  it('names each marker on the photo by what it points at, so the author sees what is where', () => {
+    const el = mount();
+    const name = (key: string) =>
+      el.querySelector(`[data-testid="draft-tag-${key}"] [data-tag-name]`)?.textContent;
+    expect(name('a')).toBe('Lamp');
+    expect(name('b')).toBe('Choose…');
   });
 });

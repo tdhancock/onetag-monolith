@@ -98,7 +98,7 @@ export const recordScan = async (tagId: string, scannerProfileId: ProfileId | nu
  */
 export const TAG_SELECT =
   'id, owner_profile_id, tag_type, format, name, note, short_code, active, created_at, ' +
-  'dest_profile_id, dest_product_id, dest_project_id, ' +
+  'dest_profile_id, dest_product_id, dest_project_id, host_post_id, ' +
   'dest_profile:profiles!dest_profile_id(id, username, full_name, profile_type), ' +
   'dest_product:products!dest_product_id(id, name), ' +
   'dest_project:projects!dest_project_id(id, name)';
@@ -137,6 +137,7 @@ export const mapTagRow = (row: TagRow, counts?: TagScanCountRow): OwnedTag => ({
   active: row.active,
   createdAt: row.created_at,
   destination: destinationFromRow(row),
+  hostPostId: row.host_post_id ?? null,
   scanCount: counts ? Number(counts.scan_count) || 0 : 0,
   lastScannedAt: counts?.last_scanned_at ?? null,
 });

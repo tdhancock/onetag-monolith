@@ -228,6 +228,10 @@ describe('the dashboard', () => {
     expect(physical.body).toContain('Anything printed with ABC23XYZ will stop working for everyone, permanently.');
     expect(physical.body).toContain('make it inactive instead');
     expect(deleteTagConfirm(tag({ tagType: 'digital' })).body).toContain('will stop working for everyone, permanently');
+    // An Embedded Tag has no copies in the world: it comes off the photo.
+    const embedded = deleteTagConfirm(tag({ tagType: 'embedded' })).body;
+    expect(embedded).toContain("It comes off your post's photo, permanently.");
+    expect(embedded).not.toContain('ABC23XYZ');
     expect(physical.confirm).toBe('Delete permanently');
   });
 });

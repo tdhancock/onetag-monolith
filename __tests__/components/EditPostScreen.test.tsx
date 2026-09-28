@@ -62,6 +62,7 @@ const mockWriterFor = jest.fn((_postId: string, _ownerProfileId: string) => mock
 jest.mock('../../features/tags', () => ({
   useRecordScan: () => ({ mutate: jest.fn() }),
   embeddedTagWriter: (postId: string, ownerProfileId: string) => mockWriterFor(postId, ownerProfileId),
+  tagKeys: { lists: () => ['tags', 'list'] },
 }));
 jest.mock('../../features/posts', () => ({
   useUpdatePost: () => ({ mutateAsync: mockMutateAsync }),
