@@ -6,7 +6,6 @@
 // second mount starts from the top without anyone having to reset anything.
 
 import { supabase } from '../../services/supabase.native';
-import { notifyPostAuthor, notifyMentionedUsers } from '../../services/notificationWrites';
 import { ensureProfileRowForUser } from '../../services/profileBootstrap';
 import {
   MediaUploadError,
@@ -184,19 +183,16 @@ const toggleJoinRow = async (
   return true;
 };
 
-/** Like or unlike a post as `userId`. Notifies the author on a new like. */
-export const toggleLike = async (postId: string, userId: string): Promise<boolean> => {
-  const isOn = await toggleJoinRow('likes', postId, userId);
-  if (isOn) await notifyPostAuthor(postId, userId, 'like');
-  return isOn;
-};
+/**
+ * Like or unlike a post as `userId`. The author's notification is written by
+ * the database from the like itself (ONE-107).
+ */
+export const toggleLike = (postId: string, userId: string): Promise<boolean> =>
+  toggleJoinRow('likes', postId, userId);
 
-/** Repost or un-repost a post as `userId`. Notifies the author on a new repost. */
-export const toggleRepost = async (postId: string, userId: string): Promise<boolean> => {
-  const isOn = await toggleJoinRow('reposts', postId, userId);
-  if (isOn) await notifyPostAuthor(postId, userId, 'repost');
-  return isOn;
-};
+/** Repost or un-repost a post as `userId`. The database notifies the author (ONE-107). */
+export const toggleRepost = (postId: string, userId: string): Promise<boolean> =>
+  toggleJoinRow('reposts', postId, userId);
 
 // ---------------------------------------------------------------------------
 // Publishing, editing and deleting
@@ -278,11 +274,8 @@ export const publishPost = async (post: Post, authorId: ProfileId): Promise<Post
         if (fetchError) throw fetchError;
         if (!data) throw new Error("Could not retrieve post after creation.");
 
-        // Handle mentions after post is successfully created
-        if (content.trim().length > 0) {
-            await notifyMentionedUsers(content, authorId, data.id, null);
-        }
-        
+        // Anyone the text @mentions is notified by the database, from the post
+        // itself (ONE-107).
         return mapPostData(data);
 
     } catch (err) {

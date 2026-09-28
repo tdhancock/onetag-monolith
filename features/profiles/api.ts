@@ -13,7 +13,6 @@
 // callers use `queryClient.prefetchQuery` with `profileKeys`.
 
 import { supabase } from '../../services/supabase.native';
-import { sendNotification } from '../../services/notificationWrites';
 import { readLocalFile } from '../../services/localFile';
 // The post select and mapper sit on shared ground in services/postRows.ts, so
 // this api.ts imports no other feature (features/README.md, rule 1).
@@ -409,10 +408,9 @@ export const followUser = async (follower_id: ProfileId, followed_id: string): P
         .from('follows')
         .insert({ follower_id, followed_id });
 
+    // Already following is what was asked for. The notification is the
+    // database's to write, from the follow itself (ONE-107).
     if (error && error.code !== '23505') throw error;
-    if (error?.code === '23505') return;
-
-    await sendNotification({ senderId: follower_id, receiverId: followed_id, type: 'follow' });
 };
 
 export const unfollowUser = async (follower_id: ProfileId, followed_id: string): Promise<void> => {
@@ -445,16 +443,16 @@ export const getRequestedList = async (requesterId: ProfileId): Promise<string[]
     return Array.from(unique);
 };
 
-/** Ask to follow a private profile, and tell its owner. Asking twice is a no-op. */
+/**
+ * Ask to follow a private profile. Asking twice is a no-op. The owner's
+ * notification is written by the database from the request (ONE-107).
+ */
 export const requestFollow = async (requesterId: ProfileId, targetId: string): Promise<void> => {
     const { error } = await supabase
         .from('follow_requests')
         .insert({ requester_profile_id: requesterId, target_profile_id: targetId });
 
-    if (error?.code === '23505') return;
-    if (error) throw error;
-
-    await sendNotification({ senderId: requesterId, receiverId: targetId, type: 'follow_request' });
+    if (error && error.code !== '23505') throw error;
 };
 
 /** Withdraw a request the viewer made. */

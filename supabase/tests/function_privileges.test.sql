@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(41);
+SELECT plan(44);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -110,6 +110,13 @@ SELECT ok(NOT has_function_privilege('anon', 'public.story_hidden_by_block(uuid)
   'anon cannot execute story_hidden_by_block() (ONE-108)');
 SELECT ok(NOT has_function_privilege('anon', 'public.comment_hidden_by_block(uuid)', 'EXECUTE'),
   'anon cannot execute comment_hidden_by_block() (ONE-108)');
+
+SELECT ok(NOT has_function_privilege('authenticated', 'public.blocked_between(uuid, uuid)', 'EXECUTE'),
+  'authenticated cannot execute blocked_between() (ONE-107)');
+SELECT ok(NOT has_function_privilege('authenticated', 'public.notify(text, uuid, uuid, uuid, uuid, text)', 'EXECUTE'),
+  'authenticated cannot execute notify() (ONE-107)');
+SELECT ok(NOT has_function_privilege('authenticated', 'public.notify_mentions(text, uuid, uuid, uuid)', 'EXECUTE'),
+  'authenticated cannot execute notify_mentions() (ONE-107)');
 
 SELECT * FROM finish();
 ROLLBACK;

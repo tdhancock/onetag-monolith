@@ -9,7 +9,7 @@
 -- S sends; R receives.
 
 BEGIN;
-SELECT plan(12);
+SELECT plan(13);
 
 INSERT INTO auth.users (id, email, raw_user_meta_data) VALUES
   ('00000000-0000-0000-0000-0000000103a0', 's@one103.test', '{"username":"one103_s"}'),
@@ -34,7 +34,9 @@ $$;
 
 -- ─── Unconfigured: nothing is queued, and nothing fails ───────────────
 
-INSERT INTO public.notifications (sender_id, receiver_id, type) SELECT s, r, 'follow' FROM ids;
+-- A mention, not a follow: a follow notification here would make the real
+-- follow below a repeat within 24 hours, which rightly notifies nobody (ONE-107).
+INSERT INTO public.notifications (sender_id, receiver_id, type) SELECT s, r, 'mention' FROM ids;
 SELECT is((SELECT count(*)::int FROM pg_temp.queued()), 0,
   'with no send_push_url or send_push_secret in Vault, nothing is queued');
 
@@ -43,13 +45,25 @@ SELECT is((SELECT count(*)::int FROM pg_temp.queued()), 0,
 SELECT vault.create_secret('http://send-push.test/functions/v1/send-push', 'send_push_url');
 SELECT vault.create_secret('shh-test-secret', 'send_push_secret');
 
+-- A real event, made as a signed-in account: since ONE-107 the database
+-- writes its notification, and that queues the push.
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000103a0","role":"authenticated"}', true);
 
 SELECT lives_ok(
-  $$INSERT INTO public.notifications (id, sender_id, receiver_id, type)
-    SELECT '10300000-0000-0000-0000-000000000001', s, r, 'follow' FROM ids$$,
-  'a signed-in sender writes a follow notification; the trigger runs as definer');
+  $$INSERT INTO public.follows (follower_id, followed_id) SELECT s, r FROM ids$$,
+  'a signed-in account follows someone');
+INSERT INTO public.messages (id, sender_id, receiver_id, text)
+SELECT '10300000-0000-0000-0000-000000000007', s, r, 'hello there' FROM ids;
+RESET ROLE;
+
+SELECT is(
+  (SELECT count(*)::int FROM pg_temp.queued() q JOIN public.notifications n ON n.id = q.row_id
+   WHERE q.kind = 'notification' AND n.type = 'follow'),
+  1, 'the follow''s notification, written by the database, queues one push');
+
+-- Each type directly, as the table's owner, since clients can't write
+-- notifications (ONE-107).
 INSERT INTO public.notifications (id, sender_id, receiver_id, type)
 SELECT '10300000-0000-0000-0000-000000000002', s, r, 'follow_request' FROM ids;
 INSERT INTO public.notifications (id, sender_id, receiver_id, type)
@@ -60,15 +74,13 @@ INSERT INTO public.notifications (id, sender_id, receiver_id, type)
 SELECT '10300000-0000-0000-0000-000000000005', s, r, 'like' FROM ids;
 INSERT INTO public.notifications (id, sender_id, receiver_id, type)
 SELECT '10300000-0000-0000-0000-000000000006', s, r, 'repost' FROM ids;
-INSERT INTO public.messages (id, sender_id, receiver_id, text)
-SELECT '10300000-0000-0000-0000-000000000007', s, r, 'hello there' FROM ids;
-RESET ROLE;
 
 SELECT is(
-  (SELECT array_agg(row_id::text ORDER BY row_id) FROM pg_temp.queued() WHERE kind = 'notification'),
-  ARRAY['10300000-0000-0000-0000-000000000001', '10300000-0000-0000-0000-000000000002',
-        '10300000-0000-0000-0000-000000000003', '10300000-0000-0000-0000-000000000004'],
-  'follow, follow_request, comment and mention each queue one push');
+  (SELECT array_agg(row_id::text ORDER BY row_id) FROM pg_temp.queued()
+   WHERE kind = 'notification' AND row_id::text LIKE '10300000%'),
+  ARRAY['10300000-0000-0000-0000-000000000002', '10300000-0000-0000-0000-000000000003',
+        '10300000-0000-0000-0000-000000000004'],
+  'follow_request, comment and mention each queue one push too');
 SELECT is((SELECT count(*)::int FROM pg_temp.queued() WHERE row_id = '10300000-0000-0000-0000-000000000005'), 0,
   'a like doesn''t push');
 SELECT is((SELECT count(*)::int FROM pg_temp.queued() WHERE row_id = '10300000-0000-0000-0000-000000000006'), 0,

@@ -13,7 +13,7 @@
 -- P: owns public profile p.
 
 BEGIN;
-SELECT plan(26);
+SELECT plan(29);
 
 INSERT INTO auth.users (id, email, raw_user_meta_data) VALUES
   ('00000000-0000-0000-0000-0000000063a0', 'o@one63.test', '{"username":"one63_o"}'),
@@ -107,6 +107,8 @@ SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000
 
 SELECT is((SELECT count(*)::int FROM public.follow_requests WHERE target_profile_id = (SELECT o FROM ids)), 2,
   'the owner sees every request to them');
+SELECT is((SELECT count(*)::int FROM public.notifications WHERE type = 'follow_request' AND receiver_id = (SELECT o FROM ids)), 2,
+  'and each request wrote them a follow_request notification (ONE-107)');
 
 SELECT lives_ok(
   $$SELECT public.approve_follow_request(
@@ -126,9 +128,13 @@ SELECT ok(
   AND NOT EXISTS (SELECT 1 FROM public.follows f, ids WHERE f.follower_id = ids.r AND f.followed_id = ids.o),
   'declining leaves neither a request nor a follow');
 
-SELECT lives_ok(
+SELECT is((SELECT count(*)::int FROM public.notifications WHERE type = 'follow_request' AND receiver_id = (SELECT o FROM ids)), 0,
+  'settling both requests took their notifications with them (ONE-107)');
+SELECT is((SELECT count(*)::int FROM public.notifications WHERE type = 'follow' AND receiver_id = (SELECT o FROM ids)), 0,
+  'and approving didn''t tell the owner someone started following them');
+SELECT throws_ok(
   $$INSERT INTO public.notifications (sender_id, receiver_id, type) SELECT o, s, 'follow_request' FROM ids$$,
-  'follow_request is a notification type');
+  '42501', NULL, 'nobody writes a notification directly (ONE-107)');
 
 -- ─── The approved follower sees the posts, and can't ask again ────────
 

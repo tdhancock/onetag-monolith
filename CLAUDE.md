@@ -26,7 +26,7 @@ lib/screens/               pure screen logic, extracted so it can be tested
 theme/tokens.ts            design tokens — the single source of truth for colour and type
 store/AppContext.native    global UI state — no server data
 services/                  supabase client and the shared ground features reach: postRows,
-                           notificationWrites, profileBootstrap, media/story upload, realtime
+                           profileBootstrap, media/story upload, realtime
 supabase/migrations/       schema
 supabase/functions/        edge functions: delete-user-account, tag-resolve (the tag host's web page),
                            and send-push (the database calls it to send push notifications)

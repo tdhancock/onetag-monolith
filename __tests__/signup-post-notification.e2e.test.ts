@@ -10,8 +10,9 @@
 //      email-confirmation-required).
 //
 //   2. Post creation flow — authenticated user calls publishPost(), which
-//      inserts into `posts`, fetches the populated row, and fires mention
-//      notifications for any @-handles in the body.
+//      inserts into `posts` and fetches the populated row. It writes no
+//      notification: the database notifies anyone the body @mentions, from
+//      the post itself (ONE-107).
 //
 //   3. Notification tap navigation — the routing helper wired up in
 //      app/_layout.tsx maps a tapped push notification's `data` payload
@@ -21,15 +22,13 @@
 // The mock object mirrors the real Supabase v2 chain the app uses. Every `from(table)` call returns a fresh
 // thenable query builder that resolves to a per-table canned result
 // the test controls via `testHooks.setHandler(table, fn)`. The builder
-// records every `insert()` call so tests can assert the row payload
-// captured by sendNotification (services/notificationWrites.ts).
+// records every `insert()` call so tests can assert what was written.
 
 import type { Post, UserProfile } from '../types';
 import { checkUsernameExists } from '../features/profiles';
 import { ensureCurrentUserProfile } from '../services/profileBootstrap';
 import { publishPost } from '../features/posts';
 import { asProfileId } from '../types';
-import { sendNotification } from '../services/notificationWrites';
 
 // ─── 1. Supabase mock ───────────────────────────────────────────────────
 
@@ -68,8 +67,8 @@ function makeQueryBuilder(
 
 jest.mock('../services/supabase.native', () => {
   // insertCalls is captured by makeQueryBuilder and exposed via __test__
-  // so the test body can assert the payloads that publishPost /
-  // sendNotification hand to supabase.from(...).insert(...).
+  // so the test body can assert the payloads publishPost hands to
+  // supabase.from(...).insert(...).
   const insertCalls: InsertCall[] = [];
   const mockSignUp = jest.fn();
   const mockSignInWithPassword = jest.fn();
@@ -394,11 +393,10 @@ describe('E2E — complete signup flow', () => {
 //   2) ensureProfileRowForUser() → guard against missing profile row
 //   3) posts.insert(...).select('id').single() → create the row
 //   4) posts.select(...).eq('id', x).single() → fetch the populated row
-//   5) notifyMentionedUsers()    → fire @-mention notifications
-//      (services/notificationWrites, consolidated in ONE-17)
 //
-// We assert the call shape, the returned Post, and the notification row
-// payloads captured by the mock builder.
+// A mention's notification is the database's to write, from the post itself
+// (ONE-107), so the app inserts none. We assert the call shape, the returned
+// Post, and that nothing was written to notifications.
 
 // The profile noor posts as. Deliberately not her auth id: since ONE-21 every
 // new account's profile has its own id, and a post belongs to the profile.
@@ -452,23 +450,11 @@ describe('E2E — post create flow', () => {
     );
   });
 
-  it('fires @-mention notifications after the post is created', async () => {
+  it('writes no notification for an @mention: the database does, from the post (ONE-107)', async () => {
     const authUser = makeAuthUser();
     testHooks.mockGetUser.mockResolvedValue({ data: { user: authUser }, error: null });
+    testHooks.setHandler('profiles', () => ({ data: [{ id: NOOR_PROFILE }], error: null }));
 
-    // profiles: first call → profileExists for sender (already there).
-    // Subsequent calls → mention lookup for @ahmed.
-    let profilesLookups = 0;
-    testHooks.setHandler('profiles', () => {
-      profilesLookups += 1;
-      if (profilesLookups === 1) {
-        return { data: [{ id: NOOR_PROFILE }], error: null };
-      }
-      return { data: { id: 'mentioned-user-1' }, error: null };
-    });
-
-    // posts chain: insert returns the new id, then select returns the row
-    // so publishPost can read `data.id` for notifyMentionedUsers().
     let postsCalls = 0;
     testHooks.setHandler('posts', () => {
       postsCalls += 1;
@@ -481,17 +467,10 @@ describe('E2E — post create flow', () => {
     const draft: Post = makeFeedPost({ content: 'Salam @ahmed, glad to be here!' });
     await publishPost(draft, NOOR_PROFILE);
 
-    // The mention handler should have inserted a notification row.
-    const notifInsert = testHooks.insertCalls.find((c) => c.table === 'notifications');
-    expect(notifInsert).toBeDefined();
-    expect(notifInsert!.rows[0]).toEqual(
-      expect.objectContaining({
-        sender_id: NOOR_PROFILE,
-        receiver_id: 'mentioned-user-1',
-        type: 'mention',
-        post_id: 'new-post-1',
-      }),
-    );
+    // Clients can't insert notifications at all since ONE-107; the mention's
+    // is written by a trigger on posts (supabase/tests/notifications_from_events.test.sql).
+    expect(testHooks.insertCalls.find((c) => c.table === 'notifications')).toBeUndefined();
+    expect(testHooks.mockFrom).not.toHaveBeenCalledWith('notifications');
   });
 
   it('rejects publishPost when there is no authenticated user', async () => {
@@ -501,21 +480,9 @@ describe('E2E — post create flow', () => {
     // Never touches `posts`.
     expect(testHooks.mockFrom).not.toHaveBeenCalledWith('posts');
   });
-
-  it('skips notification inserts when sender and receiver are the same user', async () => {
-    // The live notification write (services/notificationWrites.ts, since
-    // ONE-17) returns before touching the table when sender and receiver
-    // match — nobody is notified about their own action.
-    await sendNotification({
-      senderId: 'same-user',
-      receiverId: 'same-user',
-      type: 'follow',
-    });
-
-    const notifInsert = testHooks.insertCalls.find((c) => c.table === 'notifications');
-    expect(notifInsert).toBeUndefined();
-  });
 });
+// Nobody being notified about their own action is the database's rule now,
+// pinned in supabase/tests/notifications_from_events.test.sql (ONE-107).
 
 // =========================================================================
 // 3. NOTIFICATION TAP → NAVIGATION
