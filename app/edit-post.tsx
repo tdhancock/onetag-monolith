@@ -5,7 +5,6 @@ import {
   Text,
   TextInput,
   Pressable,
-  ScrollView,
   StyleSheet,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -20,6 +19,7 @@ import { Avatar, Button, EmptyState, Skeleton } from '../components/native/ui';
 import ComposeMedia from '../components/native/ComposeMedia';
 import CharacterRing from '../components/native/CharacterRing';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
+import FormScrollView from '../components/native/FormScrollView';
 import TagPlacer from '../components/native/TagPlacer';
 import TagDestinationPicker from '../components/native/TagDestinationPicker';
 import { POST_MAX_CHARS } from '../lib/screens/compose';
@@ -223,7 +223,7 @@ export default function EditPostScreen() {
       {header}
 
       <KeyboardAvoider style={styles.fill}>
-        <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <FormScrollView style={styles.fill} contentContainerStyle={styles.scroll}>
           <View style={styles.body}>
             <Avatar
               uri={userProfile?.profilePicture}
@@ -282,7 +282,7 @@ export default function EditPostScreen() {
             <View style={styles.fill} />
             {content.length > 0 && <CharacterRing length={content.length} />}
           </View>
-        </ScrollView>
+        </FormScrollView>
       </KeyboardAvoider>
 
       <TagDestinationPicker visible={pickingFor !== null} onPick={handlePickDestination} onClose={handleClosePicker} />

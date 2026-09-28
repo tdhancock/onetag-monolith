@@ -170,9 +170,9 @@ export default function CommentsScreen() {
     <SafeAreaView style={styles.screen} edges={['bottom']}>
       <Stack.Screen options={{ headerShown: true, title: 'Comments' }} />
 
-      {/* Measures itself against the keyboard, so the stack header's height
-          no longer has to be guessed: the fixed 90pt offset this replaced was
-          short of the real header and left the composer half under the keys. */}
+      {/* Rides on the keyboard, so the stack header's height no longer has
+          to be guessed: the fixed 90pt offset this replaced was short of the
+          real header and left the composer half under the keys. */}
       <KeyboardAvoider style={styles.fill}>
         {renderBody()}
 

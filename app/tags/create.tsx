@@ -11,6 +11,7 @@ import { useCreateTag, type OwnedTag } from '../../features/tags';
 import { Button, Card, ListRow, MonoLabel, TextField } from '../../components/native/ui';
 import { CheckIcon } from '../../components/native/Icons';
 import KeyboardAvoider from '../../components/native/KeyboardAvoider';
+import FormScrollView from '../../components/native/FormScrollView';
 import TagQRCode from '../../components/native/TagQRCode';
 import { copyTagLink, shareTagLink } from '../../services/tagSharing';
 import { buildTagUrl } from '../../lib/tagLinks';
@@ -173,7 +174,7 @@ export default function CreateTagScreen() {
       <Progress step={step} />
 
       <KeyboardAvoider style={styles.fill}>
-        <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <FormScrollView style={styles.fill} contentContainerStyle={styles.scroll}>
           <Text style={styles.stepTitle} accessibilityRole="header">
             {TAG_CREATE_STEP_TITLE[step]}
           </Text>
@@ -276,7 +277,7 @@ export default function CreateTagScreen() {
               {CREATE_TAG_FAILED}
             </Text>
           ) : null}
-        </ScrollView>
+        </FormScrollView>
 
         <View style={styles.footer}>
           {back ? (

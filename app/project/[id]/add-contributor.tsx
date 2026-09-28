@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../../store/AppContext.native';
@@ -11,6 +11,7 @@ import {
 } from '../../../features/profiles';
 import { useAddContributor, useContributorsQuery, useProjectQuery } from '../../../features/projects';
 import KeyboardAvoider from '../../../components/native/KeyboardAvoider';
+import FormScrollView from '../../../components/native/FormScrollView';
 import ModalHeader from '../../../components/native/ModalHeader';
 import { RowSkeletons, SectionError } from '../../../components/native/SectionStates';
 import { Button, EmptyState, ListRow, TextField } from '../../../components/native/ui';
@@ -104,7 +105,7 @@ export default function AddContributorScreen() {
       <SafeAreaView style={styles.screen}>
         {header}
         <KeyboardAvoider style={styles.fill}>
-          <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled">
+          <FormScrollView style={styles.fill}>
             <ListRow
               title={chosen.name}
               subtitle={`@${chosen.username} · ${kindLabel(chosen)}`}
@@ -131,7 +132,7 @@ export default function AddContributorScreen() {
                 Choose someone else
               </Button>
             </View>
-          </ScrollView>
+          </FormScrollView>
         </KeyboardAvoider>
       </SafeAreaView>
     );
@@ -159,6 +160,7 @@ export default function AddContributorScreen() {
         data={candidates}
         keyExtractor={(profile) => profile.id}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
         renderItem={({ item, index }) => (
           <ListRow
             title={item.name}

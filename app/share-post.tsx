@@ -174,6 +174,7 @@ export default function SharePostScreen() {
         renderItem={renderItem}
         extraData={[sentTo, sendingTo, post]}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
         ListEmptyComponent={
           <Text style={styles.hint}>
             {searchQuery.trim().length < MIN_QUERY_LENGTH

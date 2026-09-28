@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
@@ -7,6 +7,7 @@ import { useCurrentProfile } from '../../features/profiles';
 import { useDeleteTag, useMyTagQuery, useTagActiveToggle, useUpdateTag, type OwnedTag } from '../../features/tags';
 import { Button, EmptyState, MonoLabel, SettingsRow, SettingsSection, TextField } from '../../components/native/ui';
 import KeyboardAvoider from '../../components/native/KeyboardAvoider';
+import FormScrollView from '../../components/native/FormScrollView';
 import TagQRCode from '../../components/native/TagQRCode';
 import { InactiveBadge, TagActiveSwitch } from '../../components/native/TagRow';
 import { copyTagLink, shareTagLink } from '../../services/tagSharing';
@@ -157,7 +158,7 @@ function TagDetail({
 
   return (
     <KeyboardAvoider style={styles.fill}>
-      <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+      <FormScrollView style={styles.fill} contentContainerStyle={styles.content}>
         <View style={styles.top}>
           <View style={styles.labels}>
             <MonoLabel color="textMid">{`${TAG_TYPE_LABEL[tag.tagType]} Tag`}</MonoLabel>
@@ -269,7 +270,7 @@ function TagDetail({
             onPress={handleDelete}
           />
         </SettingsSection>
-      </ScrollView>
+      </FormScrollView>
     </KeyboardAvoider>
   );
 }

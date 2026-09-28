@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
@@ -24,6 +24,7 @@ import {
 } from '../lib/screens/profile';
 import { Button, EmptyState, MonoLabel, TextField } from '../components/native/ui';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
+import FormScrollView from '../components/native/FormScrollView';
 import UsernameStatus from '../components/native/UsernameStatus';
 import { color, space, type } from '../theme/tokens';
 
@@ -163,7 +164,7 @@ export default function CreateProfileScreen() {
       {header(createProfileTitle(kind))}
 
       <KeyboardAvoider style={styles.fill}>
-        <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <FormScrollView style={styles.fill} contentContainerStyle={styles.scroll}>
           {missing.length > 1 ? (
             <View style={styles.kinds} accessibilityRole="radiogroup">
               {missing.map(option => (
@@ -223,7 +224,7 @@ export default function CreateProfileScreen() {
           <Button fullWidth onPress={handleCreate} loading={createProfile.isPending} disabled={!canCreate} style={styles.create}>
             Create profile
           </Button>
-        </ScrollView>
+        </FormScrollView>
       </KeyboardAvoider>
     </SafeAreaView>
   );

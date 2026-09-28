@@ -338,8 +338,8 @@ export default function MessagesScreen() {
           }}
         />
 
-        {/* Measures itself against the keyboard, so the modal's header height
-            never has to be guessed (see KeyboardAvoider). */}
+        {/* Rides on the keyboard, so no header height has to be guessed
+            (see KeyboardAvoider). */}
         <KeyboardAvoider style={styles.fill}>
           <View style={styles.fill}>{renderThread()}</View>
 
@@ -454,6 +454,7 @@ export default function MessagesScreen() {
           keyExtractor={item => item.id}
           renderItem={renderSearchResult}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
         />
       );
     }
@@ -476,6 +477,7 @@ export default function MessagesScreen() {
         keyExtractor={item => item.id}
         renderItem={renderChatUser}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

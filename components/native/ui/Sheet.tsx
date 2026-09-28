@@ -5,6 +5,7 @@ import Pressable from './Pressable';
 import Button from './Button';
 import IconButton from './IconButton';
 import { ArrowLeftIcon, ChevronRightIcon } from '../Icons';
+import { useKeyboardHeight } from '../../../lib/useKeyboardHeight';
 
 export interface SheetProps {
   visible: boolean;
@@ -34,39 +35,48 @@ export const SHEET_ROW_HEIGHT = 56;
 /**
  * A bottom sheet of actions: white, a hairline along its top, 56pt rows, and
  * an outline Cancel. Tapping the scrim closes it too.
+ *
+ * It rides on the keyboard and never grows taller than the space above it, so
+ * a search inside one (the tag picker's) stays in view while typing. Before,
+ * the keyboard covered the whole sheet: a placed tag could never be pointed at
+ * anything, and closing the picker removed it.
  */
-const Sheet: React.FC<SheetProps> = ({ visible, onClose, title, onBack, children }) => (
-  <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-    <View style={styles.root}>
-      <Pressable
-        style={[StyleSheet.absoluteFill, styles.scrim]}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-      />
-      <View style={styles.sheet}>
-        {title ? (
-          <View style={[styles.titleRow, !onBack && styles.titleRowPlain]}>
-            {onBack ? (
-              <IconButton
-                icon={<ArrowLeftIcon color={color.text} size={20} />}
-                accessibilityLabel="Back"
-                onPress={onBack}
-              />
-            ) : null}
-            <Text style={styles.title} accessibilityRole="header">
-              {title}
-            </Text>
-          </View>
-        ) : null}
-        {children}
-        <Button variant="outline" onPress={onClose} style={styles.cancel}>
-          Cancel
-        </Button>
+const Sheet: React.FC<SheetProps> = ({ visible, onClose, title, onBack, children }) => {
+  // The sheet runs to the bottom edge, so the keyboard covers it by its whole height.
+  const keyboardHeight = useKeyboardHeight(visible);
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={[styles.root, { paddingBottom: keyboardHeight }]}>
+        <Pressable
+          style={[StyleSheet.absoluteFill, styles.scrim]}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        />
+        <View style={styles.sheet}>
+          {title ? (
+            <View style={[styles.titleRow, !onBack && styles.titleRowPlain]}>
+              {onBack ? (
+                <IconButton
+                  icon={<ArrowLeftIcon color={color.text} size={20} />}
+                  accessibilityLabel="Back"
+                  onPress={onBack}
+                />
+              ) : null}
+              <Text style={styles.title} accessibilityRole="header">
+                {title}
+              </Text>
+            </View>
+          ) : null}
+          {children}
+          <Button variant="outline" onPress={onClose} style={styles.cancel}>
+            Cancel
+          </Button>
+        </View>
       </View>
-    </View>
-  </Modal>
-);
+    </Modal>
+  );
+};
 
 /** One action in a Sheet. */
 export const SheetRow: React.FC<SheetRowProps> = ({ label, hint, icon, destructive = false, chevron = false, onPress }) => (
@@ -90,6 +100,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     justifyContent: 'flex-end',
+    // Clear of the status bar, with a strip of scrim to tap, when the
+    // keyboard leaves the sheet little room.
+    paddingTop: space.xxl * 2,
   },
   scrim: {
     backgroundColor: color.text,
@@ -103,6 +116,10 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.lg,
     paddingTop: space.sm,
     paddingBottom: space.xxl,
+    // Never taller than the room above the keyboard: content that can shrink
+    // (a list of results) gives way first.
+    maxHeight: '100%',
+    flexShrink: 1,
   },
   titleRow: {
     flexDirection: 'row',

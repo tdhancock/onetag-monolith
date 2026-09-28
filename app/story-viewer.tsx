@@ -7,9 +7,7 @@ import {
   Dimensions,
   Animated,
   PanResponder,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
@@ -33,6 +31,7 @@ import {
 } from '../features/stories';
 import { Avatar, EmptyState, IconButton, ListRow, MonoLabel, TextField } from '../components/native/ui';
 import { HeartIcon, XIcon, TrashIcon, EyeIcon, SendIcon } from '../components/native/Icons';
+import KeyboardAvoider from '../components/native/KeyboardAvoider';
 import { gradientFor } from '../lib/oneSnaps';
 import { getTimeAgo } from '../lib/timeAgo';
 import { color, radius, space, type, withAlpha } from '../theme/tokens';
@@ -433,9 +432,11 @@ export default function StoryViewerScreen() {
           </View>
         </SafeAreaView>
 
-        {/* Footer */}
+        {/* Footer. KeyboardAvoidingView measured against this footer, which
+            starts at its own top, so it never padded and the reply field
+            stayed under the keyboard. */}
         <SafeAreaView edges={['bottom']} style={styles.footer}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <KeyboardAvoider>
             {isOwnStory ? (
               <View style={styles.ownerRow}>
                 <Pressable
@@ -488,7 +489,7 @@ export default function StoryViewerScreen() {
                 />
               </View>
             )}
-          </KeyboardAvoidingView>
+          </KeyboardAvoider>
         </SafeAreaView>
       </View>
 

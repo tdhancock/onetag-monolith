@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet } from 'react-native';
+import { ActivityIndicator, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../../store/AppContext.native';
@@ -7,6 +7,7 @@ import { useCurrentProfile } from '../../../features/profiles';
 import { useProductQuery, useUpdateProduct } from '../../../features/products';
 import { MediaUploadError } from '../../../services/mediaUpload';
 import KeyboardAvoider from '../../../components/native/KeyboardAvoider';
+import FormScrollView from '../../../components/native/FormScrollView';
 import ModalHeader from '../../../components/native/ModalHeader';
 import ProductForm from '../../../components/native/ProductForm';
 import { EmptyState } from '../../../components/native/ui';
@@ -98,9 +99,9 @@ export default function EditProductScreen() {
         saving={updateProduct.isPending}
       />
       <KeyboardAvoider style={styles.fill}>
-        <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <FormScrollView style={styles.fill} contentContainerStyle={styles.scroll}>
           <ProductForm draft={draft} onChange={setDraft} />
-        </ScrollView>
+        </FormScrollView>
       </KeyboardAvoider>
     </SafeAreaView>
   );

@@ -165,10 +165,20 @@ export const PanResponder = {
   create: jest.fn((_config: Record<string, unknown>) => ({ panHandlers: {} })),
 };
 
+/**
+ * iOS unless a suite says otherwise, by spreading this shim and overriding
+ * `Platform`. The keyboard-aware views read it once mounted.
+ */
+export const Platform = {
+  OS: 'ios',
+  select: <T,>(options: { ios?: T; android?: T; default?: T }): T | undefined => options.ios ?? options.default,
+};
+
 /** Listeners register and never fire; a suite that needs a keyboard event captures the handler. */
 export const Keyboard = {
   addListener: jest.fn(() => ({ remove: jest.fn() })),
   dismiss: jest.fn(),
+  metrics: jest.fn(() => undefined),
 };
 
 export const LayoutAnimation = {

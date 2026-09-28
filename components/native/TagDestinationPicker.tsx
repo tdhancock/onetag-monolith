@@ -83,7 +83,9 @@ const PickerBody: React.FC<{ onPick: (destination: EmbeddedTagDestination) => vo
 };
 
 const styles = StyleSheet.create({
+  // Shrinks with the sheet when the keyboard is up, so the search stays in view.
   body: {
+    flexShrink: 1,
     paddingBottom: space.sm,
   },
   search: {
@@ -91,6 +93,7 @@ const styles = StyleSheet.create({
     marginBottom: space.sm,
   },
   results: {
+    flexShrink: 1,
     maxHeight: 360,
   },
   empty: {

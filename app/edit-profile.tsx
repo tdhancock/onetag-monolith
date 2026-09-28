@@ -3,7 +3,6 @@ import {
   View,
   Text,
   Pressable,
-  ScrollView,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
@@ -15,6 +14,7 @@ import { useUpdateProfile, useUpdateBusinessProfile, useUploadAvatar, useCurrent
 import { cleanHtml } from '../lib/cleanHtml';
 import { Avatar, TextField } from '../components/native/ui';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
+import FormScrollView from '../components/native/FormScrollView';
 import {
   businessFormValues,
   businessUpdatesFrom,
@@ -155,7 +155,7 @@ export default function EditProfileScreen() {
       </View>
 
       <KeyboardAvoider style={styles.fill}>
-        <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <FormScrollView style={styles.fill} contentContainerStyle={styles.scroll}>
           <View style={styles.avatar}>
             <Avatar
               uri={avatarUri ?? userProfile?.profilePicture}
@@ -232,7 +232,7 @@ export default function EditProfileScreen() {
               </>
             ) : null}
           </View>
-        </ScrollView>
+        </FormScrollView>
       </KeyboardAvoider>
     </SafeAreaView>
   );

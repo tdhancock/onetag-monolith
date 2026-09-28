@@ -1,8 +1,9 @@
 import React, { forwardRef, useState } from 'react';
-import { View, Text, ScrollView, Dimensions, StyleSheet } from 'react-native';
+import { View, Text, Dimensions, StyleSheet } from 'react-native';
 import type { TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KeyboardAvoider from './KeyboardAvoider';
+import FormScrollView from './FormScrollView';
 import { IconButton, Pressable, TextField, letterSpacingFor } from './ui';
 import type { TextFieldProps } from './ui';
 import { EyeIcon, EyeSlashIcon } from './Icons';
@@ -31,9 +32,8 @@ const HEADER_TOP = Math.round(Dimensions.get('window').height * 0.1);
 const AuthScaffold: React.FC<AuthScaffoldProps> = ({ subtitle, children, footer }) => (
   <SafeAreaView style={styles.screen}>
     <KeyboardAvoider style={styles.fill}>
-      <ScrollView
+      <FormScrollView
         contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
         <View style={styles.header}>
@@ -44,7 +44,7 @@ const AuthScaffold: React.FC<AuthScaffoldProps> = ({ subtitle, children, footer 
         </View>
         <View style={styles.form}>{children}</View>
         {footer ? <View style={styles.footer}>{footer}</View> : null}
-      </ScrollView>
+      </FormScrollView>
     </KeyboardAvoider>
   </SafeAreaView>
 );
