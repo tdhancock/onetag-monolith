@@ -81,11 +81,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }));
 
     const queryClient = useQueryClient();
+    const toastCount = useRef(0);
 
     // ─── Toasts, tooltip, banner, haptics ─────────────────────────────────
 
     const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
-        const id = `toast-${Date.now()}`;
+        // Two toasts in the same millisecond (a failed save and its rollback)
+        // shared a timestamp id, so dismissing one dismissed both.
+        toastCount.current += 1;
+        const id = `toast-${Date.now()}-${toastCount.current}`;
         setState(prev => ({ ...prev, toasts: [...prev.toasts, { id, message, type }] }));
     }, []);
 
