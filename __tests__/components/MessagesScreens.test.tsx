@@ -308,6 +308,17 @@ describe('Messages — thread', () => {
     expect(mockPush).toHaveBeenCalledWith('/user/ana');
   });
 
+  it('marks a message read when it arrives in the open thread', () => {
+    state.thread.data = [msg('m1', 'p-ana', 'hey', { seen: true })];
+    const el = mount(<MessagesScreen />);
+    openAna(el);
+    mockMarkChatRead.mockClear();
+
+    state.thread.data = [msg('m1', 'p-ana', 'hey', { seen: true }), msg('m2', 'p-ana', 'you there?', { seen: false })];
+    rerender(<MessagesScreen />);
+    expect(mockMarkChatRead).toHaveBeenCalledWith('p-ana');
+  });
+
   it('draws yours in ink with inverse text and theirs on the panel', () => {
     state.thread.data = [msg('m1', 'p-ana', 'hey'), msg('m2', 'p-me', 'hi back')];
     const el = mount(<MessagesScreen />);

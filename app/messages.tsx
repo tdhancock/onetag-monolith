@@ -142,6 +142,18 @@ export default function MessagesScreen() {
     findAndOpen();
   }, [params.chatWith]);
 
+  // A message that arrives while its thread is open has been read: mark it
+  // so. Before, it counted as unread, on the badge here and for its sender,
+  // until the thread was left and opened again.
+  const { mutate: markRead } = markChatRead;
+  const unreadInThread = useMemo(
+    () => (chatWith ? messages.filter((m) => m.sender_id === chatWith.id && m.seen === false).length : 0),
+    [messages, chatWith],
+  );
+  useEffect(() => {
+    if (userId && chatWith?.id && unreadInThread > 0) markRead(chatWith.id);
+  }, [userId, chatWith?.id, unreadInThread, markRead]);
+
   const openChat = (user: SimpleUser) => {
     setSearchTerm('');
     setUserSearchResults([]);
