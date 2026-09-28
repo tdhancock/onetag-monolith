@@ -19,8 +19,14 @@ import type { AuthUserId } from '../types';
 
 export const DESTINATION_MEDIA_BUCKET = 'post-media';
 
-/** Where each kind of Destination keeps its images. */
-export type DestinationMediaFolder = 'products' | 'projects';
+/**
+ * Where each kind of Destination keeps its images. delete-user-account removes
+ * an account's files from each (ONE-99), so a new folder here must be one it
+ * covers; its test fails until it is.
+ */
+export const DESTINATION_MEDIA_FOLDERS = ['products', 'projects'] as const;
+
+export type DestinationMediaFolder = (typeof DESTINATION_MEDIA_FOLDERS)[number];
 
 /** An image's storage path: the folder, then the account, then a name nothing else has. */
 export const destinationMediaPath = (

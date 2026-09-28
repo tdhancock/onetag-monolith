@@ -111,7 +111,7 @@ describe('createProfile', () => {
 
     expect(created.id).toBe('p-new');
     expect(created.profileType).toBe('business');
-    expect(created.business).toEqual({ category: null, website: null, location: null, logoUrl: null });
+    expect(created.business).toEqual({ category: null, website: null, location: null });
   });
 
   it('sends a null bio when there is none, and gives an individual profile no business fields', async () => {

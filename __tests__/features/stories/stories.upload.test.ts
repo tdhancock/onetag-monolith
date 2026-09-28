@@ -5,9 +5,14 @@
 // the words in `caption` and the chosen gradient in `background`. They used to
 // fail on media_url's NOT NULL and be retried as an SVG picture of the text;
 // rows stored that way are read back as text OneSnaps.
+//
+// A photo OneSnap's photo is in storage, or the OneSnap isn't written
+// (ONE-100): a refused upload is never stored inline, nor swapped for a
+// picture of its caption.
 
 const mockInserts: Record<string, unknown>[] = [];
 let mockInsertResult: { data: unknown; error: unknown } = { data: null, error: null };
+const mockUploadStoryMedia = jest.fn();
 
 jest.mock('../../../services/supabase.native', () => ({
   supabase: {
@@ -22,24 +27,16 @@ jest.mock('../../../services/supabase.native', () => ({
         return chain;
       },
     }),
-    storage: {
-      from: () => ({ getPublicUrl: () => ({ data: { publicUrl: 'https://cdn.test/snap.jpg' } }) }),
-    },
   },
 }));
 
 jest.mock('../../../services/profileBootstrap', () => ({ ensureProfileRowForUser: async () => true }));
-jest.mock('../../../services/mediaUpload', () => ({
-  isLikelyStoragePolicyError: () => false,
-  isStorageBucketMissingError: () => false,
-}));
 jest.mock('../../../services/storyUpload', () => ({
-  uploadStoryMedia: async () => ({ bucket: 'post-media', filePath: 'auth-me/stories/a.jpg' }),
-  blobToDataUrl: jest.fn(),
-  buildTextStoryDataUri: jest.fn(() => 'data:image/svg+xml;utf8,should-not-be-used'),
+  uploadStoryMedia: (...args: unknown[]) => mockUploadStoryMedia(...args),
 }));
 
 import { mapStoryRow, uploadStory } from '../../../features/stories/api';
+import { MediaUploadError } from '../../../services/mediaUpload';
 import { asProfileId } from '../../../types';
 
 const ME = asProfileId('p-me');
@@ -58,6 +55,8 @@ const row = (overrides: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   mockInserts.length = 0;
   mockInsertResult = { data: row(), error: null };
+  mockUploadStoryMedia.mockReset();
+  mockUploadStoryMedia.mockResolvedValue('https://cdn.test/snap.jpg');
 });
 
 // ─── Writing ────────────────────────────────────────────────────────────
@@ -88,9 +87,18 @@ describe('uploadStory — an image OneSnap', () => {
   it('stores the media and no background', async () => {
     mockInsertResult = { data: row({ media_url: 'https://cdn.test/snap.jpg', background: null }), error: null };
     await uploadStory(new Blob(['x'], { type: 'image/jpeg' }), null, ME, 'plum');
+    // Uploaded under the account, not the profile: storage RLS keys on auth.uid().
+    expect(mockUploadStoryMedia).toHaveBeenCalledWith(expect.any(Blob), 'auth-me');
     expect(mockInserts).toEqual([
       { user_id: ME, media_url: 'https://cdn.test/snap.jpg', caption: null, background: null },
     ]);
+  });
+
+  it('writes nothing when the photo upload is refused: no inline copy, no picture of the caption', async () => {
+    const refused = new MediaUploadError("Your OneSnap's photo couldn't be uploaded.");
+    mockUploadStoryMedia.mockRejectedValue(refused);
+    await expect(uploadStory(new Blob(['x'], { type: 'image/jpeg' }), 'hello', ME, null)).rejects.toBe(refused);
+    expect(mockInserts).toEqual([]);
   });
 });
 

@@ -11,8 +11,9 @@
 //   1. A scan_history row becomes one entry per destination, with its count
 //      and latest time, and routes where scanning the tag again would.
 //   2. The screen, app/scans.tsx, lists the active profile's own history
-//      whatever its setting, says who can see it, and routes each row; with a
-//      profile param it reads that profile's public history instead.
+//      whatever its setting, says who can see it, and routes each row. It
+//      reads no route params: someone else's public history is a tab on their
+//      profile (ONE-43, ONE-91).
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -53,11 +54,9 @@ jest.mock('react-native-svg', () => require('../../support/reactNativeSvgStub'))
 jest.mock('expo-image', () => require('../../support/expoImageStub'));
 
 const mockPush = jest.fn();
-const mockParams: { current: Record<string, string> } = { current: {} };
 const mockTitle: { current?: string } = {};
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
-  useLocalSearchParams: () => mockParams.current,
   Stack: {
     Screen: (p: { options?: { title?: string } }) => {
       mockTitle.current = p.options?.title;
@@ -174,7 +173,6 @@ async function mount(): Promise<HTMLDivElement> {
 
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  mockParams.current = {};
   mockActing.profile.scanHistoryPublic = false;
   mockPush.mockClear();
   mockRpc.mockReset();
@@ -246,16 +244,5 @@ describe('your scan history', () => {
     const el = await mount();
     expect(el.textContent).toContain('No scans yet');
     expect(el.textContent).toContain('Tags you scan with your camera show up here');
-  });
-});
-
-describe('someone else\'s public history', () => {
-  it('reads that profile\'s history, titled with their handle, without your visibility notice', async () => {
-    mockParams.current = { profile: 'p-ana', username: 'ana' };
-    const el = await mount();
-    expect(mockRpc).toHaveBeenCalledWith('scan_history', { p_profile_id: 'p-ana' });
-    expect(mockTitle.current).toBe("@ana's scans");
-    expect(el.textContent).not.toContain('Change in Settings');
-    expect(rowFor(el, 'Xavi Ortiz')).not.toBeNull();
   });
 });

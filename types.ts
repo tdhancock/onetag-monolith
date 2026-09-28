@@ -75,14 +75,15 @@ export interface UserProfile {
     business?: BusinessProfileFields | null;
 }
 
-/** The fields only a Business Profile carries (`business_profiles`, ONE-23). */
+/**
+ * The fields only a Business Profile carries (`business_profiles`, ONE-23).
+ * Its image is its avatar, like every profile's (ONE-81).
+ */
 export interface BusinessProfileFields {
     category: string | null;
     /** Normalized, scheme included, so it opens wherever it is tapped. */
     website: string | null;
     location: string | null;
-    /** In the `avatars` bucket, under the account's folder like an avatar. */
-    logoUrl: string | null;
 }
 
 export interface Post {

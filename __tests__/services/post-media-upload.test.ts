@@ -110,13 +110,16 @@ describe('post media upload path', () => {
     expect(mockInsert).not.toHaveBeenCalled();
   });
 
-  it('never inserts a device-local URI as image_url', async () => {
-    // Every bucket rejects with a policy error, so uploadMedia falls back to a
-    // data: URL — readable only on this device, so the insert must not happen.
+  it('publishes nothing when storage refuses the upload, after one attempt in one place (ONE-100)', async () => {
+    // It used to try two more buckets and two more paths, then fall back to an
+    // inline data: URL that only the insert guard stopped.
     mockUpload.mockResolvedValue({ error: { message: 'new row violates row-level security policy' } });
 
     await expect(publishPost(draft(), AUTHOR)).rejects.toBeInstanceOf(MediaUploadError);
     expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockUpload).toHaveBeenCalledTimes(1);
+    const [path] = mockUpload.mock.calls[0] as [string];
+    expect(path.startsWith(`${USER_ID}/posts/`)).toBe(true);
   });
 
   it('inserts the remote https URL when the upload succeeds', async () => {

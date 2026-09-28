@@ -6,12 +6,10 @@
 //   1. The API reads and writes `saves` — never saved_posts — putting each
 //      kind of target in its own column, and treats saving something already
 //      saved as success.
-//   2. getSavedPosts, moved here from features/posts, reads saves and scopes
-//      the posts to the profile as viewer.
-//   3. The toggle is the shared optimistic helper, configured over the
+//   2. The toggle is the shared optimistic helper, configured over the
 //      profile's save list: it flips at once, asks the server for whatever the
 //      cache now says, and puts everything back when refused.
-//   4. Keys are per profile, so a profile switch lists the other's saves.
+//   3. Keys are per profile, so a profile switch lists the other's saves.
 
 const mockFrom = jest.fn();
 jest.mock('../../../services/supabase.native', () => ({
@@ -21,7 +19,6 @@ jest.mock('../../../services/supabase.native', () => ({
 import { MutationObserver, QueryClient } from '@tanstack/react-query';
 import {
   fetchSaves,
-  getSavedPosts,
   mapSaveRow,
   saveKeyOf,
   saveKeys,
@@ -150,52 +147,11 @@ describe('reading and writing saves', () => {
   it('never touches saved_posts', async () => {
     mockFrom.mockReturnValue(builder({ data: [], error: null }).chain);
     await fetchSaves('p-ana');
-    await getSavedPosts('p-ana');
     expect(mockFrom.mock.calls.map(([table]) => table)).not.toContain('saved_posts');
   });
 });
 
-// ─── 2. Saved posts ─────────────────────────────────────────────────────
-
-describe('getSavedPosts', () => {
-  it('reads saved posts from saves, scopes them to the profile, and orders them by when they were saved', async () => {
-    const saved = builder({
-      data: [
-        { saved_post_id: 'po-new', saved_at: '2026-09-26T10:00:00Z' },
-        { saved_post_id: 'po-old', saved_at: '2026-09-20T10:00:00Z' },
-      ],
-      error: null,
-    });
-    const posts = builder({
-      data: [
-        { id: 'po-old', content: 'old', created_at: '2026-01-01', profiles: { username: 'a' } },
-        { id: 'po-new', content: 'new', created_at: '2025-01-01', profiles: { username: 'b' } },
-      ],
-      error: null,
-    });
-    mockFrom.mockReturnValueOnce(saved.chain).mockReturnValueOnce(posts.chain);
-
-    const result = await getSavedPosts('p-ana');
-
-    expect(mockFrom.mock.calls.map(([t]) => t)).toEqual(['saves', 'posts']);
-    expect(saved.calls.eq).toEqual([['profile_id', 'p-ana']]);
-    expect(saved.calls.not).toEqual([['saved_post_id', 'is', null]]);
-    expect(posts.calls.in).toEqual([['id', ['po-new', 'po-old']]]);
-    expect(posts.calls.eq).toEqual([
-      ['viewer_like.user_id', 'p-ana'],
-      ['viewer_repost.user_id', 'p-ana'],
-      ['viewer_save.profile_id', 'p-ana'],
-    ]);
-    expect(result.map((p) => p.id)).toEqual(['po-new', 'po-old']);
-  });
-
-  it('is empty, not an error, when nothing is saved', async () => {
-    mockFrom.mockReturnValue(builder({ data: [], error: null }).chain);
-    await expect(getSavedPosts('p-ana')).resolves.toEqual([]);
-  });
-});
-
-// ─── 3. The toggle ──────────────────────────────────────────────────────
+// ─── 2. The toggle ──────────────────────────────────────────────────────
 
 const PROFILE = 'p-ana';
 const LIST_KEY = saveKeys.mine(PROFILE);
@@ -293,7 +249,7 @@ describe('the save toggle', () => {
   });
 });
 
-// ─── 4. Per profile ─────────────────────────────────────────────────────
+// ─── 3. Per profile ─────────────────────────────────────────────────────
 
 describe('keys', () => {
   it('give each profile its own list, so a switch reads the newly active profile\'s saves', () => {

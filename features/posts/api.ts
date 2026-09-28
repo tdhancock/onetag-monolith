@@ -250,8 +250,9 @@ export const publishPost = async (post: Post, authorId: ProfileId): Promise<Post
                 throw new MediaUploadError('Your photo could not be uploaded, so the post was not published.', uploadError);
             }
         }
-        // uploadMedia falls back to a data: URL when every bucket is unavailable;
-        // that is still unreadable to everyone else, so it must not be inserted.
+        // The last line of defence (ONE-56): nothing only this device can read is
+        // ever inserted. uploadMedia throws rather than fall back to a data: URL
+        // now (ONE-100), but a guard here costs nothing.
         assertRemoteMediaUrl(uploadUrl);
         // --- END NEW UPLOAD LOGIC ---
 

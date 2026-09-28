@@ -44,7 +44,6 @@ export type BusinessProfileRow = {
     category: string | null;
     website: string | null;
     location: string | null;
-    logo_url: string | null;
 };
 
 /** The inverse of `mapProfileRow`: client field names → `profiles` columns. */

@@ -106,45 +106,6 @@ export const toggleSave = async (profileId: string, target: SaveTarget): Promise
   return true;
 };
 
-/**
- * A profile's saved posts, most recently saved first. Empty on error.
- *
- * Moved from features/posts (ONE-20 had rehomed it there from the old shared
- * service), now reading saves. The posts are scoped to the profile as viewer,
- * so each one's liked, reposted and saved state is the profile's own.
- */
-export const getSavedPosts = async (profileId: string): Promise<Post[]> => {
-  try {
-    const { data: saved, error: savedError } = await supabase
-      .from('saves')
-      .select('saved_post_id, saved_at')
-      .eq('profile_id', profileId)
-      .not('saved_post_id', 'is', null)
-      .order('saved_at', { ascending: false });
-
-    if (savedError) throw savedError;
-    if (!saved || saved.length === 0) return [];
-
-    const rows = saved as { saved_post_id: string; saved_at: string }[];
-    const { data: postsData, error: postsError } = await scopePostsToViewer(
-      supabase.from('posts').select(POST_SELECT_QUERY).in('id', rows.map((r) => r.saved_post_id)),
-      profileId,
-    );
-
-    if (postsError) throw postsError;
-    if (!postsData) return [];
-
-    // Order by when they were saved, not when they were posted.
-    const savedAt = new Map(rows.map((r) => [r.saved_post_id, new Date(r.saved_at).getTime()]));
-    return [...(postsData as { id: string }[])]
-      .sort((a, b) => (savedAt.get(b.id) ?? 0) - (savedAt.get(a.id) ?? 0))
-      .map(mapPostData);
-  } catch (error) {
-    console.error('Error fetching saved posts:', (error as Error).message || error);
-    return [];
-  }
-};
-
 // ─── Saved items, with what a list shows (ONE-43) ──────────────────────
 
 const PROFILE_SUMMARY_SELECT = 'id, username, full_name, avatar_url, is_verified, profile_type';
@@ -171,9 +132,9 @@ const byIds = async <TRow extends { id: string }>(table: string, select: string,
  * list: a profile's Saves tab, mixing all four kinds (ONE-43).
  *
  * One read of the saves, then one read per kind that has any. Posts are
- * scoped to the profile as viewer, as getSavedPosts scopes them. A target
- * that does not come back — deleted, or no longer the viewer's to see — is
- * left out rather than shown as a gap.
+ * scoped to the profile as viewer, so each one's liked, reposted and saved
+ * state is the profile's own. A target that does not come back — deleted, or
+ * no longer the viewer's to see — is left out rather than shown as a gap.
  */
 export const fetchSavedItems = async (profileId: string): Promise<SavedItem[]> => {
   const saves = await fetchSaves(profileId);

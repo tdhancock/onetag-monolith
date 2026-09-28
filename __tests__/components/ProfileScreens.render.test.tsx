@@ -89,7 +89,7 @@ const ME = { id: 'p-me', username: 'me', name: 'Me Myself', bio: 'Builds things.
 const ME_BUSINESS = {
   ...ME,
   profileType: 'business',
-  business: { category: 'Cafe', website: 'https://me.example/', location: 'Austin, TX', logoUrl: null },
+  business: { category: 'Cafe', website: 'https://me.example/', location: 'Austin, TX' },
 };
 
 const state = {
@@ -424,7 +424,7 @@ describe('Business fields on a profile', () => {
     state.profile = {
       ...state.profile!,
       profileType: 'business',
-      business: { category: 'Bakery', website: 'https://ana.example', location: 'Lisbon', logoUrl: null },
+      business: { category: 'Bakery', website: 'https://ana.example', location: 'Lisbon' },
     };
     const el = await mount(<UserProfileScreen />);
     expect(el.textContent).toContain('Bakery');
@@ -763,7 +763,7 @@ describe('Edit profile', () => {
   });
 
   it("edits a business profile's fields, saving the website with its scheme", async () => {
-    state.me = { ...ME_BUSINESS, business: { category: 'Cafe', website: null, location: null, logoUrl: null } };
+    state.me = { ...ME_BUSINESS, business: { category: 'Cafe', website: null, location: null } };
     const el = await mount(<EditProfileScreen />);
     expect(field(el, 'Category').value).toBe('Cafe');
 

@@ -191,7 +191,6 @@ export const useUpdateBusinessProfile = (profileId: ProfileId | undefined) => {
                   category: null,
                   website: null,
                   location: null,
-                  logoUrl: null,
                   ...profile.business,
                   ...updates,
                 },

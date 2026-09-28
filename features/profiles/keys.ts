@@ -21,8 +21,6 @@ export const profileKeys = {
   posts: (userId: string) => [...base.all, 'posts', userId] as const,
   /** How many posts a profile has. Beneath `posts`, so a change to them re-reads it too. */
   postCount: (userId: string) => [...base.all, 'posts', userId, 'count'] as const,
-  /** The reposts tab. */
-  reposts: (userId: string) => [...base.all, 'reposts', userId] as const,
   /** Who follows this user. */
   followers: (userId: string) => [...base.all, 'followers', userId] as const,
   /** Who this user follows, as renderable rows. */
