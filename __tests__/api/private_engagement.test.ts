@@ -9,6 +9,7 @@ import { sql } from './support/localStack';
 import { createAccount, deleteAccounts, type Account } from './support/accounts';
 import { getCommentLikesCount, getCommentsForPost, addComment } from '../../features/comments/api';
 import { fetchPostById, toggleLike } from '../../features/posts/api';
+import { saveTarget } from '../../features/saves/api';
 
 let owner: Account;
 let follower: Account;
@@ -48,12 +49,10 @@ describe("a private account's post", () => {
     expect(await getCommentLikesCount(commentId)).toBe(0);
   });
 
-  // Known gap, ONE-115: the insert policies never ask whether the writer can
-  // see the post, so a stranger's like goes through. `it.failing` holds while
-  // it does; once ONE-115 closes the gap this starts failing — make it `it`.
-  it.failing("lets a stranger neither like it nor comment on it (ONE-115)", async () => {
+  it("lets a stranger neither like it, comment on it nor save it (ONE-115)", async () => {
     actAs(stranger.client);
     await expect(toggleLike(postId, stranger.profileId)).rejects.toBeTruthy();
     await expect(addComment(postId, stranger.profileId, 'hello')).rejects.toBeTruthy();
+    await expect(saveTarget(stranger.profileId, { kind: 'post', id: postId })).rejects.toBeTruthy();
   });
 });

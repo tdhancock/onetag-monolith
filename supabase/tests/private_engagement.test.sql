@@ -1,5 +1,5 @@
 -- A private post's comments, likes and reposts are as private as the post
--- (ONE-109). Runs against a real database:
+-- (ONE-109), to read and to write (ONE-115). Runs against a real database:
 --
 --   npm run db:test      (npx supabase test db — the LOCAL stack)
 --
@@ -11,7 +11,7 @@
 -- S: a stranger. Q: public, with post QP, which C comments on. X blocked C.
 
 BEGIN;
-SELECT plan(17);
+SELECT plan(30);
 
 INSERT INTO auth.users (id, email, raw_user_meta_data) VALUES
   ('00000000-0000-0000-0000-0000000109a0', 'p@one109.test', '{"username":"one109_p"}'),
@@ -105,6 +105,59 @@ SELECT is(
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000109a4","role":"authenticated"}', true);
 SELECT is((SELECT count(*)::int FROM public.comments WHERE post_id = '10900000-0000-0000-0000-000000000002'), 2,
   'the commenter still sees every comment there, since only X blocked them');
+
+-- ─── Writing: a stranger (ONE-115) ────────────────────────────────────
+
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000109a2","role":"authenticated"}', true);
+CREATE TEMP TABLE s_id ON COMMIT DROP AS SELECT id FROM public.profiles WHERE username = 'one109_s';
+
+SELECT throws_ok(
+  $$INSERT INTO public.likes (post_id, user_id) SELECT '10900000-0000-0000-0000-000000000001', id FROM s_id$$,
+  '42501', NULL, 'a stranger can''t like a private post');
+SELECT throws_ok(
+  $$INSERT INTO public.comments (post_id, user_id, content) SELECT '10900000-0000-0000-0000-000000000001', id, 'hi' FROM s_id$$,
+  '42501', NULL, 'nor comment on it');
+SELECT throws_ok(
+  $$INSERT INTO public.reposts (post_id, user_id) SELECT '10900000-0000-0000-0000-000000000001', id FROM s_id$$,
+  '42501', NULL, 'nor repost it');
+SELECT throws_ok(
+  $$INSERT INTO public.saves (profile_id, saved_post_id) SELECT id, '10900000-0000-0000-0000-000000000001' FROM s_id$$,
+  '42501', NULL, 'nor save it');
+SELECT throws_ok(
+  $$INSERT INTO public.comment_likes (comment_id, user_id) SELECT '10900000-0000-0000-0000-000000000021', id FROM s_id$$,
+  '42501', NULL, 'nor like a comment on it');
+SELECT throws_ok(
+  $$INSERT INTO public.story_likes (story_id, user_id) SELECT '10900000-0000-0000-0000-000000000011', id FROM s_id$$,
+  '42501', NULL, 'nor like the private account''s OneSnap');
+SELECT throws_ok(
+  $$INSERT INTO public.story_views (story_id, user_id) SELECT '10900000-0000-0000-0000-000000000011', id FROM s_id$$,
+  '42501', NULL, 'nor record a view of it');
+SELECT lives_ok(
+  $$INSERT INTO public.comments (id, post_id, user_id, content)
+    SELECT '10900000-0000-0000-0000-000000000031', '10900000-0000-0000-0000-000000000002', id, 'S on Q' FROM s_id$$,
+  'a stranger comments on a public post as before');
+SELECT throws_ok(
+  $$UPDATE public.comments SET post_id = '10900000-0000-0000-0000-000000000001'
+    WHERE id = '10900000-0000-0000-0000-000000000031'$$,
+  '42501', NULL, 'and can''t move that comment onto the private post');
+
+-- ─── Writing: a follower and the owner ────────────────────────────────
+
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000109a1","role":"authenticated"}', true);
+SELECT lives_ok(
+  $$INSERT INTO public.comments (post_id, user_id, content) SELECT '10900000-0000-0000-0000-000000000001', f, 'again' FROM ids$$,
+  'a follower comments on the private post');
+SELECT lives_ok(
+  $$INSERT INTO public.saves (profile_id, saved_post_id) SELECT f, '10900000-0000-0000-0000-000000000001' FROM ids$$,
+  'and saves it');
+SELECT lives_ok(
+  $$INSERT INTO public.story_views (story_id, user_id) SELECT '10900000-0000-0000-0000-000000000011', f FROM ids$$,
+  'and views the OneSnap');
+
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000109a0","role":"authenticated"}', true);
+SELECT lives_ok(
+  $$INSERT INTO public.likes (post_id, user_id) SELECT '10900000-0000-0000-0000-000000000001', p FROM ids$$,
+  'the owner likes their own post');
 
 SELECT * FROM finish();
 ROLLBACK;
