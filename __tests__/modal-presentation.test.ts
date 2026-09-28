@@ -50,6 +50,19 @@ describe('modal presentation lives in app/_layout.tsx', () => {
     expect(declared.get('edit-profile')).toMatch(/presentation:\s*'modal'/);
     expect(declared.get('create-profile')).toMatch(/presentation:\s*'modal'/);
   });
+
+  // On iOS a screen pushed from a modal opens as another modal on top of it,
+  // with no Back. Notifications and Messages open profiles and posts, so they
+  // are pushed screens; a follow notification's profile once opened as a
+  // second sheet and never loaded.
+  it('declares Notifications and Messages as pushed screens with their headers', () => {
+    const declared = declaredScreens();
+    for (const name of ['notifications', 'messages']) {
+      expect(declared.get(name)).toBeDefined();
+      expect(declared.get(name)).not.toMatch(/presentation:/);
+      expect(declared.get(name)).toMatch(/headerShown:\s*true/);
+    }
+  });
 });
 
 describe("a modal that shows a header declares it alongside its presentation", () => {

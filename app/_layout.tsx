@@ -158,13 +158,19 @@ function RootLayoutNav() {
     >
       <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
       <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+      {/* Notifications and Messages lead on to profiles and posts, so they
+          are pushed screens, not modals. On iOS anything opened from a modal
+          opens as another modal stacked on it, with no Back: a follow
+          notification's profile arrived that way, and the way back was a
+          swipe down nobody found. */}
+      <Stack.Screen name="notifications" options={{ headerShown: true }} />
+      <Stack.Screen name="messages" options={{ headerShown: true }} />
       {/* Every modal is declared here, with whether it shows a header, and
           never from inside the screen. A screen that sets `presentation` on
           itself is first pushed as a card and then asked to become a modal,
           which the native stack cannot do in place; one that changes its
-          header's visibility inside a modal is remounted, losing its state. */}
-      <Stack.Screen name="notifications" options={{ presentation: 'modal', headerShown: true }} />
-      <Stack.Screen name="messages" options={{ presentation: 'modal', headerShown: true }} />
+          header's visibility inside a modal is remounted, losing its state.
+          A modal never pushes a screen onward, for the reason above. */}
       <Stack.Screen name="share-post" options={{ presentation: 'modal', headerShown: true }} />
       <Stack.Screen name="compose" options={{ presentation: 'modal' }} />
       <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />

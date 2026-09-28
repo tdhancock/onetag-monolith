@@ -518,9 +518,13 @@ export default function StoryViewerScreen() {
                   title={viewer.username}
                   avatarUri={viewer.avatar_url}
                   accessibilityLabel={`View ${viewer.username}'s profile`}
+                  // Leave the viewer first, as the author row does: pushed
+                  // from this full-screen modal, the profile would open as
+                  // another modal over it, with no Back.
                   onPress={() => {
                     closeViewers();
-                    router.push(`/user/${viewer.username}`);
+                    router.back();
+                    setTimeout(() => router.push(`/user/${viewer.username}`), 100);
                   }}
                 />
               )}

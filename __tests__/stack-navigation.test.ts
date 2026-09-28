@@ -108,7 +108,9 @@ type Router = {
   canGoBack: () => boolean;
 };
 
-const MODAL_ROUTES = new Set(['/notifications', '/messages', '/compose']);
+// Notifications and Messages are pushed screens: they lead on to profiles
+// and posts, which on iOS would otherwise open as a second modal.
+const MODAL_ROUTES = new Set(['/share-post', '/compose']);
 const FULLSCREEN_MODAL_ROUTES = new Set(['/story-viewer', '/story-create']);
 
 const kindFor = (route: string): ScreenKind => {
@@ -192,6 +194,7 @@ const COMMENTS = '/comments/123';
 const USER_PROFILE = '/user/alice';
 const USER_LIST = '/user-list';
 const MESSAGES = '/messages';
+const SHARE_POST = '/share-post';
 
 beforeEach(() => {
   // No global state to clear — each test creates its own stack.
@@ -416,11 +419,11 @@ describe('Stack navigation — modal presentation', () => {
 
     router.push({ pathname: MESSAGES, params: { chatWith: 'alice' } });
     router.push({ pathname: USER_PROFILE, params: { username: 'bob' } });
+    router.push({ pathname: SHARE_POST, params: { postId: '123' } });
 
-    const messagesEntry = stack.entries[1];
-    expect(messagesEntry.kind).toBe('modal');
-    const userEntry = stack.entries[2];
-    expect(userEntry.kind).toBe('screen');
+    expect(stack.entries[1].kind).toBe('screen');
+    expect(stack.entries[2].kind).toBe('screen');
+    expect(stack.entries[3].kind).toBe('modal');
   });
 
   it('dismissAll pops modal entries without disturbing the screen underneath', () => {
@@ -428,9 +431,9 @@ describe('Stack navigation — modal presentation', () => {
     const router = createRouter(stack);
 
     router.push({ pathname: POST_DETAIL, params: { id: '123' } });
-    router.push({ pathname: MESSAGES, params: { chatWith: 'alice' } });
+    router.push({ pathname: SHARE_POST, params: { postId: '123' } });
 
-    // Stack: [home, post, messages(modal)]
+    // Stack: [home, post, share-post(modal)]
     expect(stack.entries).toHaveLength(3);
     expect(stack.top()?.kind).toBe('modal');
 
@@ -445,7 +448,7 @@ describe('Stack navigation — modal presentation', () => {
     const stack = createStack();
     const router = createRouter(stack);
 
-    router.push({ pathname: MESSAGES, params: {} });
+    router.push({ pathname: SHARE_POST, params: {} });
     expect(router.canGoBack()).toBe(true);
     expect(stack.top()?.kind).toBe('modal');
 
