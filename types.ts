@@ -135,6 +135,8 @@ export type EmbeddedTagDestination = (
     | { kind: 'profile'; profileId: string; username: string; profileType: 'individual' | 'business' }
     | { kind: 'product'; productId: string }
     | { kind: 'project'; projectId: string }
+    /** A post: named by its first line, or by its author when it has no text. */
+    | { kind: 'post'; postId: string; username: string }
 ) & { name: string; imageUrl: string | null };
 
 /** A Tag pinned to a point on a post's image, positioned in percent of the image content. */

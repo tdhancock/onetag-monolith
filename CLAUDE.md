@@ -166,7 +166,7 @@ Use these exactly — as table names, variable names, and user-facing labels.
 | **Physical Tag** | A QR code in the real world. Always-on; anyone can scan it without the owner present. |
 | **Digital Tag** | A Tag shared from inside the app as a short link. The owner shares it deliberately. |
 | **Embedded Tag** | A Tag inside a post, pinned to a point on its image. Created during post creation. Tapped, never scanned. In the UI it is just a tag. |
-| **Destination** | What a Tag points to. Exactly four kinds: Business Profile, Individual Profile, Product, Project. |
+| **Destination** | What a Tag points to. Exactly five kinds: Business Profile, Individual Profile, Product, Project, Post. (Post was added 2026-09-28, reversing ONE-83.) |
 | **Tag Resolution** | Reading a Tag, identifying its Destination, routing there, recording the Scan. |
 | **Scan** | Reading a Physical Tag with the camera. Applies to Physical Tags only. |
 | **Scan History** | A user's private log of Tags they scanned. Private by default; opt-in to public. |

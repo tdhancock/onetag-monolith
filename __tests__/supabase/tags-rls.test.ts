@@ -45,7 +45,7 @@ describe('tags', () => {
     expect(sql).not.toMatch(/dest_type|dest_id\b/);
   });
 
-  it('has no post destination — a post is not one of the four kinds (ONE-83)', () => {
+  it('has no post destination here — a post became one later (post_destinations)', () => {
     expect(sql).not.toContain('dest_post_id');
   });
 
@@ -238,7 +238,7 @@ describe('the behavioural suite', () => {
     'nobody can record a scan of a paused tag',
     'an anonymous client cannot insert a tag',
     'a user cannot create a tag pointing at a profile they do not own',
-    'a post is not a Destination (ONE-83)',
+    'a post is a Destination',
     'a tag cannot be re-pointed at a profile its owner does not own',
     'a scanner cannot read the tag it scanned',
     'a tag owner reads no scan rows — never who scanned (ONE-82)',

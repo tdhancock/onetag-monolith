@@ -130,7 +130,19 @@ export const destinationTypeLabel = (destination: EmbeddedTagDestination): strin
       return 'Product';
     case 'project':
       return 'Project';
+    case 'post':
+      return 'Post';
   }
+};
+
+/**
+ * What a post is called where a tag points at it: its first line, cut short,
+ * or who posted it when it has no text.
+ */
+export const postDestinationName = (content: string | null | undefined, username: string): string => {
+  const line = (content ?? '').split('\n').map((l) => l.trim()).find(Boolean) ?? '';
+  if (!line) return username ? `Post by @${username}` : 'Post';
+  return line.length > 60 ? `${line.slice(0, 59).trimEnd()}…` : line;
 };
 
 /** What a screen reader announces for one tag: its destination's name and type. */

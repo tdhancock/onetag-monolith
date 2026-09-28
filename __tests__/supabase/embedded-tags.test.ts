@@ -73,7 +73,7 @@ describe('the embedded tags migration', () => {
     expect(sql).toContain('GRANT EXECUTE ON FUNCTION public.resolve_tag(TEXT) TO anon, authenticated;');
   });
 
-  it('adds no post destination — a post is not one of the four kinds (ONE-83)', () => {
+  it('adds no post destination here — a post became one later (post_destinations)', () => {
     expect(sql).not.toContain('dest_post_id');
   });
 });

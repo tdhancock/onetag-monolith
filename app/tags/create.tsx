@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useApp } from '../../store/AppContext.native';
-import { useCurrentProfile, useMyProfilesQuery } from '../../features/profiles';
+import { useCurrentProfile, useMyProfilesQuery, useProfilePostsQuery } from '../../features/profiles';
 import { useBusinessProductsQuery } from '../../features/products';
 import { useOwnedProjectsQuery } from '../../features/projects';
 import { useCreateTag, type OwnedTag } from '../../features/tags';
@@ -25,6 +25,7 @@ import {
   initialTagCreate,
   newTagFromDraft,
   nextStep,
+  postChoices,
   previousStep,
   stepIndex,
   stepProgressLabel,
@@ -69,23 +70,33 @@ export default function CreateTagScreen() {
   const createTag = useCreateTag();
 
   // What the account owns and so may point a tag at (ONE-89): its profiles,
-  // its business profile's products, and every project its profiles own.
+  // its business profile's products, every project its profiles own, and the
+  // posts of the profile it's acting as.
   const business = profiles?.find((profile) => profile.profileType === 'business');
   const individual = profiles?.find((profile) => profile.profileType !== 'business');
   const products = useBusinessProductsQuery(business?.id);
   const businessProjects = useOwnedProjectsQuery(business?.id);
   const individualProjects = useOwnedProjectsQuery(individual?.id);
+  const posts = useProfilePostsQuery(profileId);
   // A query with no profile to ask about never runs, so it is not waited on.
-  const loaded = Boolean(profiles) && !products.isLoading && !businessProjects.isLoading && !individualProjects.isLoading;
+  const loaded =
+    Boolean(profiles) &&
+    !products.isLoading &&
+    !businessProjects.isLoading &&
+    !individualProjects.isLoading &&
+    !posts.isLoading;
 
   // Only destinations the account owns: one RLS would refuse is never offered.
+  const wantedPost = param(params.kind) === 'post' ? param(params.destination) : undefined;
   const sections = useMemo(
     () =>
-      destinationSections(profiles ?? [], products.data ?? [], [
-        ...(businessProjects.data ?? []),
-        ...(individualProjects.data ?? []),
-      ]),
-    [profiles, products.data, businessProjects.data, individualProjects.data],
+      destinationSections(
+        profiles ?? [],
+        products.data ?? [],
+        [...(businessProjects.data ?? []), ...(individualProjects.data ?? [])],
+        postChoices(posts.data ?? [], wantedPost),
+      ),
+    [profiles, products.data, businessProjects.data, individualProjects.data, posts.data, wantedPost],
   );
 
   const [draft, setDraft] = useState<TagDraft>(EMPTY_TAG_DRAFT);

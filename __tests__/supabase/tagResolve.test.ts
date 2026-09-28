@@ -67,6 +67,13 @@ const profileTag: ResolveTagRow = {
 };
 const productTag: ResolveTagRow = { ...profileTag, dest_profile_id: null, dest_profile_username: null, dest_product_id: 'pd-1' };
 const projectTag: ResolveTagRow = { ...profileTag, dest_profile_id: null, dest_profile_username: null, dest_project_id: 'pj-1' };
+const postTag: ResolveTagRow = {
+  ...profileTag,
+  dest_profile_id: null,
+  dest_profile_username: null,
+  dest_post_id: 'po-1',
+  dest_post_username: 'jane',
+};
 
 const acme: ProfileRow = {
   username: 'acme',
@@ -342,6 +349,19 @@ describe('a live tag', () => {
     expect(page).toContain('<p class="label">Project</p>');
     expect(page).toContain('<p class="byline">by Jane Doe</p>');
     expect(metaContent(page, 'og:image')).toBe('https://cdn.example.test/kitchen.jpg');
+  });
+
+  it('names a post by who posted it, reading nothing a stranger may not see', async () => {
+    const { deps, source, background } = setup({ resolveTag: jest.fn(async () => postTag) });
+    const response = await handleRequest(request(`/t/${CODE}`), deps);
+    expect(response.status).toBe(200);
+    const page = await html(response);
+    expect(page).toContain('<h1>A post by @jane</h1>');
+    expect(page).toContain('<p class="label">Post</p>');
+    expect(page).toContain('href="onetag://t/ABC23XYZ">Open in OneTag</a>');
+    expect(source.readProfile).not.toHaveBeenCalled();
+    await Promise.all(background);
+    expect(source.recordScan).toHaveBeenCalledWith('tag-1');
   });
 
   it('stands an initial in for a missing avatar, and a handle for a missing name', async () => {

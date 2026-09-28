@@ -57,9 +57,12 @@ jest.mock('../../../store/AppContext.native', () => ({ useApp: () => ({ addToast
 
 const ANA = { id: 'p-ana', username: 'ana', name: 'Ana Reyes', profileType: 'individual', profilePicture: null };
 const STUDIO = { id: 'p-studio', username: 'ana_studio', name: 'Ana Studio', profileType: 'business', profilePicture: null };
+// The acting profile's posts, newest first; none unless a test says so.
+const mockPosts: { id: string; content: string; username: string; timestamp: string; media_type: 'text' | 'image'; media: string | null }[] = [];
 jest.mock('../../../features/profiles', () => ({
   useCurrentProfile: () => ({ profileId: 'p-studio', authUserId: 'auth-1' }),
   useMyProfilesQuery: () => ({ data: [ANA, STUDIO] }),
+  useProfilePostsQuery: () => ({ data: mockPosts, isLoading: false }),
 }));
 
 // What the account owns beyond its profiles (ONE-89): the business's products,
@@ -214,7 +217,7 @@ describe('the steps', () => {
     expect(containing(el, 'Embedded')).toBeUndefined();
   });
 
-  it("lists only the account's own profiles as destinations, and no posts", () => {
+  it("lists only the account's own profiles as destinations, with no posts section while it has none", () => {
     const el = mount();
     click(containing(el, 'Physical Tag'));
     click(byText(el, 'Continue'));
@@ -222,7 +225,7 @@ describe('the steps', () => {
     expect(el.textContent).toContain('Your profiles');
     const choices = buttons(el).filter((b) => b.getAttribute('aria-label')?.startsWith('Ana'));
     expect(choices.map((b) => b.getAttribute('aria-label'))).toEqual(['Ana Reyes', 'Ana Studio']);
-    expect(el.textContent).not.toMatch(/post/i);
+    expect(el.textContent).not.toContain('Your posts');
     expect(byText(el, 'Continue')!.disabled).toBe(true);
     click(byLabel(el, 'Ana Studio'));
     expect(byLabel(el, 'Ana Studio, selected')).not.toBeNull();
@@ -419,5 +422,57 @@ describe('leaving', () => {
     const el = mount();
     click(byText(el, 'Cancel'));
     expect(mockRouter.back).toHaveBeenCalled();
+  });
+});
+
+// ─── Posts as destinations (2026-09-28) ─────────────────────────────────
+
+describe('posts as destinations', () => {
+  beforeEach(() => {
+    mockPosts.length = 0;
+    mockPosts.push(
+      { id: 'po-new', content: 'The new kitchen\nmore', username: 'ana_studio', timestamp: new Date().toISOString(), media_type: 'image', media: 'k.jpg' },
+      ...Array.from({ length: 25 }, (_, i) => ({
+        id: `po-${i}`, content: `post ${i}`, username: 'ana_studio', timestamp: new Date().toISOString(), media_type: 'text' as const, media: null,
+      })),
+    );
+  });
+
+  afterAll(() => {
+    mockPosts.length = 0;
+  });
+
+  it('offers your newest posts, each by its first line', () => {
+    const el = mount();
+    click(containing(el, 'Digital Tag'));
+    click(byText(el, 'Continue'));
+    expect(el.textContent).toContain('Your posts');
+    expect(byLabel(el, 'The new kitchen')).not.toBeNull();
+    expect(byLabel(el, 'post 18')).not.toBeNull();
+    expect(byLabel(el, 'post 19')).toBeNull();
+  });
+
+  it("opens from a post's menu with that post chosen, however old", () => {
+    mockParams.current = { destination: 'po-24', kind: 'post' };
+    const el = mount();
+    click(containing(el, 'Physical Tag'));
+    click(byText(el, 'Continue'));
+    expect(byLabel(el, 'post 24, selected')).not.toBeNull();
+  });
+
+  it('points the tag at a post through dest_post_id alone', async () => {
+    const answer = deferInsert();
+    const el = mount();
+    click(containing(el, 'Digital Tag'));
+    click(byText(el, 'Continue'));
+    click(byLabel(el, 'The new kitchen'));
+    click(byText(el, 'Continue'));
+    click(byText(el, 'Continue'));
+    click(byText(el, 'Create tag'));
+    await act(async () => answer().resolve());
+
+    const inserted = mockInsert.mock.calls.at(-1)![0] as Record<string, unknown>;
+    expect(inserted.dest_post_id).toBe('po-new');
+    expect(Object.keys(inserted).filter((key) => key.startsWith('dest_'))).toEqual(['dest_post_id']);
   });
 });

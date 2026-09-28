@@ -74,9 +74,11 @@ SELECT throws_ok(
   $$INSERT INTO public.tags (owner_profile_id, tag_type) VALUES ((SELECT aa FROM ids), 'physical')$$,
   '23514', NULL, 'the destination check rejects zero destinations');
 
-SELECT hasnt_column(
+-- ONE-83 kept posts out; since 2026-09-28 a post is a Destination
+-- (post_destinations.test.sql).
+SELECT has_column(
   'public', 'tags', 'dest_post_id',
-  'a post is not a Destination (ONE-83)');
+  'a post is a Destination');
 
 SELECT throws_ok(
   $$INSERT INTO public.tags (owner_profile_id, tag_type, dest_profile_id, short_code)

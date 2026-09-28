@@ -4,6 +4,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
+import { useAuthStatus } from '../../features/auth';
 import { usePostQuery } from '../../features/posts';
 import { useCommentsQuery } from '../../features/comments';
 import PostCard from '../../components/native/PostCard';
@@ -13,6 +14,7 @@ import { EmptyState } from '../../components/native/ui';
 import { homeBackHeaderLeft } from '../../components/native/HomeBackButton';
 import { useBackOrHome } from '../../lib/useBackOrHome';
 import { commentsLinkLabel } from '../../lib/screens/postCard';
+import { onwardActionsFor } from '../../lib/screens/tagResolution';
 import { color, space, type } from '../../theme/tokens';
 
 /** How many comments post detail shows inline before "View all". */
@@ -23,6 +25,7 @@ export default function PostDetailScreen() {
   const router = useRouter();
   const { isUserBlocked } = useApp();
   const { profileId } = useCurrentProfile();
+  const auth = useAuthStatus();
 
   // The post is read from the cache entry the like, repost and save toggles
   // and the comment mutations patch (ONE-13, ONE-14). Holding it in local
@@ -59,6 +62,23 @@ export default function PostDetailScreen() {
       <SafeAreaView style={styles.screen} edges={['bottom']}>
         {header}
         <PostSkeleton />
+      </SafeAreaView>
+    );
+  }
+
+  // A post tag scanned by someone with no account lands here, and posts are
+  // for signed-in people: say so, with the way in, rather than that the post
+  // isn't there.
+  if (!post && auth === 'signed-out') {
+    const onward = onwardActionsFor(auth).primary;
+    return (
+      <SafeAreaView style={styles.screen} edges={['bottom']}>
+        {header}
+        <EmptyState
+          title="Join OneTag to see this post"
+          body="Posts on OneTag are for people with an account. It takes a minute."
+          action={{ label: onward.label, onPress: () => router.replace(onward.route as never) }}
+        />
       </SafeAreaView>
     );
   }

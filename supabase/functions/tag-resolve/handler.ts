@@ -140,6 +140,9 @@ export interface ResolveTagRow {
   dest_profile_username: string | null;
   dest_product_id: string | null;
   dest_project_id: string | null;
+  /** A post, and its author's handle: a stranger can't read the post itself. */
+  dest_post_id?: string | null;
+  dest_post_username?: string | null;
 }
 
 /** A name to show for a profile: the full name, or the handle. */
@@ -195,19 +198,21 @@ export interface TagSource {
 type DestinationRef =
   | { kind: 'profile'; id: string }
   | { kind: 'product'; id: string }
-  | { kind: 'project'; id: string };
+  | { kind: 'project'; id: string }
+  | { kind: 'post'; id: string; username: string | null };
 
 /** Where a live tag points, as the app's features/tags/api.ts reads it, or null. */
 const destinationOf = (row: ResolveTagRow): DestinationRef | null => {
   if (row.dest_profile_id) return row.dest_profile_username ? { kind: 'profile', id: row.dest_profile_id } : null;
   if (row.dest_product_id) return { kind: 'product', id: row.dest_product_id };
   if (row.dest_project_id) return { kind: 'project', id: row.dest_project_id };
+  if (row.dest_post_id) return { kind: 'post', id: row.dest_post_id, username: row.dest_post_username ?? null };
   return null;
 };
 
 /** A Destination as the page shows it. */
 export interface DestinationCard {
-  /** Business Profile, Individual Profile, Product or Project. */
+  /** Business Profile, Individual Profile, Product, Project or Post. */
   kindLabel: string;
   name: string;
   /** Whose it is: a profile's handle, or who lists the product or runs the project. */
@@ -268,8 +273,21 @@ export const projectCard = (project: ProjectRow): DestinationCard => {
   };
 };
 
+/**
+ * A post, by who posted it. Posts are for signed-in people, so a stranger
+ * can't read one, and the page names it from what resolve_tag returned.
+ */
+export const postCard = (username: string | null): DestinationCard => ({
+  kindLabel: 'Post',
+  name: username ? `A post by @${username}` : 'A post on OneTag',
+  byline: null,
+  image: null,
+});
+
 const readCard = async (ref: DestinationRef, source: TagSource): Promise<DestinationCard | null> => {
   switch (ref.kind) {
+    case 'post':
+      return postCard(ref.username);
     case 'profile': {
       const row = await source.readProfile(ref.id);
       return row ? profileCard(row) : null;
@@ -287,7 +305,8 @@ const readCard = async (ref: DestinationRef, source: TagSource): Promise<Destina
 
 /** Enough to point the way when a Destination's details couldn't be read. */
 const unreadCard = (ref: DestinationRef): DestinationCard => ({
-  kindLabel: ref.kind === 'profile' ? 'Profile' : ref.kind === 'product' ? 'Product' : 'Project',
+  kindLabel:
+    ref.kind === 'profile' ? 'Profile' : ref.kind === 'product' ? 'Product' : ref.kind === 'post' ? 'Post' : 'Project',
   name: 'Open this tag in OneTag',
   byline: null,
   image: null,

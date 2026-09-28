@@ -48,7 +48,8 @@ jest.mock('react-native-svg', () => {
   const leaf = (name: string) => () => React.createElement(name);
   return { __esModule: true, default: Svg, Svg, Path: leaf('path'), Circle: leaf('circle'), G: leaf('g'), Rect: leaf('rect') };
 });
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }) }));
+const mockRouterPush = jest.fn();
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockRouterPush, back: jest.fn() }) }));
 jest.mock('../../features/moderation', () => ({ reportPost: jest.fn() }));
 jest.mock('../../features/admin', () => ({ useIsAdmin: () => false }));
 jest.mock('../../features/auth', () => ({ useAuthUserId: () => undefined }));
@@ -310,6 +311,24 @@ describe('PostCard — options sheet', () => {
 
   // Editing a photo post is how its tags are added, moved or removed after
   // it's out (ONE-92); offered on text posts only, that screen was unreachable.
+  // A post is a Destination: its author can make a tag for it from here.
+  it('offers Create tag on your own post, opening the flow with the post chosen', () => {
+    mockRouterPush.mockClear();
+    const container = mount(basePost({ username: 'tanner' } as unknown as Partial<Post>));
+    act(() => button(container, 'Post options')!.click());
+    act(() => button(container, 'Create tag')!.click());
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/tags/create',
+      params: { kind: 'post', destination: 'post-1' },
+    });
+  });
+
+  it("offers no Create tag on someone else's post", () => {
+    const container = mount(basePost());
+    act(() => button(container, 'Post options')!.click());
+    expect(button(container, 'Create tag')).toBeNull();
+  });
+
   it('offers Edit on your own photo post, as on a text one', () => {
     const onEditPost = jest.fn();
     const container = mount(basePost({ username: 'tanner' } as unknown as Partial<Post>), { onEditPost });

@@ -7,6 +7,7 @@
 // profileBootstrap.ts. features/posts re-exports both, unchanged.
 
 import type { EmbeddedTag, EmbeddedTagDestination, Post } from '../types';
+import { postDestinationName } from '../lib/screens/embeddedTags';
 
 export const POST_SELECT_QUERY = `
     id,
@@ -35,9 +36,11 @@ export const POST_SELECT_QUERY = `
         dest_profile_id,
         dest_product_id,
         dest_project_id,
+        dest_post_id,
         dest_profile:profiles!dest_profile_id(id, username, full_name, avatar_url, profile_type),
         dest_product:products!dest_product_id(id, name, product_media(url, media_type, sort_order)),
-        dest_project:projects!dest_project_id(id, name, cover_url)
+        dest_project:projects!dest_project_id(id, name, cover_url),
+        dest_post:posts!dest_post_id(id, content, image_url, author:profiles!user_id(username))
     )
 `;
 
@@ -214,7 +217,19 @@ const embeddedDestination = (row: any): EmbeddedTagDestination | null => {
   if (row.dest_project_id && project) {
     return { kind: 'project', projectId: project.id, name: project.name, imageUrl: project.cover_url ?? null };
   }
-  // Gone, or a project made private since it was tagged: nothing to show.
+  const post = one<any>(row.dest_post);
+  if (row.dest_post_id && post) {
+    const username = one<any>(post.author)?.username ?? '';
+    return {
+      kind: 'post',
+      postId: post.id,
+      username,
+      name: postDestinationName(post.content, username),
+      imageUrl: post.image_url ?? null,
+    };
+  }
+  // Gone, or something the viewer can't see — a project made private since it
+  // was tagged, a post from an account they don't follow: nothing to show.
   return null;
 };
 

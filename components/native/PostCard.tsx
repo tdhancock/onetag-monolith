@@ -19,12 +19,14 @@ import {
   SendIcon,
   ReportIcon,
   PencilAltIcon,
+  TagIcon,
 } from './Icons';
 import { reportPost } from '../../features/moderation';
 import { useIsAdmin } from '../../features/admin';
 import { useAuthUserId } from '../../features/auth';
 import { POST_REPORT_REASONS } from '../../services/reportReasons';
 import { getTimeAgo } from '../../lib/timeAgo';
+import { tagCreateRoute } from '../../lib/screens/tags';
 import {
   actionLabels,
   commentsLinkLabel,
@@ -85,6 +87,7 @@ const PostHeader: React.FC<{
 }> = React.memo(({ post, isMyPost, timeAgo, onViewProfile, onDelete, onEditPost, isPreview }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const router = useRouter();
   const { addToast } = useApp();
   const { profileId, authUserId } = useCurrentProfile();
   const isAdmin = useIsAdmin(authUserId);
@@ -154,6 +157,19 @@ const PostHeader: React.FC<{
                   label="Edit Post"
                   icon={<PencilAltIcon color={color.text} size={20} />}
                   onPress={() => { setMenuVisible(false); onEditPost(); }}
+                />
+              )}
+              {/* A post is a Destination: its author can print it as a QR
+                  code or share it as a link. */}
+              {isMyPost && (
+                <SheetRow
+                  label="Create tag"
+                  hint="A QR code or a link that opens this post."
+                  icon={<TagIcon color={color.text} size={20} />}
+                  onPress={() => {
+                    setMenuVisible(false);
+                    router.push(tagCreateRoute({ kind: 'post', destination: post.id }));
+                  }}
                 />
               )}
               <SheetRow

@@ -210,6 +210,15 @@ describe('Post detail', () => {
     expect(mockBack).toHaveBeenCalled();
   });
 
+  it('asks someone signed out to join, rather than saying the post is gone, as a scanned post tag lands here', () => {
+    mockAuth.status = 'signed-out';
+    state.post.data = null;
+    const el = mount(<PostDetailScreen />);
+    expect(el.textContent).toContain('Join OneTag to see this post');
+    act(() => Array.from(el.querySelectorAll('button')).find(b => b.textContent === 'Join OneTag')!.click());
+    expect(mockReplace).toHaveBeenCalledWith('/(auth)/signup');
+  });
+
   it('leaves Back to the native header when there is a screen to go back to (ONE-90)', () => {
     const el = mount(<PostDetailScreen />);
     expect(button(el, 'Back')).toBeNull();

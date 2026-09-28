@@ -286,7 +286,12 @@ export default function EditPostScreen() {
         </FormScrollView>
       </KeyboardAvoider>
 
-      <TagDestinationPicker visible={pickingFor !== null} onPick={handlePickDestination} onClose={handleClosePicker} />
+      <TagDestinationPicker
+        visible={pickingFor !== null}
+        onPick={handlePickDestination}
+        onClose={handleClosePicker}
+        hostPostId={post?.id}
+      />
     </SafeAreaView>
   );
 }

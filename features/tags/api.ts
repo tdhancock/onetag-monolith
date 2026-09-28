@@ -4,9 +4,11 @@
 
 import { supabase } from '../../services/supabase.native';
 import { isValidShortCode } from '../../lib/tagLinks';
+import { postDestinationName } from '../../lib/screens/embeddedTags';
 import type { ProfileId } from '../../types';
 import type {
   DestinationNamedRow,
+  DestinationPostRow,
   DestinationProfileRow,
   NewTag,
   NewEmbeddedTag,
@@ -40,6 +42,8 @@ const destinationOf = (row: ResolveTagRow): TagDestination | null => {
   // A private project is routed like any other: its screen shows not-found to
   // anyone who may not see it, so nothing here special-cases it (ONE-41).
   if (row.dest_project_id) return { kind: 'project', projectId: row.dest_project_id };
+  // So is a post: its screen shows who may see it.
+  if (row.dest_post_id) return { kind: 'post', postId: row.dest_post_id };
   return null;
 };
 
@@ -98,10 +102,12 @@ export const recordScan = async (tagId: string, scannerProfileId: ProfileId | nu
  */
 export const TAG_SELECT =
   'id, owner_profile_id, tag_type, format, name, note, short_code, active, created_at, ' +
-  'dest_profile_id, dest_product_id, dest_project_id, host_post_id, ' +
+  'dest_profile_id, dest_product_id, dest_project_id, dest_post_id, host_post_id, ' +
   'dest_profile:profiles!dest_profile_id(id, username, full_name, profile_type), ' +
   'dest_product:products!dest_product_id(id, name), ' +
-  'dest_project:projects!dest_project_id(id, name)';
+  'dest_project:projects!dest_project_id(id, name), ' +
+  // Tags also sit on posts (host_post_id), so this names the column it follows.
+  'dest_post:posts!dest_post_id(id, content, author:profiles!user_id(username))';
 
 const one = <T>(embed: T | T[] | null | undefined): T | null =>
   Array.isArray(embed) ? embed[0] ?? null : embed ?? null;
@@ -121,6 +127,11 @@ const destinationFromRow = (row: TagRow): OwnedTagDestination | null => {
   if (row.dest_product_id && product) return { kind: 'product', productId: product.id, name: product.name };
   const project: DestinationNamedRow | null = one(row.dest_project);
   if (row.dest_project_id && project) return { kind: 'project', projectId: project.id, name: project.name };
+  const post: DestinationPostRow | null = one(row.dest_post);
+  if (row.dest_post_id && post) {
+    const username = one(post.author)?.username ?? '';
+    return { kind: 'post', postId: post.id, username, name: postDestinationName(post.content, username) };
+  }
   // A destination that is gone, or one the owner can no longer see.
   return null;
 };
@@ -171,6 +182,7 @@ const DESTINATION_COLUMN = {
   profile: 'dest_profile_id',
   product: 'dest_product_id',
   project: 'dest_project_id',
+  post: 'dest_post_id',
 } as const;
 
 /**
