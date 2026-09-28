@@ -307,4 +307,14 @@ describe('PostCard — options sheet', () => {
     expect(label.style.color).toBe(rgb(color.heart));
     expect(text(container)).toContain('Cancel');
   });
+
+  // Editing a photo post is how its tags are added, moved or removed after
+  // it's out (ONE-92); offered on text posts only, that screen was unreachable.
+  it('offers Edit on your own photo post, as on a text one', () => {
+    const onEditPost = jest.fn();
+    const container = mount(basePost({ username: 'tanner' } as unknown as Partial<Post>), { onEditPost });
+    act(() => button(container, 'Post options')!.click());
+    act(() => button(container, 'Edit Post')!.click());
+    expect(onEditPost).toHaveBeenCalledWith(expect.objectContaining({ id: 'post-1' }));
+  });
 });

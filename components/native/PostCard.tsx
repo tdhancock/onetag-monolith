@@ -147,7 +147,9 @@ const PostHeader: React.FC<{
         {!showReport ? (
           (isMyPost || isAdmin) ? (
             <>
-              {isMyPost && post.media_type === 'text' && onEditPost && (
+              {/* A photo post edits too: its caption, and its tags (ONE-92).
+                  Offered on text posts only, that screen was unreachable. */}
+              {isMyPost && onEditPost && (
                 <SheetRow
                   label="Edit Post"
                   icon={<PencilAltIcon color={color.text} size={20} />}
