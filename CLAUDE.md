@@ -28,12 +28,14 @@ store/AppContext.native    global UI state — no server data
 services/                  supabase client and the shared ground features reach: postRows,
                            notificationWrites, profileBootstrap, media/story upload, realtime
 supabase/migrations/       schema
-supabase/functions/        edge functions: delete-user-account, and tag-resolve (the tag host's web page)
+supabase/functions/        edge functions: delete-user-account, tag-resolve (the tag host's web page),
+                           and send-push (the database calls it to send push notifications)
 __tests__/                 Jest
 types.ts                   shared domain types (repo root)
 app.config.ts              app.json plus universal links for the tag host (repo root)
 public/.well-known/        the files the tag host serves so the OS opens the app for /t/*
 docs/deep-links.md         how tag links reach the app, and how to verify universal links
+docs/push-notifications.md how a notification becomes a push, and how to turn it on in production
 scripts/                   CI gates
 ```
 

@@ -120,8 +120,9 @@ function RootLayoutNav() {
         router.push(`/user/${data.username}`);
       } else if (data.type === 'follow_request') {
         router.push('/follow-requests');
-      } else if (data.type === 'message' && data.conversationId) {
-        router.push('/messages');
+      } else if (data.type === 'message') {
+        // send-push names the sender; the thread with them opens (ONE-103).
+        router.push(data.username ? `/messages?chatWith=${data.username}` : '/messages');
       } else if (data.postId) {
         router.push(`/post/${data.postId}`);
       } else {
