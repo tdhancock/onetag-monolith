@@ -11,7 +11,7 @@
 -- Account Y: auth id Y, individual profile YA (trigger).
 
 BEGIN;
-SELECT plan(24);
+SELECT plan(25);
 
 -- ─── Fixtures (as the database owner) ─────────────────────────────────
 
@@ -115,7 +115,7 @@ SELECT lives_ok(
     VALUES ('22222222-0000-0000-0000-00000000000b', '11111111-0000-0000-0000-00000000000a')$$,
   'Y can block account X');
 
-INSERT INTO public.posts (user_id, content) VALUES ((SELECT ya FROM ids), 'by YA');
+INSERT INTO public.posts (id, user_id, content) VALUES ('21000000-0000-0000-0000-0000000000a1', (SELECT ya FROM ids), 'by YA');
 
 -- ─── 6. A block holds when the sender acts through a fresh-id profile ─
 
@@ -129,10 +129,14 @@ SELECT throws_ok(
   $$INSERT INTO public.messages (sender_id, receiver_id, text) VALUES ((SELECT xb FROM ids), (SELECT ya FROM ids), 'blocked?')$$,
   '42501', NULL, 'a block rejects a message from the blocked account''s business profile');
 
+-- By id: since ONE-108 a block hides Y's posts from X, so X can't look it up.
 SELECT throws_ok(
   $$INSERT INTO public.comments (post_id, user_id, content)
-    VALUES ((SELECT id FROM public.posts WHERE content = 'by YA'), (SELECT xb FROM ids), 'blocked?')$$,
+    VALUES ('21000000-0000-0000-0000-0000000000a1', (SELECT xb FROM ids), 'blocked?')$$,
   '42501', NULL, 'a block rejects a comment from the blocked account');
+
+SELECT is((SELECT count(*)::int FROM public.posts WHERE id = '21000000-0000-0000-0000-0000000000a1'), 0,
+  'and hides the blocker''s post from every profile of the blocked account (ONE-108)');
 
 -- ─── 7. Account-scoped rows stay on the auth id ──────────────────────
 

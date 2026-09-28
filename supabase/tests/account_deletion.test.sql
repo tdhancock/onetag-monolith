@@ -9,13 +9,14 @@
 -- Everything runs in one transaction and rolls back.
 --
 -- Account X: individual XI (signup) and business XB. The account deleted.
---            XI has also reviewed a report, as an admin would.
+--            XI has also reviewed a report, as an admin would, and has
+--            liked and commented on XB's post.
 -- Account Y: individual YI, who follows, messages, tags, contributes and
 --            reports alongside X.
 -- Account Z: individual ZI, who receives a message from Y sharing XB.
 
 BEGIN;
-SELECT plan(23);
+SELECT plan(24);
 
 -- ─── Fixtures (as the database owner) ─────────────────────────────────
 
@@ -61,6 +62,10 @@ INSERT INTO public.comments (post_id, user_id, content) SELECT post_y, xb, 'XB o
 INSERT INTO public.comments (post_id, user_id, content) SELECT post_xi, yi, 'Y on XI' FROM ids;
 INSERT INTO public.comments (id, post_id, user_id, content) SELECT comment_y, post_y, yi, 'Y on Y' FROM ids;
 INSERT INTO public.comment_likes (comment_id, user_id) SELECT comment_y, xi FROM ids;
+-- One profile engaging with the other's post: both go in the one delete, and
+-- each of these moves the Explore totals of a post that is going too (ONE-104).
+INSERT INTO public.likes (post_id, user_id) SELECT post_xb, xi FROM ids;
+INSERT INTO public.comments (post_id, user_id, content) SELECT post_xb, xi, 'XI on XB' FROM ids;
 
 -- Follows, OneSnaps, notifications and messages.
 INSERT INTO public.follows (follower_id, followed_id) SELECT xi, yi FROM ids;
@@ -108,7 +113,8 @@ INSERT INTO public.blocks (blocker_id, blocked_id) SELECT z, x FROM ids;
 
 -- ─── What delete-user-account does: delete the auth user ──────────────
 
-DELETE FROM auth.users WHERE id = (SELECT x FROM ids);
+SELECT lives_ok($$DELETE FROM auth.users WHERE id = (SELECT x FROM ids)$$,
+  'the account deletes, though one of its profiles liked and commented on the other''s post');
 
 -- ─── Nothing either profile owned is left ─────────────────────────────
 

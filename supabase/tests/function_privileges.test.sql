@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(25);
+SELECT plan(49);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -73,6 +73,63 @@ SELECT ok(NOT has_function_privilege('anon', 'public.search_projects(text, text,
   'anon cannot execute search_projects() (ONE-48)');
 SELECT ok(NOT has_function_privilege('anon', 'public.embedded_tag_destination_owner(uuid, uuid, uuid)', 'EXECUTE'),
   'anon cannot execute embedded_tag_destination_owner() (ONE-93)');
+
+SELECT ok(NOT has_function_privilege('anon', 'public.approve_follow_request(uuid)', 'EXECUTE'),
+  'anon cannot execute approve_follow_request() (ONE-63)');
+SELECT ok(has_function_privilege('authenticated', 'public.approve_follow_request(uuid)', 'EXECUTE'),
+  'authenticated can execute approve_follow_request(): the owner approving a request');
+
+SELECT ok(NOT has_function_privilege('authenticated', 'public.rebuild_explore_scores()', 'EXECUTE'),
+  'authenticated cannot execute rebuild_explore_scores() (ONE-104)');
+SELECT ok(NOT has_function_privilege('anon', 'public.rebuild_explore_scores()', 'EXECUTE'),
+  'anon cannot execute rebuild_explore_scores() (ONE-104)');
+
+SELECT ok(NOT has_function_privilege('authenticated', 'public.request_push(text, uuid)', 'EXECUTE'),
+  'authenticated cannot execute request_push() (ONE-103)');
+SELECT ok(NOT has_function_privilege('anon', 'public.request_push(text, uuid)', 'EXECUTE'),
+  'anon cannot execute request_push() (ONE-103)');
+
+SELECT ok(NOT has_function_privilege('anon', 'public.feed_posts(uuid, timestamptz, text, integer, uuid)', 'EXECUTE'),
+  'anon cannot execute feed_posts() (ONE-106)');
+SELECT ok(NOT has_function_privilege('anon', 'public.reel_stories(uuid, timestamptz)', 'EXECUTE'),
+  'anon cannot execute reel_stories() (ONE-106)');
+SELECT ok(NOT has_function_privilege('anon', 'public.chat_list(uuid)', 'EXECUTE'),
+  'anon cannot execute chat_list() (ONE-110)');
+SELECT ok(NOT has_function_privilege('anon', 'public.blocked_profiles(uuid)', 'EXECUTE'),
+  'anon cannot execute blocked_profiles() (ONE-106)');
+SELECT ok(NOT has_function_privilege('anon', 'public.accounts_for_usernames(text[])', 'EXECUTE'),
+  'anon cannot execute accounts_for_usernames() (ONE-106)');
+SELECT ok(NOT has_function_privilege('anon', 'public.suggested_profiles(uuid, integer)', 'EXECUTE'),
+  'anon cannot execute suggested_profiles() (ONE-106)');
+
+SELECT ok(NOT has_function_privilege('anon', 'public.hidden_profile_ids()', 'EXECUTE'),
+  'anon cannot execute hidden_profile_ids() (ONE-108)');
+SELECT ok(NOT has_function_privilege('anon', 'public.post_hidden_by_block(uuid)', 'EXECUTE'),
+  'anon cannot execute post_hidden_by_block() (ONE-108)');
+SELECT ok(NOT has_function_privilege('anon', 'public.story_hidden_by_block(uuid)', 'EXECUTE'),
+  'anon cannot execute story_hidden_by_block() (ONE-108)');
+SELECT ok(NOT has_function_privilege('anon', 'public.comment_hidden_by_block(uuid)', 'EXECUTE'),
+  'anon cannot execute comment_hidden_by_block() (ONE-108)');
+
+SELECT ok(NOT has_function_privilege('authenticated', 'public.blocked_between(uuid, uuid)', 'EXECUTE'),
+  'authenticated cannot execute blocked_between() (ONE-107)');
+SELECT ok(NOT has_function_privilege('authenticated', 'public.notify(text, uuid, uuid, uuid, uuid, text)', 'EXECUTE'),
+  'authenticated cannot execute notify() (ONE-107)');
+SELECT ok(NOT has_function_privilege('authenticated', 'public.notify_mentions(text, uuid, uuid, uuid)', 'EXECUTE'),
+  'authenticated cannot execute notify_mentions() (ONE-107)');
+
+SELECT ok(NOT has_function_privilege('anon', 'public.messages_thread(uuid, uuid, timestamptz, uuid, integer)', 'EXECUTE'),
+  'anon cannot execute messages_thread() (ONE-110)');
+SELECT ok(NOT has_function_privilege('anon', 'public.following_usernames(uuid)', 'EXECUTE'),
+  'anon cannot execute following_usernames() (ONE-110)');
+SELECT ok(NOT has_function_privilege('anon', 'public.requested_usernames(uuid)', 'EXECUTE'),
+  'anon cannot execute requested_usernames() (ONE-110)');
+
+SELECT ok(NOT has_function_privilege('anon', 'public.register_push_token(text, text)', 'EXECUTE'),
+  'anon cannot execute register_push_token() (ONE-112)');
+
+SELECT ok(NOT has_function_privilege('anon', 'public.feed_candidates(uuid, timestamptz, uuid, text, integer)', 'EXECUTE'),
+  'anon cannot execute feed_candidates() (ONE-116)');
 
 SELECT * FROM finish();
 ROLLBACK;

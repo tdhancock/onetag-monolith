@@ -86,10 +86,20 @@ jest.mock('expo-router', () => {
 const mockApp = { addToast: jest.fn() };
 jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }));
 
-const mockSignOut = jest.fn(() => Promise.resolve());
+/** What happened, in order: the device's push token goes before the session. */
+const mockSignOutSteps: string[] = [];
+const mockSignOut = jest.fn(() => {
+  mockSignOutSteps.push('signOut');
+  return Promise.resolve();
+});
 jest.mock('../../services/supabase.native', () => ({
   supabase: { auth: { signOut: () => mockSignOut() }, functions: { invoke: jest.fn() } },
 }));
+const mockRemovePushToken = jest.fn(() => {
+  mockSignOutSteps.push('removePushToken');
+  return Promise.resolve();
+});
+jest.mock('../../services/notifications', () => ({ removePushToken: () => mockRemovePushToken() }));
 
 const mockEnsureProfile = jest.fn(() => Promise.resolve(false));
 jest.mock('../../services/profileBootstrap', () => ({ ensureCurrentUserProfile: () => mockEnsureProfile() }));
@@ -259,10 +269,12 @@ describe('Settings', () => {
     expect(title.style.color).toBe(rgb(color.heart));
   });
 
-  it('logs out from a full-width outline button', () => {
+  it('logs out from a full-width outline button, taking this device off the account\'s pushes first', async () => {
+    mockSignOutSteps.length = 0;
     const el = mount(<SettingsScreen />);
-    act(() => buttonWithText(el, 'Log out')!.click());
+    await act(async () => { buttonWithText(el, 'Log out')!.click(); });
     expect(mockSignOut).toHaveBeenCalled();
+    expect(mockSignOutSteps).toEqual(['removePushToken', 'signOut']);
   });
 
   it('ends with the version in a centred mono label', () => {
@@ -339,6 +351,14 @@ describe('Onboarding', () => {
     expect(error.style.color).toBe(rgb(color.heart));
     expect((error.parentElement as HTMLElement).style.backgroundColor).toBe(rgb(color.bgPanel));
     (console.error as jest.Mock).mockRestore();
+  });
+
+  it('signs out, taking this device off the account\'s pushes first (ONE-112)', async () => {
+    mockSignOutSteps.length = 0;
+    profileState.status = 'missing';
+    const el = mount(<OnboardingScreen />);
+    await act(async () => { buttonWithText(el, 'Sign out')!.click(); });
+    expect(mockSignOutSteps).toEqual(['removePushToken', 'signOut']);
   });
 });
 

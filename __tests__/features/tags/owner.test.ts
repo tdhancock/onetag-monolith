@@ -24,8 +24,11 @@ jest.mock('../../../services/supabase.native', () => ({
 import {
   activeAfterFlip,
   createTag,
+  createEmbeddedTags,
   deleteTag,
   fetchMyTags,
+  moveEmbeddedTag,
+  TagNotFoundError,
   mapTagRow,
   setTagActive,
   TAG_SELECT,
@@ -265,6 +268,45 @@ describe('updateTag, setTagActive and deleteTag', () => {
   ])('%s fails when RLS filtered the row out, rather than reporting success', async (_name, call) => {
     mockFrom.mockReturnValue(builder({ data: [], error: null }).chain);
     await expect(call()).rejects.toThrow('Tag not found.');
+  });
+
+  it('throws a TagNotFoundError, so a caller can tell gone from failed (ONE-92)', async () => {
+    mockFrom.mockReturnValue(builder({ data: [], error: null }).chain);
+    await expect(deleteTag('t1')).rejects.toBeInstanceOf(TagNotFoundError);
+  });
+});
+
+describe('createEmbeddedTags (ONE-92)', () => {
+  it('hands back the new ids, in the order given', async () => {
+    const insert = builder({ data: [{ id: 'a' }, { id: 'b' }], error: null });
+    mockFrom.mockReturnValue(insert.chain);
+    const ids = await createEmbeddedTags('post-1', asProfileId('p-me'), [
+      { destination: { kind: 'product', id: 'pd-1' }, xPct: 1, yPct: 2 },
+      { destination: { kind: 'profile', id: 'p-ana' }, xPct: 3, yPct: 4 },
+    ]);
+    expect(ids).toEqual(['a', 'b']);
+    expect(insert.calls.select).toEqual([['id']]);
+  });
+
+  it('writes nothing, and hands back nothing, for no tags', async () => {
+    mockFrom.mockClear();
+    await expect(createEmbeddedTags('post-1', asProfileId('p-me'), [])).resolves.toEqual([]);
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+});
+
+describe('moveEmbeddedTag (ONE-92)', () => {
+  it('writes the position only', async () => {
+    const update = builder({ data: [{ id: 't1' }], error: null });
+    mockFrom.mockReturnValue(update.chain);
+    await expect(moveEmbeddedTag('t1', 30, 40)).resolves.toBe(true);
+    expect(update.calls.update).toEqual([[{ tag_x_pct: 30, tag_y_pct: 40 }]]);
+    expect(update.calls.eq).toEqual([['id', 't1']]);
+  });
+
+  it('answers false for a tag that is gone', async () => {
+    mockFrom.mockReturnValue(builder({ data: [], error: null }).chain);
+    await expect(moveEmbeddedTag('t1', 30, 40)).resolves.toBe(false);
   });
 });
 

@@ -8,46 +8,47 @@
 // last timestamp, and that two sequences do not interfere.
 
 jest.mock('../../../services/supabase.native', () => ({
-  supabase: { from: jest.fn() },
+  supabase: { from: jest.fn(), rpc: jest.fn() },
 }));
 
-/** Records the chain a query built, so the test can assert on it. */
-type Call = { lt?: string; limit?: number; inIds?: string[]; eqs: [string, unknown][] };
+/**
+ * What one feed read asked for: the arguments `feed_posts` was called with,
+ * which picks the page (ONE-106), and the ids the posts were then read by.
+ */
+type Call = { args: Record<string, unknown>; pageIds?: string[]; order?: [string, boolean][] };
 
 let calls: Call[] = [];
+/** The page `feed_posts` picks: its post ids. */
+let pageResult: { data: { id: string }[] | null; error: unknown } = { data: [], error: null };
+/** The posts read by those ids. */
 let postsResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
-let followsResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { supabase } = require('../../../services/supabase.native');
 
-supabase.from.mockImplementation((table: string) => {
-  if (table === 'follows') {
-    return { select: () => ({ eq: () => Promise.resolve(followsResult) }) };
-  }
-
-  const call: Call = { eqs: [] };
+supabase.rpc.mockImplementation((fn: string, args: Record<string, unknown>) => {
+  if (fn !== 'feed_posts') throw new Error(`unexpected rpc ${fn}`);
+  const call: Call = { args };
   calls.push(call);
+  return { select: () => Promise.resolve(pageResult) };
+});
 
+supabase.from.mockImplementation((table: string) => {
+  if (table !== 'posts') throw new Error(`unexpected table ${table}`);
+  const call = calls[calls.length - 1]!;
   const chain = {
+    select: () => chain,
+    eq: () => chain,
     in: (_col: string, ids: string[]) => {
-      call.inIds = ids;
+      call.pageIds = ids;
       return chain;
     },
-    order: () => chain,
-    limit: (n: number) => {
-      call.limit = n;
-      return Object.assign(Promise.resolve(postsResult), chain);
+    order: (column: string, options: { ascending: boolean }) => {
+      (call.order ??= []).push([column, options.ascending]);
+      return chain;
     },
-    lt: (_col: string, cursor: string) => {
-      call.lt = cursor;
-      return Object.assign(Promise.resolve(postsResult), chain);
-    },
-    select: () => chain,
-    eq: (col: string, value: unknown) => {
-      call.eqs.push([col, value]);
-      return Object.assign(Promise.resolve(postsResult), chain);
-    },
+    then: (resolve: (value: unknown) => unknown, reject: (error: unknown) => unknown) =>
+      Promise.resolve(postsResult).then(resolve, reject),
   };
   return chain;
 });
@@ -77,63 +78,73 @@ const page = (n: number): Post[] =>
     mapPostData(row(`p-${i}`, new Date(BASE_MS - i * 60_000).toISOString())),
   );
 
+/** The cursor a full page ending on post p-19 hands the next. */
+const CURSOR = { createdAt: '2026-09-21T10:00:00Z', id: 'p-19' };
+
 beforeEach(() => {
   calls = [];
+  pageResult = { data: [{ id: 'p-0' }, { id: 'p-1' }], error: null };
   postsResult = { data: [], error: null };
-  followsResult = { data: [{ followed_id: 'friend-1' }], error: null };
 });
 
 // ─── 1. No module-level state ───────────────────────────────────────────
 
 describe('fetchFeedPage — paging is an argument', () => {
-  it('asks for no cursor on the first page', async () => {
+  it('asks for no cursor on the first page, and a page of FEED_PAGE_SIZE', async () => {
     await fetchFeedPage({ userId: 'me', pageParam: null });
-    expect(calls[0]!.lt).toBeUndefined();
-    expect(calls[0]!.limit).toBe(FEED_PAGE_SIZE);
+    expect(calls[0]!.args).toMatchObject({ p_viewer: 'me', p_before: null, p_before_id: null, p_limit: FEED_PAGE_SIZE });
   });
 
-  it('asks for posts older than the cursor on a later page', async () => {
-    await fetchFeedPage({ userId: 'me', pageParam: '2026-09-21T10:00:00Z' });
-    expect(calls[0]!.lt).toBe('2026-09-21T10:00:00Z');
+  it('asks for posts after the cursor\'s post on a later page, by time and id (ONE-113)', async () => {
+    await fetchFeedPage({ userId: 'me', pageParam: CURSOR });
+    expect(calls[0]!.args).toMatchObject({ p_before: '2026-09-21T10:00:00Z', p_before_id: 'p-19' });
   });
 
   it('two sequences do not interfere — the second starts from the top', async () => {
     // This is the whole ticket: the old module-level cursor meant a second
     // mount silently continued the first one's pagination.
     await fetchFeedPage({ userId: 'me', pageParam: null });
-    await fetchFeedPage({ userId: 'me', pageParam: '2026-09-21T10:00:00Z' });
+    await fetchFeedPage({ userId: 'me', pageParam: CURSOR });
     await fetchFeedPage({ userId: 'me', pageParam: null });
 
-    expect(calls.map((c) => c.lt)).toEqual([undefined, '2026-09-21T10:00:00Z', undefined]);
+    expect(calls.map((c) => c.args.p_before)).toEqual([null, '2026-09-21T10:00:00Z', null]);
   });
 
-  it('fetches the feed audience: everyone followed, plus the reader', async () => {
+  it('orders the page it reads as feed_posts chose it: by time, then id', async () => {
     await fetchFeedPage({ userId: 'me', pageParam: null });
-    expect(calls[0]!.inIds).toEqual(['friend-1', 'me']);
-  });
-
-  it('does not duplicate the reader when they somehow follow themselves', async () => {
-    followsResult = { data: [{ followed_id: 'me' }], error: null };
-    await fetchFeedPage({ userId: 'me', pageParam: null });
-    expect(calls[0]!.inIds).toEqual(['me']);
+    expect(calls[0]!.order).toEqual([['created_at', false], ['id', false]]);
   });
 });
 
-// ─── 2. Errors reach the query ──────────────────────────────────────────
+// ─── 2. The page is chosen in the database (ONE-106) ────────────────────
+
+describe('fetchFeedPage — no follow list in the URL (ONE-106)', () => {
+  it('sends the reader, not the people they follow', async () => {
+    await fetchFeedPage({ userId: 'me', pageParam: null });
+    expect(Object.keys(calls[0]!.args).sort()).toEqual(['p_before', 'p_before_id', 'p_interest', 'p_limit', 'p_viewer']);
+  });
+
+  it('reads the posts by the page\'s own ids, never more than a page', async () => {
+    await fetchFeedPage({ userId: 'me', pageParam: null });
+    expect(calls[0]!.pageIds).toEqual(['p-0', 'p-1']);
+  });
+
+  it('reads no posts when the page is empty', async () => {
+    pageResult = { data: [], error: null };
+    await expect(fetchFeedPage({ userId: 'me', pageParam: null })).resolves.toEqual([]);
+    expect(calls[0]!.pageIds).toBeUndefined();
+  });
+});
 
 describe('fetchFeedPage — the interest filter (ONE-49)', () => {
-  it('narrows the query itself, so a filtered page is still full-length', async () => {
-    calls = [];
+  it('narrows the page in the database, so a filtered page is still full-length', async () => {
     await fetchFeedPage({ userId: 'me', pageParam: null, interest: 'custom-homes' });
-    const call = calls[calls.length - 1];
-    expect(call.eqs).toContainEqual(['interest_slug', 'custom-homes']);
-    expect(call.limit).toBe(FEED_PAGE_SIZE);
+    expect(calls[0]!.args).toMatchObject({ p_interest: 'custom-homes', p_limit: FEED_PAGE_SIZE });
   });
 
   it('adds no filter for All, so untagged posts appear there', async () => {
-    calls = [];
     await fetchFeedPage({ userId: 'me', pageParam: null });
-    expect(calls[calls.length - 1].eqs.map(([col]) => col)).not.toContain('interest_slug');
+    expect(calls[0]!.args.p_interest).toBeNull();
   });
 });
 
@@ -145,8 +156,8 @@ describe('fetchFeedPage — errors', () => {
     await expect(fetchFeedPage({ userId: 'me', pageParam: null })).rejects.toBeDefined();
   });
 
-  it('propagates a follows failure too', async () => {
-    followsResult = { data: null, error: { message: 'nope' } };
+  it('propagates a failure choosing the page too', async () => {
+    pageResult = { data: null, error: { message: 'nope' } };
     await expect(fetchFeedPage({ userId: 'me', pageParam: null })).rejects.toBeDefined();
   });
 
@@ -165,17 +176,23 @@ describe('nextFeedCursor', () => {
     expect(nextFeedCursor([])).toBeUndefined();
   });
 
-  it('returns the last post timestamp on a full page', () => {
+  it('returns the last post, by its timestamp and id, on a full page', () => {
     const full = page(FEED_PAGE_SIZE);
-    expect(nextFeedCursor(full)).toBe(full[full.length - 1]!.timestamp);
+    const last = full[full.length - 1]!;
+    expect(nextFeedCursor(full)).toEqual({ createdAt: last.timestamp, id: last.id });
   });
 
-  it('hands back a cursor strictly older than the page it came from', () => {
+  it('hands back a cursor no older than the page it came from', () => {
     // Otherwise the next page would re-fetch the post it started from.
     const full = page(FEED_PAGE_SIZE);
     const cursor = nextFeedCursor(full)!;
-    expect(full.filter((p) => String(p.timestamp) < cursor)).toHaveLength(0);
-    expect(cursor).toBe(full.at(-1)!.timestamp);
+    expect(full.filter((p) => String(p.timestamp) < cursor.createdAt)).toHaveLength(0);
+  });
+
+  it('names the last post even when every post on the page shares its time (ONE-113)', () => {
+    // A timestamp alone can't say where in a tie the page ended; the id can.
+    const tied = Array.from({ length: FEED_PAGE_SIZE }, (_, i) => mapPostData(row(`p-${i}`, '2026-09-21T12:00:00Z')));
+    expect(nextFeedCursor(tied)).toEqual({ createdAt: '2026-09-21T12:00:00Z', id: `p-${FEED_PAGE_SIZE - 1}` });
   });
 });
 
@@ -236,5 +253,25 @@ describe('mapPostData', () => {
     const post = mapPostData({ id: 'p', created_at: 'now', image_url: '   ', profiles: {} });
     expect(post.media).toBeUndefined();
     expect(post.media_type).toBe('text');
+  });
+});
+
+// ─── 5. Counts come from the stored totals (ONE-109) ────────────────────
+
+describe('mapPostData — counts', () => {
+  it('reads likes, comments and reposts from the explore_scores embed', () => {
+    const post = mapPostData({ ...row('p-1', '2026-09-21T12:00:00Z'), likes: undefined, comments: undefined, reposts: undefined,
+      stats: { likes: 7, comments: 3, reposts: 1 } });
+    expect([post.likes, post.replies, post.reposts]).toEqual([7, 3, 1]);
+  });
+
+  it('accepts the embed as a one-element array too', () => {
+    const post = mapPostData({ ...row('p-1', '2026-09-21T12:00:00Z'), stats: [{ likes: 2, comments: 0, reposts: 5 }] });
+    expect([post.likes, post.replies, post.reposts]).toEqual([2, 0, 5]);
+  });
+
+  it('prefers the stored totals over counted rows when a row carries both', () => {
+    const post = mapPostData({ ...row('p-1', '2026-09-21T12:00:00Z'), stats: { likes: 9, comments: 9, reposts: 9 } });
+    expect(post.likes).toBe(9);
   });
 });

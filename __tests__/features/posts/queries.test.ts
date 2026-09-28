@@ -118,7 +118,8 @@ describe('useFeedQuery — paging', () => {
     expect(getNext(shortPage)).toBeUndefined();
 
     const fullPage = Array.from({ length: FEED_PAGE_SIZE }, (_, i) => post(`p${i}`));
-    expect(getNext(fullPage)).toBe(fullPage.at(-1)!.timestamp);
+    const last = fullPage.at(-1)!;
+    expect(getNext(fullPage)).toEqual({ createdAt: last.timestamp, id: last.id });
   });
 });
 

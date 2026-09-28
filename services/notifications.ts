@@ -1,7 +1,6 @@
 
 
 import * as Notifications from 'expo-notifications';
-import type { AuthUserId } from '../types';
 import * as Device from 'expo-device';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
@@ -84,21 +83,60 @@ export async function registerForPushNotifications(): Promise<string | null> {
   }
 }
 
+/** The token this device registered, so signing out removes exactly it. */
+let registeredToken: string | null = null;
+
+/** How long signing out waits for the device's token to be removed. */
+export const REMOVE_TOKEN_TIMEOUT_MS = 3000;
+
 /**
- * Register this device's push token for the account. Account-scoped: push
- * registration is per device per account, never per profile (ONE-21), and
- * `push_tokens.user_id` references auth.users.
+ * Register this device's push token for the signed-in account.
+ *
+ * Account-scoped: a device registers per account, never per profile (ONE-21).
+ * One row per device, keyed by the token, so each device an account is signed
+ * in on gets its pushes (ONE-112). `register_push_token` runs as the database
+ * because the row may still be another account's, left by one that signed
+ * out here while offline; registering moves it to this one.
  */
-export async function savePushToken(userId: AuthUserId, token: string): Promise<void> {
+export async function savePushToken(token: string): Promise<void> {
   try {
-    await supabase
-      .from('push_tokens')
-      .upsert(
-        { user_id: userId, token, platform: Platform.OS, updated_at: new Date().toISOString() },
-        { onConflict: 'user_id' },
-      );
+    const { error } = await supabase.rpc('register_push_token', { p_token: token, p_platform: Platform.OS });
+    if (error) throw error;
+    registeredToken = token;
   } catch (error) {
     console.error('Failed to save push token:', error);
+  }
+}
+
+/**
+ * Stop this device's pushes for the signed-in account. Call it before signing
+ * out, while the session can still delete the row, so a shared device stops
+ * showing the last account's pushes.
+ *
+ * Never throws, and waits at most REMOVE_TOKEN_TIMEOUT_MS, so signing out
+ * offline isn't held up. A row left behind moves to whichever account signs in
+ * here next.
+ */
+export async function removePushToken(): Promise<void> {
+  const token = registeredToken;
+  if (!token) return;
+  registeredToken = null;
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, REMOVE_TOKEN_TIMEOUT_MS);
+  });
+  const removal = (async () => {
+    const { error } = await supabase.from('push_tokens').delete().eq('token', token);
+    if (error) throw error;
+  })();
+
+  try {
+    await Promise.race([removal, timeout]);
+  } catch (error) {
+    console.error('Failed to remove push token:', error);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

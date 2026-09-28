@@ -36,12 +36,12 @@ it('asks for public projects only when the tag picker does (ONE-93)', async () =
 
 it('maps each row onto its result shape', async () => {
   mockRpc
-    .mockResolvedValueOnce({ data: [{ id: 'p', username: 'ana', full_name: null, avatar_url: null, is_verified: true, profile_type: 'business' }], error: null })
+    .mockResolvedValueOnce({ data: [{ id: 'p', username: 'ana', full_name: null, avatar_url: null, is_verified: true, profile_type: 'business', is_private: true }], error: null })
     .mockResolvedValueOnce({ data: [{ id: 'po', content: 'hi', image_url: null, media_type: 'image', author_username: 'ana', author_avatar_url: 'a.jpg' }], error: null })
     .mockResolvedValueOnce({ data: [{ id: 'pd', name: 'Lamp', category: null, image_url: 'l.jpg', business_username: 'oak', business_name: 'Oak Co' }], error: null })
     .mockResolvedValueOnce({ data: [{ id: 'pj', name: 'Loft', project_type: 'Interior', cover_url: null, owner_username: 'ana' }], error: null });
 
-  expect(await searchProfiles('a')).toEqual([{ id: 'p', username: 'ana', name: 'ana', avatarUrl: null, isVerified: true, profileType: 'business' }]);
+  expect(await searchProfiles('a')).toEqual([{ id: 'p', username: 'ana', name: 'ana', avatarUrl: null, isVerified: true, profileType: 'business', isPrivate: true }]);
   expect(await searchPosts('a')).toEqual([{ id: 'po', content: 'hi', imageUrl: null, mediaType: 'text', authorUsername: 'ana', authorAvatarUrl: 'a.jpg' }]);
   expect(await searchProducts('a')).toEqual([{ id: 'pd', name: 'Lamp', category: null, imageUrl: 'l.jpg', businessUsername: 'oak', businessName: 'Oak Co' }]);
   expect(await searchProjects('a')).toEqual([{ id: 'pj', name: 'Loft', category: 'Interior', coverUrl: null, ownerUsername: 'ana' }]);

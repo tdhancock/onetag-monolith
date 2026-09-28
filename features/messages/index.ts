@@ -6,6 +6,8 @@
 export {
   getChatListUsers,
   fetchThread,
+  fetchOlderMessages,
+  THREAD_PAGE_SIZE,
   fetchMessageById,
   fetchUnreadSenderIds,
   sendMessage,
@@ -29,6 +31,7 @@ export {
   useMarkChatRead,
   useMarkAllMessagesRead,
   useDeleteConversation,
+  useOlderMessages,
 } from './mutations';
 
 export { useMessagesRealtime } from './realtime';

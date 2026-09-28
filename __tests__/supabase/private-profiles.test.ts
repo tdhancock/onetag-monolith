@@ -14,6 +14,11 @@
 // same update on the owner's row changed 0 rows and a count of the owner's
 // posts returned 0; as an existing follower it returned 1; after the owner
 // switched back to public the stranger's count returned 1.
+//
+// ONE-63 changed what going private means for newcomers: they ask, and the
+// owner approves. The request flow itself is pinned by pgTAP
+// (supabase/tests/follow_requests.test.sql); this suite pins the gate that
+// makes it necessary and the copy that says so.
 
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
@@ -21,7 +26,7 @@ import { join } from 'path';
 jest.mock('../../services/supabase.native', () => ({ supabase: {} }));
 
 import { mapProfileUpdatesToRow } from '../../features/profiles/api';
-import { isProfileLocked, PRIVATE_ACCOUNT_DESCRIPTION } from '../../lib/screens/profile';
+import { isProfileLocked, lockedProfileBody, PRIVATE_ACCOUNT_DESCRIPTION } from '../../lib/screens/profile';
 
 const MIGRATIONS = join(__dirname, '..', '..', 'supabase', 'migrations');
 
@@ -92,5 +97,33 @@ describe('the locked profile state', () => {
 
   it('tells the user that existing followers keep access', () => {
     expect(PRIVATE_ACCOUNT_DESCRIPTION).toMatch(/already follow you keep access/);
+  });
+
+  it('tells the user that new followers are approved (ONE-63)', () => {
+    expect(PRIVATE_ACCOUNT_DESCRIPTION).toMatch(/followers you approve/);
+  });
+
+  it('invites a request, and says when one is waiting (ONE-63)', () => {
+    expect(lockedProfileBody('ana', false)).toBe('Ask to follow @ana to see their posts.');
+    expect(lockedProfileBody('ana', true)).toMatch(/You asked to follow @ana\..*once they approve/);
+  });
+});
+
+describe('the follows insert gate (ONE-63)', () => {
+  const sql = flat(migration('_follow_requests.sql'));
+  const policy = sql.slice(sql.indexOf('CREATE POLICY "Users can follow as themselves" ON public.follows'));
+
+  it('refuses a direct follow of a private profile, unless the account owns it', () => {
+    expect(policy).toContain(
+      'NOT EXISTS ( SELECT 1 FROM public.profiles p WHERE p.id = followed_id AND p.is_private ) OR (SELECT public.owns_profile(followed_id))',
+    );
+  });
+
+  it('still requires following as yourself', () => {
+    expect(policy).toContain('WITH CHECK ( (SELECT public.owns_profile(follower_id))');
+  });
+
+  it('replaces the old policy rather than adding beside it, which would OR them together', () => {
+    expect(sql).toContain('DROP POLICY "Users can follow as themselves" ON public.follows;');
   });
 });

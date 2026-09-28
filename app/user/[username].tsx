@@ -17,6 +17,7 @@ import { getUserProfile } from '../../features/profiles';
 import { setUserVerified, useIsAdmin } from '../../features/admin';
 import { useAuthUserId } from '../../features/auth';
 import { reportUser } from '../../features/moderation';
+import { useBlockedByQuery } from '../../features/blocks';
 import { REPORT_REASONS } from '../../services/reportReasons';
 import ProfileHeader, { ProfileHeaderSkeleton } from '../../components/native/ProfileHeader';
 import ProfileTabs from '../../components/native/ProfileTabs';
@@ -26,7 +27,7 @@ import { Button, EmptyState, IconButton, Sheet, SheetRow } from '../../component
 import { homeBackHeaderLeft } from '../../components/native/HomeBackButton';
 import { useBackOrHome } from '../../lib/useBackOrHome';
 import { BlockIcon, LockClosedIcon, DotsHorizontalIcon, ReportIcon, VerifiedIcon } from '../../components/native/Icons';
-import { isProfileLocked, profileTabsFor, type ProfileTab } from '../../lib/screens/profile';
+import { followButton, isProfileLocked, lockedProfileBody, profileTabsFor, type ProfileTab } from '../../lib/screens/profile';
 import { color } from '../../theme/tokens';
 import type { UserProfile as UserProfileType } from '../../types';
 
@@ -50,7 +51,7 @@ export default function UserProfileScreen() {
   // Follow state and the counts are queries (ONE-15): the button and the
   // follower number move together the moment it is tapped, and revert
   // together if the server refuses.
-  const { isFollowing: isUserFollowing } = useFollowState(profileId);
+  const { isFollowing: isUserFollowing, isRequested: isUserRequested } = useFollowState(profileId);
   const follow = useToggleFollow(profileId);
 
   const [profile, setProfile] = useState<UserProfileType | null>(null);
@@ -65,8 +66,13 @@ export default function UserProfileScreen() {
   // A count for the header, never the posts: the first tab may not be them.
   const { data: postCount } = useProfilePostCountQuery(profile?.id || undefined);
   const isFollowing = isUserFollowing(username || '');
+  const isRequested = isUserRequested(username || '');
+  const followLabel = followButton(isFollowing, isRequested);
   const isBlocked = isUserBlocked(username || '');
   const isMyProfile = myProfile?.username === username;
+  // Whether they blocked you (ONE-108): then nothing of theirs shows, as the
+  // block sheet promises them. The server hides their posts either way.
+  const { data: blockedByThem } = useBlockedByQuery(isMyProfile ? undefined : profile?.id || undefined);
 
   // A private profile the viewer does not follow comes back from the server
   // with no posts — RLS hides them. Say why, rather than "No posts yet"
@@ -124,16 +130,20 @@ export default function UserProfileScreen() {
     enabled: Boolean(profile?.id),
   });
 
-  // What the header shows, re-read on pull to refresh: the profile and its
-  // counts. The open tab re-reads its own list.
+  // What the header shows, re-read on pull to refresh: the profile, its
+  // counts, and the viewer's follow state — an approved request becomes a
+  // follow on the server, and this is how the requester finds out. The open
+  // tab re-reads its own list.
   const refreshHeader = useCallback(
     () =>
       Promise.all([
         fetchData(),
+        profileId ? queryClient.invalidateQueries({ queryKey: profileKeys.followingUsernames(profileId) }) : undefined,
+        profileId ? queryClient.invalidateQueries({ queryKey: profileKeys.requestedUsernames(profileId) }) : undefined,
         profile ? queryClient.invalidateQueries({ queryKey: profileKeys.counts(profile.id) }) : undefined,
         profile ? queryClient.invalidateQueries({ queryKey: profileKeys.postCount(profile.id) }) : undefined,
       ]),
-    [fetchData, profile, queryClient],
+    [fetchData, profile, profileId, queryClient],
   );
 
   const onRefresh = useCallback(async () => {
@@ -144,8 +154,8 @@ export default function UserProfileScreen() {
 
   const handleToggleFollow = useCallback(() => {
     if (!username || !profile?.id || isMyProfile) return;
-    follow.toggle({ userId: profile.id, username });
-  }, [username, profile?.id, isMyProfile, follow]);
+    follow.toggle({ userId: profile.id, username, isPrivate: Boolean(profile.isPrivate) });
+  }, [username, profile?.id, profile?.isPrivate, isMyProfile, follow]);
 
   const handleBlockToggle = () => {
     setMenuVisible(false);
@@ -238,6 +248,15 @@ export default function UserProfileScreen() {
     );
   }
 
+  if (blockedByThem) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['bottom']}>
+        <Stack.Screen options={{ headerShown: true, title: `@${username}`, headerLeft }} />
+        <EmptyState title="This account isn't available" action={{ label: 'Back', onPress: back.goBack }} />
+      </SafeAreaView>
+    );
+  }
+
   const actions = isMyProfile ? null : isBlocked ? (
     <Button variant="outline" size="sm" fullWidth onPress={handleBlockToggle}>
       Unblock
@@ -245,13 +264,13 @@ export default function UserProfileScreen() {
   ) : (
     <>
       <Button
-        variant={isFollowing ? 'outline' : 'primary'}
+        variant={followLabel.variant}
         size="sm"
         onPress={handleToggleFollow}
         disabled={follow.isPending}
         style={styles.action}
       >
-        {isFollowing ? 'Following' : 'Follow'}
+        {followLabel.label}
       </Button>
       <Button
         variant="outline"
@@ -293,7 +312,7 @@ export default function UserProfileScreen() {
         <EmptyState
           icon={<LockClosedIcon color={color.textMuted} size={40} strokeWidth={1.6} />}
           title="This account is private"
-          body={`Follow @${username} to see their posts.`}
+          body={lockedProfileBody(username ?? '', isRequested)}
         />
       ) : (
         <ProfileTabs tabs={tabs} selected={tab} onSelect={setSelectedTab} />

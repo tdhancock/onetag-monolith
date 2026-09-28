@@ -389,6 +389,11 @@ deno_version = 2
 [functions.tag-resolve]
 verify_jwt = false
 
+# Push notifications (ONE-103). The database calls it through pg_net with a
+# shared secret, never the app with a JWT. See its index.ts.
+[functions.send-push]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

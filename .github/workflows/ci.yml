@@ -39,18 +39,30 @@ jobs:
         run: sh scripts/check-no-raw-hex.sh
 
   migrations:
+    # The name is kept so an existing required check still matches it. The
+    # job also runs the pgTAP suite (ONE-111) and the API checks (ONE-114).
     name: Migrations apply from scratch
     runs-on: ubuntu-latest
-    # Only when schema changed. Spinning up Postgres for a CSS change is waste.
+    # Only when the schema, the data layer or their checks changed. Spinning
+    # up Supabase for a CSS change is waste.
     if: github.event_name == 'pull_request'
     steps:
+      # A pull request checks out GitHub's merge commit. Two levels bring its
+      # parents, so the PR's own changes are a diff against the first parent,
+      # the base branch.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
-      - name: Detect migration changes
+      - name: Detect schema and data-layer changes
         id: changed
         run: |
-          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
-          if git diff --name-only "origin/${{ github.base_ref }}"...HEAD | grep -q '^supabase/migrations/'; then
+          # The diff runs on its own, so a failure fails the job rather than
+          # reading as "nothing changed". A three-dot diff in a shallow clone
+          # found no merge base and did exactly that on every PR, so no step
+          # below had ever run (found in ONE-114).
+          changed="$(git diff --name-only HEAD^1 HEAD)"
+          if printf '%s\n' "$changed" | grep -qE '^(supabase/|features/|services/|__tests__/api/|jest\.api\.config\.js$)'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
@@ -61,13 +73,44 @@ jobs:
         with:
           version: latest
 
-      # Applies every migration to a throwaway local Postgres, in order, from
+      # Applies every migration to a throwaway local stack, in order, from
       # nothing. Catches the failure mode that matters most: a migration that
       # works against the current production schema but not from a clean slate.
-      - name: Apply migrations to a clean database
+      # Only the API the app talks to starts with it: the gateway, auth and
+      # PostgREST.
+      - name: Apply migrations to a clean local stack
         if: steps.changed.outputs.run == 'true'
-        run: supabase db start
+        run: supabase start -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
 
       - name: Show migration status
         if: steps.changed.outputs.run == 'true'
         run: supabase migration list --local
+
+      # Every RLS rule, function privilege and trigger the schema promises is
+      # pinned in supabase/tests. Until ONE-111 nothing ran them in CI, so a
+      # change that opened a table to anon merged green.
+      - name: Run the pgTAP suite
+        if: steps.changed.outputs.run == 'true'
+        run: supabase test db
+
+      - uses: actions/setup-node@v4
+        if: steps.changed.outputs.run == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        if: steps.changed.outputs.run == 'true'
+        run: npm ci
+
+      # The app's own data layer against that stack, as signed-in throwaway
+      # accounts: select strings, the URL limit, the row cap and permissions,
+      # which neither pgTAP nor the mocked Jest suites can see (ONE-114).
+      - name: Run the API checks
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          eval "$(supabase status -o env | sed -n \
+            -e 's/^API_URL=/export SUPABASE_URL=/p' \
+            -e 's/^ANON_KEY=/export SUPABASE_ANON_KEY=/p' \
+            -e 's/^SERVICE_ROLE_KEY=/export SUPABASE_SERVICE_ROLE_KEY=/p')"
+          npm run check:api -- --ci

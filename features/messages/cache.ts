@@ -40,6 +40,19 @@ export const appendToThread = (thread: Message[], message: Message): Message[] =
 };
 
 /**
+ * Put an older page at the top of a thread (ONE-110).
+ *
+ * A message already in the thread is skipped: the page was read before a
+ * refetch or a realtime insert brought it in. Replies are linked afresh,
+ * since the message a reply answers may have just arrived.
+ */
+export const prependToThread = (thread: Message[], older: Message[]): Message[] => {
+  const have = new Set(thread.map((m) => m.id));
+  const combined = [...older.filter((m) => !have.has(m.id)), ...thread];
+  return combined.map((m) => withReply(combined, m));
+};
+
+/**
  * Swap the optimistic row for the server's, where the optimistic row sits.
  *
  * Replacing in place is what keeps the message from jumping when the server's

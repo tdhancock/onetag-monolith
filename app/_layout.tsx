@@ -87,13 +87,14 @@ function RootLayoutNav() {
 
   // Push notifications registration
   // Account-scoped: a device registers for the account, never for one of its
-  // profiles (ONE-21), so this keys on the auth user id.
+  // profiles (ONE-21), so this keys on the auth user id. The session says
+  // which account; the token says which device (ONE-112).
   useEffect(() => {
     if (!authUserId) return;
 
     registerForPushNotifications().then(async (token) => {
       if (token) {
-        await savePushToken(authUserId, token);
+        await savePushToken(token);
       }
     });
 
@@ -118,8 +119,11 @@ function RootLayoutNav() {
 
       if (data.type === 'follow' && data.username) {
         router.push(`/user/${data.username}`);
-      } else if (data.type === 'message' && data.conversationId) {
-        router.push('/messages');
+      } else if (data.type === 'follow_request') {
+        router.push('/follow-requests');
+      } else if (data.type === 'message') {
+        // send-push names the sender; the thread with them opens (ONE-103).
+        router.push(data.username ? `/messages?chatWith=${data.username}` : '/messages');
       } else if (data.postId) {
         router.push(`/post/${data.postId}`);
       } else {

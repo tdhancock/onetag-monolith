@@ -6,7 +6,6 @@
 // second mount starts from the top without anyone having to reset anything.
 
 import { supabase } from '../../services/supabase.native';
-import { notifyPostAuthor, notifyMentionedUsers } from '../../services/notificationWrites';
 import { ensureProfileRowForUser } from '../../services/profileBootstrap';
 import {
   MediaUploadError,
@@ -30,24 +29,13 @@ export const FEED_PAGE_SIZE = 20;
 /** Restrict the viewer-scoped embeds to one profile's rows (services/postRows.ts). */
 const scopeToViewer = scopePostsToViewer;
 
-/** The author ids whose posts make up a user's feed: everyone they follow, plus themselves. */
-export const getFeedUserIds = async (userId: string): Promise<string[]> => {
-  const { data: followingData, error: followingError } = await supabase
-    .from('follows')
-    .select('followed_id')
-    .eq('follower_id', userId);
-
-  if (followingError) throw followingError;
-
-  const followingIds = (followingData || []).map((f: { followed_id: string }) => f.followed_id);
-  return Array.from(new Set([...followingIds, userId]));
-};
-
 /**
- * A cursor into the feed: the `created_at` of the last post on the previous
- * page. `null` means "start from the top".
+ * A cursor into the feed: the last post on the previous page, by its
+ * `created_at` and id. Posts sharing a timestamp are ordered by id, so the
+ * next page starts right after that post and none is skipped (ONE-113).
+ * `null` means "start from the top".
  */
-export type FeedCursor = string | null;
+export type FeedCursor = { createdAt: string; id: string } | null;
 
 export interface FetchFeedPageArgs {
   userId: string;
@@ -62,41 +50,49 @@ export interface FetchFeedPageArgs {
  * Paging is by cursor rather than offset: a post published while the reader
  * is scrolling shifts every offset by one and would make them see a
  * duplicate at the page boundary. Comparing against the previous page's last
- * `created_at` is stable under inserts.
+ * post, by `created_at` then id, is stable under inserts and under ties.
  *
  * Throws on failure. The caller is a query with retry and error state
  * configured on the client, so swallowing the error here would take both
  * away and make an outage indistinguishable from an empty feed.
+ *
+ * Two steps. `feed_posts` chooses the page — the reader's posts and those of
+ * everyone they follow — and hands back its ids. It used to fetch the follow
+ * list and send it back as `.in('user_id', …)`, which put every id in the URL
+ * and broke at about 200 follows (ONE-106); a page's ids are at most
+ * FEED_PAGE_SIZE. Then the page is read from the table as every post list is,
+ * scoped to the reader. It isn't read through the function itself: PostgREST
+ * 14 fails the viewer-scoped embeds on a function's result.
+ *
+ * The interest narrows the page in the database, never a fetched page, so a
+ * filtered page is still full-length (ONE-49).
  */
 export const fetchFeedPage = async ({
   userId,
   pageParam,
   interest = null,
 }: FetchFeedPageArgs): Promise<Post[]> => {
-  const userIdsToFetch = await getFeedUserIds(userId);
+  const { data: page, error: pageError } = await supabase
+    .rpc('feed_posts', {
+      p_viewer: userId,
+      p_before: pageParam?.createdAt ?? null,
+      p_before_id: pageParam?.id ?? null,
+      p_interest: interest || null,
+      p_limit: FEED_PAGE_SIZE,
+    })
+    .select('id');
 
-  let query = scopeToViewer(
-    supabase
-      .from('posts')
-      .select(POST_SELECT_QUERY),
+  if (pageError) throw pageError;
+  const ids = ((page || []) as { id: string }[]).map((row) => row.id);
+  if (ids.length === 0) return [];
+
+  const { data, error } = await scopeToViewer(
+    supabase.from('posts').select(POST_SELECT_QUERY),
     userId,
   )
-    .in('user_id', userIdsToFetch)
+    .in('id', ids)
     .order('created_at', { ascending: false })
-    .limit(FEED_PAGE_SIZE);
-
-  if (pageParam) {
-    query = query.lt('created_at', pageParam);
-  }
-
-  // Narrowed in the query, never by filtering a fetched page: a page cut
-  // down on the client comes back short, or empty (ONE-49). Untagged posts
-  // have no interest, so they appear under All only.
-  if (interest) {
-    query = query.eq('interest_slug', interest);
-  }
-
-  const { data, error } = await query;
+    .order('id', { ascending: false });
 
   if (error) throw error;
   return (data || []).map(mapPostData);
@@ -108,9 +104,10 @@ export const fetchFeedPage = async ({
  * A short page means the end of the feed. Exported so the rule is testable
  * without standing up a query.
  */
-export const nextFeedCursor = (page: Post[]): string | undefined => {
+export const nextFeedCursor = (page: Post[]): FeedCursor | undefined => {
   if (page.length < FEED_PAGE_SIZE) return undefined;
-  return page[page.length - 1]?.timestamp ?? undefined;
+  const last = page[page.length - 1];
+  return last?.timestamp ? { createdAt: last.timestamp, id: last.id } : undefined;
 };
 
 /**
@@ -191,19 +188,16 @@ const toggleJoinRow = async (
   return true;
 };
 
-/** Like or unlike a post as `userId`. Notifies the author on a new like. */
-export const toggleLike = async (postId: string, userId: string): Promise<boolean> => {
-  const isOn = await toggleJoinRow('likes', postId, userId);
-  if (isOn) await notifyPostAuthor(postId, userId, 'like');
-  return isOn;
-};
+/**
+ * Like or unlike a post as `userId`. The author's notification is written by
+ * the database from the like itself (ONE-107).
+ */
+export const toggleLike = (postId: string, userId: string): Promise<boolean> =>
+  toggleJoinRow('likes', postId, userId);
 
-/** Repost or un-repost a post as `userId`. Notifies the author on a new repost. */
-export const toggleRepost = async (postId: string, userId: string): Promise<boolean> => {
-  const isOn = await toggleJoinRow('reposts', postId, userId);
-  if (isOn) await notifyPostAuthor(postId, userId, 'repost');
-  return isOn;
-};
+/** Repost or un-repost a post as `userId`. The database notifies the author (ONE-107). */
+export const toggleRepost = (postId: string, userId: string): Promise<boolean> =>
+  toggleJoinRow('reposts', postId, userId);
 
 // ---------------------------------------------------------------------------
 // Publishing, editing and deleting
@@ -285,11 +279,8 @@ export const publishPost = async (post: Post, authorId: ProfileId): Promise<Post
         if (fetchError) throw fetchError;
         if (!data) throw new Error("Could not retrieve post after creation.");
 
-        // Handle mentions after post is successfully created
-        if (content.trim().length > 0) {
-            await notifyMentionedUsers(content, authorId, data.id, null);
-        }
-        
+        // Anyone the text @mentions is notified by the database, from the post
+        // itself (ONE-107).
         return mapPostData(data);
 
     } catch (err) {

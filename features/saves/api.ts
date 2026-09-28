@@ -46,16 +46,36 @@ export const mapSaveRow = (row: SaveRow): Save | null => {
   };
 };
 
-/** Every save a profile has made, newest first. */
-export const fetchSaves = async (profileId: string): Promise<Save[]> => {
-  const { data, error } = await supabase
-    .from('saves')
-    .select(SAVE_SELECT)
-    .eq('profile_id', profileId)
-    .order('saved_at', { ascending: false });
+/** How many saves one request asks for — the API's own cap, `max_rows`. */
+export const SAVES_PER_REQUEST = 1000;
 
-  if (error) throw error;
-  return ((data ?? []) as SaveRow[]).map(mapSaveRow).filter((save): save is Save => save !== null);
+/**
+ * Every save a profile has made, newest first.
+ *
+ * Read a page at a time until the count is reached: one read stopped at the
+ * API's 1,000 rows, and the oldest saves past that disappeared (ONE-110).
+ * Counting, rather than stopping at a short page, holds whatever `max_rows`
+ * is set to. A save made mid-read can shift a row onto the next page, so
+ * rows are kept once each.
+ */
+export const fetchSaves = async (profileId: string): Promise<Save[]> => {
+  const rows = new Map<string, SaveRow>();
+  for (let from = 0; ; ) {
+    const { data, error, count } = await supabase
+      .from('saves')
+      .select(SAVE_SELECT, { count: 'exact' })
+      .eq('profile_id', profileId)
+      .order('saved_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, from + SAVES_PER_REQUEST - 1);
+
+    if (error) throw error;
+    const page = (data ?? []) as SaveRow[];
+    for (const row of page) if (!rows.has(row.id)) rows.set(row.id, row);
+    from += page.length;
+    if (page.length === 0 || from >= (count ?? 0)) break;
+  }
+  return [...rows.values()].map(mapSaveRow).filter((save): save is Save => save !== null);
 };
 
 /** Postgres' unique violation: already saved, which is what was asked for. */
@@ -119,12 +139,29 @@ type ProfileSummaryRow = {
   profile_type: 'individual' | 'business';
 };
 
-/** Rows of one table by id, as a map. Nothing to read reads nothing. */
-const byIds = async <TRow extends { id: string }>(table: string, select: string, ids: string[]): Promise<Map<string, TRow>> => {
-  if (ids.length === 0) return new Map();
-  const { data, error } = await supabase.from(table).select(select).in('id', ids);
-  if (error) throw error;
-  return new Map(((data ?? []) as unknown as TRow[]).map((row) => [row.id, row]));
+/**
+ * How many ids one request carries. Every id goes in the URL, and at about
+ * 200 the gateway refuses it, so a profile with hundreds of saves lost its
+ * whole Saves tab (ONE-106). A hundred keeps each URL well short of that.
+ */
+export const IDS_PER_REQUEST = 100;
+
+/** Split ids into request-sized batches. */
+export const inBatches = (ids: string[], size = IDS_PER_REQUEST): string[][] =>
+  Array.from({ length: Math.ceil(ids.length / size) }, (_, i) => ids.slice(i * size, (i + 1) * size));
+
+/** Rows of one table by id, as a map, a batch at a time. Nothing to read reads nothing. */
+const byIds = async <TRow extends { id: string }>(
+  read: (batch: string[]) => PromiseLike<{ data: unknown; error: unknown }>,
+  ids: string[],
+): Promise<Map<string, TRow>> => {
+  const results = await Promise.all(inBatches(ids).map((batch) => read(batch)));
+  const rows = new Map<string, TRow>();
+  for (const { data, error } of results) {
+    if (error) throw error;
+    for (const row of (data ?? []) as TRow[]) rows.set(row.id, row);
+  }
+  return rows;
 };
 
 /**
@@ -140,20 +177,16 @@ export const fetchSavedItems = async (profileId: string): Promise<SavedItem[]> =
   const saves = await fetchSaves(profileId);
   const ids = (kind: SaveKind) => saves.filter((save) => save.target.kind === kind).map((save) => save.target.id);
 
-  const postIds = ids('post');
-  const [posts, products, projects, profiles] = await Promise.all([
-    postIds.length === 0
-      ? Promise.resolve(new Map<string, Post>())
-      : scopePostsToViewer(supabase.from('posts').select(POST_SELECT_QUERY).in('id', postIds), profileId).then(
-          ({ data, error }) => {
-            if (error) throw error;
-            return new Map(((data ?? []) as { id: string }[]).map((row) => [row.id, mapPostData(row)]));
-          },
-        ),
-    byIds<ProductSummaryRow>('products', PRODUCT_SUMMARY_SELECT, ids('product')),
-    byIds<ProjectSummaryRow>('projects', PROJECT_SUMMARY_SELECT, ids('project')),
-    byIds<ProfileSummaryRow>('profiles', PROFILE_SUMMARY_SELECT, ids('profile')),
+  const [postRows, products, projects, profiles] = await Promise.all([
+    byIds<{ id: string }>(
+      (batch) => scopePostsToViewer(supabase.from('posts').select(POST_SELECT_QUERY).in('id', batch), profileId),
+      ids('post'),
+    ),
+    byIds<ProductSummaryRow>((batch) => supabase.from('products').select(PRODUCT_SUMMARY_SELECT).in('id', batch), ids('product')),
+    byIds<ProjectSummaryRow>((batch) => supabase.from('projects').select(PROJECT_SUMMARY_SELECT).in('id', batch), ids('project')),
+    byIds<ProfileSummaryRow>((batch) => supabase.from('profiles').select(PROFILE_SUMMARY_SELECT).in('id', batch), ids('profile')),
   ]);
+  const posts = new Map(Array.from(postRows, ([id, row]) => [id, mapPostData(row)] as const));
 
   const items: SavedItem[] = [];
   for (const save of saves) {

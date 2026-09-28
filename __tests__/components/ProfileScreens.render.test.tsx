@@ -96,6 +96,10 @@ const state = {
   me: ME as Record<string, unknown>,
   blocked: new Set<string>(),
   following: new Set<string>(),
+  /** Whether the profile being viewed has blocked the viewer (ONE-108). */
+  blockedBy: false,
+  /** Private profiles the viewer has asked to follow (ONE-63). */
+  requested: new Set<string>(),
   counts: { followers: 10, following: 4 },
   isAdmin: false,
   profile: null as null | Record<string, unknown>,
@@ -136,9 +140,19 @@ jest.mock('../../features/profiles', () => ({
   useSetActiveProfile: () => ({ mutate: mockSetActive }),
   asProfileId: (id: string) => id,
   useFollowCountsQuery: () => ({ data: state.counts }),
-  useFollowState: () => ({ isFollowing: (u: string) => state.following.has(u) }),
+  useFollowState: () => ({
+    isFollowing: (u: string) => state.following.has(u),
+    isRequested: (u: string) => state.requested.has(u),
+  }),
   useToggleFollow: () => ({ toggle: mockFollowToggle, isPending: false }),
-  profileKeys: { all: ['profiles'], posts: () => ['p'], counts: () => ['c'], postCount: () => ['pc'] },
+  profileKeys: {
+    all: ['profiles'],
+    posts: () => ['p'],
+    counts: () => ['c'],
+    postCount: () => ['pc'],
+    followingUsernames: () => ['fu'],
+    requestedUsernames: () => ['ru'],
+  },
   useProfilePostCountQuery: () => ({ data: state.postCount }),
   useProfilePostsQuery: (id: string) => {
     mockAsked('posts', id);
@@ -195,6 +209,7 @@ jest.mock('../../features/posts', () => ({
 jest.mock('../../features/admin', () => ({ setUserVerified: jest.fn(), useIsAdmin: () => state.isAdmin }));
 jest.mock('../../features/auth', () => ({ useAuthUserId: () => 'a-me', useAuthStatus: () => 'signed-in' }));
 jest.mock('../../features/moderation', () => ({ reportUser: jest.fn(() => Promise.resolve(true)) }));
+jest.mock('../../features/blocks', () => ({ useBlockedByQuery: () => ({ data: state.blockedBy }) }));
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: jest.fn(() => Promise.resolve()) }),
 }));
@@ -226,6 +241,8 @@ beforeEach(() => {
   state.me = ME;
   state.blocked = new Set();
   state.following = new Set();
+  state.requested = new Set();
+  state.blockedBy = false;
   state.counts = { followers: 10, following: 4 };
   state.isAdmin = false;
   state.profile = { id: 'p-ana', username: 'ana', name: 'Ana Reyes', bio: 'Hi.', profilePicture: null, isVerified: false, isPrivate: false };
@@ -445,7 +462,7 @@ describe('Another profile', () => {
     expect(tabNames(el)).not.toContain('Saves');
 
     act(() => buttonByText(el, 'Follow')!.click());
-    expect(mockFollowToggle).toHaveBeenCalledWith({ userId: 'p-ana', username: 'ana' });
+    expect(mockFollowToggle).toHaveBeenCalledWith({ userId: 'p-ana', username: 'ana', isPrivate: false });
 
     // The optimistic toggle moves follow state and the count together.
     state.following = new Set(['ana']);
@@ -494,6 +511,33 @@ describe('Another profile', () => {
     expect(el.textContent).toContain('This account is private');
     expect(el.querySelector('[role="tab"]')).toBeNull();
     expect(button(el, 'first line')).toBeNull();
+  });
+
+  it('asks to follow a private profile, and reads Requested while it waits (ONE-63)', async () => {
+    state.profile = { ...state.profile!, isPrivate: true };
+    const el = await mount(<UserProfileScreen />);
+    expect(el.textContent).toContain('Ask to follow @ana to see their posts.');
+
+    act(() => buttonByText(el, 'Follow')!.click());
+    expect(mockFollowToggle).toHaveBeenCalledWith({ userId: 'p-ana', username: 'ana', isPrivate: true });
+
+    state.requested = new Set(['ana']);
+    await rerender(<UserProfileScreen />);
+    expect(buttonByText(el, 'Requested')).toBeDefined();
+    expect(buttonByText(el, 'Follow')).toBeUndefined();
+    expect(el.textContent).toContain('You asked to follow @ana.');
+    // Still locked: a request isn't a follow.
+    expect(el.querySelector('[role="tab"]')).toBeNull();
+  });
+
+  it('shows nothing of theirs when they blocked you (ONE-108)', async () => {
+    state.blockedBy = true;
+    const el = await mount(<UserProfileScreen />);
+    expect(el.textContent).toContain("This account isn't available");
+    expect(el.textContent).not.toContain('Ana Reyes');
+    expect(buttonByText(el, 'Follow')).toBeUndefined();
+    expect(buttonByText(el, 'Message')).toBeUndefined();
+    expect(el.querySelector('[role="tab"]')).toBeNull();
   });
 
   it('shows a blocked state, with Unblock, when you blocked them', async () => {

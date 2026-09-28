@@ -29,7 +29,7 @@ import InterestFilter, { useInterestName } from '../../components/native/Interes
 import { useDebouncedValue } from '../../lib/useDebouncedValue';
 import { productRoute } from '../../lib/screens/products';
 import { projectRoute } from '../../lib/screens/projects';
-import { firstLine } from '../../lib/screens/profile';
+import { firstLine, followButton } from '../../lib/screens/profile';
 import { useExploreQuery, flattenExplorePages, type ExploreItem } from '../../features/explore';
 import ExploreCard from '../../components/native/ExploreCard';
 import { useHashtagsQuery } from '../../features/hashtags';
@@ -101,7 +101,7 @@ export default function SearchScreen() {
   const router = useRouter();
   const { isUserBlocked } = useApp();
   const { profile: userProfile, profileId } = useCurrentProfile();
-  const { isFollowing } = useFollowState(profileId);
+  const { isFollowing, isRequested } = useFollowState(profileId);
   const follow = useToggleFollow(profileId);
   const searchRef = useRef<TextInput>(null);
 
@@ -195,7 +195,7 @@ export default function SearchScreen() {
   // ─── Render search results ─────────────────────
 
   const renderPerson = (user: SearchProfile) => {
-    const following = isFollowing(user.username);
+    const button = followButton(isFollowing(user.username), isRequested(user.username));
     const isMe = userProfile?.username === user.username;
     return (
       <ListRow
@@ -210,11 +210,11 @@ export default function SearchScreen() {
           isMe ? null : (
             <Button
               size="sm"
-              variant={following ? 'outline' : 'primary'}
-              onPress={() => follow.toggle({ userId: user.id, username: user.username })}
+              variant={button.variant}
+              onPress={() => follow.toggle({ userId: user.id, username: user.username, isPrivate: user.isPrivate })}
               disabled={follow.isPending}
             >
-              {following ? 'Following' : 'Follow'}
+              {button.label}
             </Button>
           )
         }

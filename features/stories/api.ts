@@ -58,22 +58,11 @@ export const mapStoryRow = (s: any): Story => ({
  */
 export const getStories = async (viewerId: ProfileId): Promise<Story[]> => {
   // Follows belong to the profile being acted as, not the account (ONE-22).
-  const { data: followingData, error: followingError } = await supabase
-    .from('follows')
-    .select('followed_id')
-    .eq('follower_id', viewerId);
-
-  const followingIds = !followingError && followingData
-    ? followingData.map((f: { followed_id: string }) => f.followed_id)
-    : [];
-
-  const userIdsToFetch = [...followingIds, viewerId];
-
+  // `reel_stories` joins them in the database: sending them as an id list put
+  // every one in the URL, which broke at about 200 follows (ONE-106).
   const { data, error } = await supabase
-    .from('stories')
+    .rpc('reel_stories', { p_viewer: viewerId, p_since: liveCutoff() })
     .select(STORY_SELECT)
-    .in('user_id', userIdsToFetch)
-    .gte('created_at', liveCutoff())
     .order('created_at', { ascending: false });
 
   if (error) throw error;

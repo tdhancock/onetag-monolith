@@ -45,6 +45,7 @@ jest.mock('../../services/supabase.native', () => ({
         select: () => chain,
         eq: () => chain,
         order: () => chain,
+        range: () => chain,
         insert: (payload: Record<string, unknown>) => {
           op.kind = 'insert';
           op.payload = payload;

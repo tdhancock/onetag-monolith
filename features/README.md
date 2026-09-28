@@ -98,7 +98,6 @@ lets every feature reach it:
 
 - `services/postRows.ts` — the post select and row mapper, for anything that
   embeds a post (messages, profiles)
-- `services/notificationWrites.ts` — inserting a notification
 - `services/profileBootstrap.ts` — making sure a profile row exists
 - `services/mediaUpload.ts`, `services/storyUpload.ts` — storage uploads
 

@@ -53,3 +53,12 @@ export type ProfileUpdates = Partial<
 
 /** Edits to a business profile's own fields, in client field names. */
 export type BusinessProfileUpdates = Partial<import('../../types').BusinessProfileFields>;
+
+// ─── Follow requests (ONE-63) ─────────────────────────────────────────
+
+/** Someone waiting for a private profile's owner to let them follow. */
+export interface FollowRequest {
+    id: string;
+    createdAt: string;
+    requester: import('../../types').SimpleUser;
+}

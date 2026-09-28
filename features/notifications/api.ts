@@ -4,10 +4,9 @@
 // written into `setState`; `markNotificationsAsRead` lived in
 // the old shared service module. Both are here now (ONE-17).
 //
-// Sending a notification is deliberately *not* here: three other features do
-// that, and a feature's api.ts may not import another feature, so the write
-// side lives in `services/notificationWrites.ts` where all of them can reach
-// it.
+// Nothing in the app writes a notification. The database writes each one from
+// the event itself (a like, repost, comment, mention, follow or follow
+// request), and clients can't insert them at all (ONE-107).
 
 import { supabase } from '../../services/supabase.native';
 import { normalizeNotifications } from '../../types';
@@ -22,7 +21,7 @@ import type { Notification } from './types';
  */
 export const NOTIFICATION_SELECT_QUERY = `
     id, type, is_read, created_at, content, comment_id,
-    sender:profiles!notifications_sender_id_fkey(id, username, avatar_url),
+    sender:profiles!notifications_sender_id_fkey(id, username, avatar_url, is_private),
     post:posts!notifications_post_id_fkey(id, content, media:image_url, media_type),
     comment:comments!notifications_comment_id_fkey(id, text:content),
     story:stories!notifications_story_id_fkey(id, media_url)

@@ -1,7 +1,16 @@
 // Write hooks for the tags domain.
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createEmbeddedTags, createTag, deleteTag, recordScan, setTagActive, updateTag } from './api';
+import {
+  createEmbeddedTags,
+  createTag,
+  deleteTag,
+  moveEmbeddedTag,
+  recordScan,
+  setTagActive,
+  TagNotFoundError,
+  updateTag,
+} from './api';
 import { tagKeys } from './keys';
 import type { NewEmbeddedTag, NewTag, OwnedTag, TagUpdates } from './types';
 import type { ProfileId } from '../../types';
@@ -156,10 +165,31 @@ export interface CreateEmbeddedTagsInput {
  */
 export const useCreateEmbeddedTags = () => {
   const queryClient = useQueryClient();
-  return useMutation<void, unknown, CreateEmbeddedTagsInput>({
+  return useMutation<string[], unknown, CreateEmbeddedTagsInput>({
     mutationFn: ({ hostPostId, ownerProfileId, tags }) => createEmbeddedTags(hostPostId, ownerProfileId, tags),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: postKeys.all });
     },
   });
 };
+
+/**
+ * How Edit Post writes a published post's tag edits (ONE-92): the inserts,
+ * moves and deletes `saveTagEdits` (lib/screens/composeTags) sequences. A tag
+ * already gone — its destination's owner removed it (ONE-44) — deletes as a
+ * success, and moves as `false`.
+ *
+ * Not a mutation: the screen runs one save across caption and tags, and
+ * refetches the post and every list that embeds it afterwards.
+ */
+export const embeddedTagWriter = (hostPostId: string, ownerProfileId: ProfileId) => ({
+  insert: (tags: NewEmbeddedTag[]) => createEmbeddedTags(hostPostId, ownerProfileId, tags),
+  move: moveEmbeddedTag,
+  remove: async (tagId: string): Promise<void> => {
+    try {
+      await deleteTag(tagId);
+    } catch (error) {
+      if (!(error instanceof TagNotFoundError)) throw error;
+    }
+  },
+});

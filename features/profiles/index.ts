@@ -18,6 +18,12 @@ export {
   getFollowingUsers,
   followUser,
   unfollowUser,
+  getRequestedList,
+  requestFollow,
+  cancelFollowRequest,
+  fetchFollowRequests,
+  approveFollowRequest,
+  declineFollowRequest,
   checkUsernameExists,
   searchUsers,
   getSmartUserSuggestions,
@@ -54,6 +60,7 @@ export type {
   BusinessProfileFields,
   BusinessProfileRow,
   BusinessProfileUpdates,
+  FollowRequest,
 } from './types';
 export { asAuthUserId, asProfileId } from './types';
 
@@ -70,6 +77,8 @@ export {
   useFollowCountsQuery,
   useFollowingUsernamesQuery,
   useFollowState,
+  useRequestedUsernamesQuery,
+  useFollowRequestsQuery,
   useUserSuggestionsQuery,
   useProfileSearchQuery,
   PROFILE_SEARCH_MIN_LENGTH,
@@ -79,6 +88,8 @@ export type { FollowCounts, CurrentProfile, CurrentProfileStatus, ProfileSearchR
 
 export {
   useToggleFollow,
+  useApproveFollowRequest,
+  useDeclineFollowRequest,
   useUpdateProfile,
   useUpdateBusinessProfile,
   useUploadAvatar,

@@ -4,6 +4,7 @@ import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
 import { supabase } from '../services/supabase.native';
+import { removePushToken } from '../services/notifications';
 import { Button, MonoLabel, SettingsRow, SettingsSection } from '../components/native/ui';
 import { useUpdateProfile, useCurrentProfile } from '../features/profiles';
 import { PRIVATE_ACCOUNT_LABEL, PRIVATE_ACCOUNT_DESCRIPTION } from '../lib/screens/profile';
@@ -72,6 +73,9 @@ export default function SettingsScreen() {
 
   const handleLogout = async () => {
     try {
+      // First, while the session can still remove it: this device stops
+      // getting the account's pushes (ONE-112).
+      await removePushToken();
       await supabase.auth.signOut();
     } catch (error) {
       console.error(error);

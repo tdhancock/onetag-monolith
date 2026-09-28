@@ -11,15 +11,18 @@
 // The cycles are plain option builders, as in features/notifications, so the
 // tests drive what ships against a real QueryClient without a renderer.
 
+import { useCallback, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
 import {
   deleteConversationForBothSides,
+  fetchOlderMessages,
   markAllMessagesAsRead,
   markMessagesAsRead,
   sendMessage,
+  THREAD_PAGE_SIZE,
 } from './api';
-import { reconcileSentMessage } from './cache';
+import { isPendingMessage, prependToThread, reconcileSentMessage } from './cache';
 import { messageKeys } from './keys';
 import type { Conversation, Message, SendMessageInput } from './types';
 import type { ProfileId } from '../../types';
@@ -115,6 +118,65 @@ export const sendMessageOptions = (queryClient: QueryClient, userId: string | un
 export const useSendMessage = (userId: ProfileId | undefined) => {
   const queryClient = useQueryClient();
   return useMutation(sendMessageOptions(queryClient, userId));
+};
+
+// ─── Older messages ───────────────────────────────────────────────────
+
+/**
+ * The scroll-back cycle (ONE-110): read the page before the oldest message
+ * the thread holds, and put it at the top. Resolves to that page.
+ */
+export const loadOlderMessagesOptions = (queryClient: QueryClient, userId: string | undefined) => ({
+  mutationFn: (otherUserId: string): Promise<Message[]> => {
+    if (!userId) return Promise.reject(new Error('You must be signed in.'));
+    const oldest = queryClient
+      .getQueryData<Message[]>(messageKeys.thread(userId, otherUserId))
+      ?.find((m) => !isPendingMessage(m));
+    return oldest ? fetchOlderMessages(userId, otherUserId, oldest) : Promise.resolve([]);
+  },
+
+  onSuccess: (older: Message[], otherUserId: string) => {
+    if (!userId) return;
+    queryClient.setQueryData<Message[] | undefined>(
+      messageKeys.thread(userId, otherUserId),
+      (thread) => thread && prependToThread(thread, older),
+    );
+  },
+});
+
+/**
+ * Scroll back through one conversation, a page at a time.
+ *
+ * `hasOlder` is false while the thread holds less than a page, since then it
+ * starts at the first message, and once a page comes back short. `loadOlder`
+ * is safe to call as often as a list's end is reached: it reads one page at
+ * a time, and none past the first message.
+ */
+export const useOlderMessages = (
+  userId: ProfileId | undefined,
+  otherUserId: string | undefined,
+  loaded: number,
+) => {
+  const queryClient = useQueryClient();
+  const mutation = useMutation(loadOlderMessagesOptions(queryClient, userId));
+  const [startReached, setStartReached] = useState<ReadonlySet<string>>(() => new Set());
+
+  const hasOlder = Boolean(otherUserId) && loaded >= THREAD_PAGE_SIZE && !startReached.has(otherUserId!);
+  const isLoading = mutation.isPending && mutation.variables === otherUserId;
+  const { mutate, isPending } = mutation;
+
+  const loadOlder = useCallback(() => {
+    if (!otherUserId || !hasOlder || isPending) return;
+    mutate(otherUserId, {
+      onSuccess: (older) => {
+        if (older.length < THREAD_PAGE_SIZE) {
+          setStartReached((reached) => new Set(reached).add(otherUserId));
+        }
+      },
+    });
+  }, [otherUserId, hasOlder, isPending, mutate]);
+
+  return { hasOlder, isLoading, loadOlder };
 };
 
 // ─── Read state ───────────────────────────────────────────────────────

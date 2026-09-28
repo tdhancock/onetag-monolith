@@ -28,15 +28,22 @@ jest.mock('react-native', () => {
     renderItem: (info: { item: unknown; index: number }) => React.ReactNode;
     keyExtractor: (item: unknown) => string;
     ListEmptyComponent?: unknown;
+    ListFooterComponent?: unknown;
+    inverted?: boolean;
+    onEndReached?: () => void;
   }) =>
     React.createElement(
       'div',
-      { 'data-list': 'true' },
+      { 'data-list': 'true', 'data-inverted': props.inverted ? 'true' : undefined },
       props.data.length === 0
         ? slot(props.ListEmptyComponent)
         : props.data.map((item, index) =>
             React.createElement(React.Fragment, { key: props.keyExtractor(item) }, props.renderItem({ item, index })),
           ),
+      slot(props.ListFooterComponent),
+      props.onEndReached
+        ? React.createElement('button', { 'aria-label': 'Reach the end of the list', onClick: props.onEndReached })
+        : null,
     );
   return {
     ...shim,
@@ -115,6 +122,7 @@ const state = {
     refetch: jest.fn(() => Promise.resolve()),
   },
   thread: { data: [] as unknown[] | undefined, isLoading: false },
+  older: { hasOlder: false, isLoading: false, loadOlder: jest.fn() },
   unread: new Set<string>(),
 };
 const mockSend = jest.fn();
@@ -130,6 +138,7 @@ jest.mock('../../features/messages', () => ({
   useMarkChatRead: () => ({ mutate: mockMarkChatRead }),
   useMarkAllMessagesRead: () => ({ mutate: mockMarkAll }),
   useDeleteConversation: () => ({ mutate: mockDelete }),
+  useOlderMessages: () => state.older,
   isPendingMessage: (m: { id: string }) => m.id.startsWith('temp-'),
 }));
 
@@ -141,7 +150,7 @@ jest.mock('../../features/posts', () => ({
 
 import MessagesScreen from '../../app/messages';
 import SharePostScreen from '../../app/share-post';
-import { color } from '../../theme/tokens';
+import { color, space } from '../../theme/tokens';
 
 // ─── 3. Helpers ─────────────────────────────────────────────────────────
 
@@ -165,6 +174,7 @@ beforeEach(() => {
   state.conversations.isError = false;
   state.thread.data = [];
   state.thread.isLoading = false;
+  state.older = { hasOlder: false, isLoading: false, loadOlder: jest.fn() };
   state.unread = new Set();
   mockSearchUsers.mockImplementation(() => Promise.resolve([]));
   mockFetchPost.mockImplementation(() => Promise.resolve(sharedPost));
@@ -356,6 +366,49 @@ describe('Messages — thread', () => {
     const card = Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('Kitchen install') && !b.getAttribute('aria-description'))!;
     act(() => card.click());
     expect(mockPush).toHaveBeenCalledWith('/post/post-9');
+  });
+
+  it('opens on the newest message: the list is inverted, newest first (ONE-110)', () => {
+    state.thread.data = [msg('m1', 'p-ana', 'first'), msg('m2', 'p-me', 'second'), msg('m3', 'p-ana', 'latest')];
+    const el = mount(<MessagesScreen />);
+    openAna(el);
+    const list = el.querySelector('[data-inverted="true"]')!;
+    expect(list).not.toBeNull();
+    const text = list.textContent!;
+    expect(text.indexOf('latest')).toBeLessThan(text.indexOf('second'));
+    expect(text.indexOf('second')).toBeLessThan(text.indexOf('first'));
+  });
+
+  it('keeps the layout rules reading oldest first: the latest of a run carries the time', () => {
+    state.thread.data = [msg('m1', 'p-ana', 'one'), msg('m2', 'p-ana', 'two')];
+    const el = mount(<MessagesScreen />);
+    openAna(el);
+    const bubbles = Array.from(el.querySelectorAll('[data-inverted="true"] button'))
+      .filter(b => b.getAttribute('aria-description') === 'Long press for options');
+    // Newest first on screen, but 'two' still follows 'one' in the thread:
+    // it ends Ana's run, so it carries the time, and sits close under 'one'.
+    const [two, one] = bubbles.map(b => b.parentElement as HTMLElement);
+    expect(bubbles.map(b => b.textContent)).toEqual([expect.stringContaining('two'), expect.stringContaining('one')]);
+    expect(two.textContent).toMatch(/\d\d:\d\d/);
+    expect(one.textContent).not.toMatch(/\d\d:\d\d/);
+    expect(two.style.marginTop).toBe(`${space.xs}px`);
+    expect(one.style.marginTop).not.toBe(`${space.xs}px`);
+  });
+
+  it('scrolling up to the oldest message asks for the page before', () => {
+    state.thread.data = [msg('m1', 'p-ana', 'hey')];
+    const el = mount(<MessagesScreen />);
+    openAna(el);
+    act(() => button(el, 'Reach the end of the list')!.click());
+    expect(state.older.loadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a spinner above the oldest message while that page loads', () => {
+    state.thread.data = [msg('m1', 'p-ana', 'hey')];
+    state.older.isLoading = true;
+    const el = mount(<MessagesScreen />);
+    openAna(el);
+    expect(el.querySelector('[data-inverted="true"] [data-spinner="true"]')).not.toBeNull();
   });
 
   it('says hi when the thread is empty', () => {

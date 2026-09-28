@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, MonoLabel } from '../components/native/ui';
 import { profileKeys, useCurrentProfile } from '../features/profiles';
 import { ensureCurrentUserProfile } from '../services/profileBootstrap';
+import { removePushToken } from '../services/notifications';
 import { supabase } from '../services/supabase.native';
 import { color, space, type } from '../theme/tokens';
 
@@ -41,6 +42,13 @@ export default function OnboardingScreen() {
     }
   };
 
+  // This device stops getting the account's pushes first, while the session
+  // can still remove it (ONE-112).
+  const signOut = async () => {
+    await removePushToken();
+    await supabase.auth.signOut();
+  };
+
   return (
     <SafeAreaView style={styles.screen}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -63,7 +71,7 @@ export default function OnboardingScreen() {
           <Button fullWidth onPress={createProfile} loading={working} disabled={status === 'ready'}>
             Create my profile
           </Button>
-          <Button fullWidth variant="outline" onPress={() => supabase.auth.signOut()} disabled={working}>
+          <Button fullWidth variant="outline" onPress={signOut} disabled={working}>
             Sign out
           </Button>
         </View>

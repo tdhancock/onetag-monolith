@@ -26,14 +26,17 @@ lib/screens/               pure screen logic, extracted so it can be tested
 theme/tokens.ts            design tokens — the single source of truth for colour and type
 store/AppContext.native    global UI state — no server data
 services/                  supabase client and the shared ground features reach: postRows,
-                           notificationWrites, profileBootstrap, media/story upload, realtime
+                           profileBootstrap, media/story upload, realtime
 supabase/migrations/       schema
-supabase/functions/        edge functions: delete-user-account, and tag-resolve (the tag host's web page)
+supabase/functions/        edge functions: delete-user-account, tag-resolve (the tag host's web page),
+                           and send-push (the database calls it to send push notifications)
 __tests__/                 Jest
+  api/                     the API checks, against a running local stack (npm run check:api)
 types.ts                   shared domain types (repo root)
 app.config.ts              app.json plus universal links for the tag host (repo root)
 public/.well-known/        the files the tag host serves so the OS opens the app for /t/*
 docs/deep-links.md         how tag links reach the app, and how to verify universal links
+docs/push-notifications.md how a notification becomes a push, and how to turn it on in production
 scripts/                   CI gates
 ```
 
@@ -55,12 +58,22 @@ npm run test:watch
 npx tsc --noEmit        # or npm run typecheck
 npm run verify          # typecheck + test + raw-hex gate — what CI runs
 npm run db:start        # local Supabase; also db:stop, db:status, db:reset, db:diff
+npm run db:test         # the pgTAP suite in supabase/tests, against the local stack
+npm run check:api       # the API checks in __tests__/api, against the local stack
 ```
 
 Tests run on **ts-jest** in a `node` environment with no React Native preset (`jest.config.js`);
 `jest-expo` is a devDependency but is *not* wired up. A suite touching a native component must
 `jest.mock` each native module in its import graph (`react-native`, `react-native-svg`,
 `expo-image`, …) — existing suites show the pattern.
+
+Mocked suites can't see what happens between the app and the database: a select string
+PostgREST refuses, an id list too long for a URL, a read past the 1,000-row cap, a permission
+reopened. **The API checks do** (ONE-114): they drive the app's own data layer against the
+local stack as throwaway accounts, and CI runs them with pgTAP whenever `supabase/`,
+`features/` or `services/` change. They're kept out of `npm test`. A new exported select
+string goes in `__tests__/api/select_strings.test.ts`; a change to a read's reach or a
+permission gets a check beside the others. The harness refuses any host but the local one.
 
 **Never run `supabase db push`.** Migrations apply against a local stack (`npm run db:start`,
 `npm run db:reset`) and reach production only via the `deploy-migrations` workflow on merge,

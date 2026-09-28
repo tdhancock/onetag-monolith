@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchBlocks } from './api';
+import { fetchBlocks, isBlockedBy } from './api';
 import { blockKeys } from './keys';
 import type { BlockedUser } from './types';
 import type { AuthUserId } from '../../types';
@@ -47,3 +47,15 @@ export const useBlockedUsers = (blockerId: AuthUserId | undefined) => {
 
   return { blockedUsers: blocked ?? [], isUserBlocked, isUserIdBlocked, query };
 };
+
+/**
+ * Whether this profile's account has blocked the signed-in user (ONE-108) —
+ * the profile screen shows nothing of theirs if so. Disabled without a
+ * profile, and never asked about your own.
+ */
+export const useBlockedByQuery = (profileId: string | undefined) =>
+  useQuery<boolean>({
+    queryKey: blockKeys.blockedBy(profileId ?? ''),
+    queryFn: () => isBlockedBy(profileId!),
+    enabled: Boolean(profileId),
+  });

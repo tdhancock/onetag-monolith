@@ -32,6 +32,7 @@ export const searchProfiles = async (query: string): Promise<SearchProfile[]> =>
     avatarUrl: r.avatar_url ?? null,
     isVerified: r.is_verified === true,
     profileType: r.profile_type === 'business' ? 'business' : 'individual',
+    isPrivate: r.is_private === true,
   }));
 
 export const searchPosts = async (query: string): Promise<SearchPost[]> =>

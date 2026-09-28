@@ -358,7 +358,7 @@ describe('push registration', () => {
     const layout = readFileSync(join(__dirname, '..', '..', '..', 'app', '_layout.tsx'), 'utf8');
     const effect = layout.slice(layout.indexOf('registerForPushNotifications().then'));
     const deps = effect.slice(0, effect.indexOf(']);') + 3);
-    expect(deps).toContain('savePushToken(authUserId, token)');
+    expect(deps).toContain('savePushToken(token)');
     expect(deps.trim().endsWith('}, [authUserId]);')).toBe(true);
   });
 });

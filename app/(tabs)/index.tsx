@@ -44,6 +44,7 @@ import {
   getHomeEmptyState,
   getHomeHeaderTarget,
 } from '../../lib/screens/home';
+import { followButton } from '../../lib/screens/profile';
 import type { Post, Story, SimpleUser } from '../../types';
 import { color, space, type } from '../../theme/tokens';
 
@@ -67,7 +68,7 @@ export default function HomeFeedScreen() {
 
   // Follow state is a query now (ONE-15), shared with every other screen that
   // renders a Follow button.
-  const { following, isFollowing: isUserFollowing } = useFollowState(profileId);
+  const { following, isFollowing: isUserFollowing, isRequested: isUserRequested } = useFollowState(profileId);
   const follow = useToggleFollow(profileId);
   const router = useRouter();
   const unreadNotificationCount = useUnreadNotificationCount(profileId);
@@ -145,6 +146,7 @@ export default function HomeFeedScreen() {
           name: suggestion.username || 'OneTag user',
           avatar: suggestion.avatar_url || null,
           isVerified: Boolean(suggestion.is_verified),
+          isPrivate: suggestion.is_private === true,
         }))
         .filter((user: SimpleUser) => Boolean(user.username) && !isUserBlocked(user.username));
       setSuggestedUsers(mappedSuggestions);
@@ -364,7 +366,7 @@ export default function HomeFeedScreen() {
                   contentContainerStyle={styles.suggestionRow}
                 >
                   {suggestedUsers.map(user => {
-                    const isFollowing = isUserFollowing(user.username);
+                    const button = followButton(isUserFollowing(user.username), isUserRequested(user.username));
                     return (
                       <Card
                         key={user.id}
@@ -387,10 +389,12 @@ export default function HomeFeedScreen() {
                         <Button
                           size="sm"
                           fullWidth
-                          variant={isFollowing ? 'outline' : 'primary'}
-                          onPress={() => follow.toggle({ userId: user.id, username: user.username })}
+                          variant={button.variant}
+                          onPress={() =>
+                            follow.toggle({ userId: user.id, username: user.username, isPrivate: Boolean(user.isPrivate) })
+                          }
                         >
-                          {isFollowing ? 'Following' : 'Follow'}
+                          {button.label}
                         </Button>
                       </Card>
                     );
@@ -401,7 +405,7 @@ export default function HomeFeedScreen() {
           </View>
         );
     }
-  }, [isLoading, following, feedQuery, suggestedUsers, isUserFollowing, follow, handleViewProfile, router, interest, interestName]);
+  }, [isLoading, following, feedQuery, suggestedUsers, isUserFollowing, isUserRequested, follow, handleViewProfile, router, interest, interestName]);
 
   const ListFooter = useCallback(() => {
     if (!feedQuery.isFetchingNextPage) return null;

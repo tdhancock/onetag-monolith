@@ -13,11 +13,10 @@
 // callers use `queryClient.prefetchQuery` with `profileKeys`.
 
 import { supabase } from '../../services/supabase.native';
-import { sendNotification } from '../../services/notificationWrites';
 import { readLocalFile } from '../../services/localFile';
 // The post select and mapper sit on shared ground in services/postRows.ts, so
 // this api.ts imports no other feature (features/README.md, rule 1).
-import { POST_SELECT_QUERY, mapPostData } from '../../services/postRows';
+import { POST_SELECT_QUERY, mapPostData, scopePostsToViewer } from '../../services/postRows';
 import type { Post } from '../../types';
 import type {
     SimpleUser,
@@ -30,6 +29,7 @@ import type {
     BusinessProfileUpdates,
     AuthUserId,
     ProfileId,
+    FollowRequest,
 } from './types';
 
 /**
@@ -124,10 +124,17 @@ export const getUserProfile = async (username: string): Promise<UserProfile | nu
     return mapProfileRow(data);
 };
 
-export const getUserPosts = async (userId: string): Promise<Post[]> => {
-    const { data, error } = await supabase
-        .from('posts')
-        .select(POST_SELECT_QUERY)
+/**
+ * A profile's posts, newest first, scoped to the viewer as every post list is
+ * (services/postRows.ts). Unscoped, the like and repost embeds carried every
+ * row for every post. Since ONE-109 each of those rows also checks its post's
+ * visibility.
+ */
+export const getUserPosts = async (userId: string, viewerId?: string): Promise<Post[]> => {
+    const { data, error } = await scopePostsToViewer(
+        supabase.from('posts').select(POST_SELECT_QUERY),
+        viewerId,
+    )
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
     
@@ -318,26 +325,23 @@ export const getFollowingCount = async (userId: string): Promise<number> => {
     return error ? 0 : count || 0;
 };
 
+/**
+ * The usernames the viewer follows, lowercased.
+ *
+ * One array from the database, which no row cap reaches. Reading the follows
+ * stopped at the API's 1,000 rows, and past that a Follow button read wrong
+ * (ONE-110).
+ */
 export const getFollowingList = async (userId: ProfileId): Promise<string[]> => {
-    const { data, error } = await supabase.from('follows').select('profiles!followed_id(username)').eq('follower_id', userId);
+    const { data, error } = await supabase.rpc('following_usernames', { p_viewer: userId });
     if (error) return [];
-    const unique = new Set<string>();
-    for (const item of data || []) {
-        const profile = Array.isArray(item?.profiles)
-            ? item.profiles[0]
-            : item?.profiles;
-        const username = profile?.username;
-        if (typeof username === 'string' && username.trim().length > 0) {
-            unique.add(username.toLowerCase());
-        }
-    }
-    return Array.from(unique);
+    return (data as string[] | null) ?? [];
 };
 
 export const getFollowerUsers = async (userId: string): Promise<SimpleUser[]> => {
     const { data, error } = await supabase
         .from('follows')
-        .select('profiles!follower_id(id, username, full_name, avatar_url, is_verified)')
+        .select('profiles!follower_id(id, username, full_name, avatar_url, is_verified, is_private)')
         .eq('followed_id', userId);
     if (error || !data) return [];
     const uniqueUsers = new Map<string, SimpleUser>();
@@ -352,6 +356,7 @@ export const getFollowerUsers = async (userId: string): Promise<SimpleUser[]> =>
             name: profile.full_name || profile.username,
             avatar: profile.avatar_url,
             isVerified: profile.is_verified || false,
+            isPrivate: profile.is_private === true,
         });
     });
     return Array.from(uniqueUsers.values());
@@ -360,7 +365,7 @@ export const getFollowerUsers = async (userId: string): Promise<SimpleUser[]> =>
 export const getFollowingUsers = async (userId: string): Promise<SimpleUser[]> => {
     const { data, error } = await supabase
         .from('follows')
-        .select('profiles!followed_id(id, username, full_name, avatar_url, is_verified)')
+        .select('profiles!followed_id(id, username, full_name, avatar_url, is_verified, is_private)')
         .eq('follower_id', userId);
     if (error || !data) return [];
     const uniqueUsers = new Map<string, SimpleUser>();
@@ -375,6 +380,7 @@ export const getFollowingUsers = async (userId: string): Promise<SimpleUser[]> =
             name: profile.full_name || profile.username,
             avatar: profile.avatar_url,
             isVerified: profile.is_verified || false,
+            isPrivate: profile.is_private === true,
         });
     });
     return Array.from(uniqueUsers.values());
@@ -399,14 +405,90 @@ export const followUser = async (follower_id: ProfileId, followed_id: string): P
         .from('follows')
         .insert({ follower_id, followed_id });
 
+    // Already following is what was asked for. The notification is the
+    // database's to write, from the follow itself (ONE-107).
     if (error && error.code !== '23505') throw error;
-    if (error?.code === '23505') return;
-
-    await sendNotification({ senderId: follower_id, receiverId: followed_id, type: 'follow' });
 };
 
 export const unfollowUser = async (follower_id: ProfileId, followed_id: string): Promise<void> => {
     const { error } = await supabase.from('follows').delete().match({ follower_id, followed_id });
+    if (error) throw error;
+};
+
+// =========================================================
+// Follow requests (ONE-63)
+// =========================================================
+//
+// A private profile is followed by request. RLS refuses a direct follow of
+// one, and refuses a request to a public profile, so the app asking the wrong
+// way is refused rather than quietly let through.
+
+/**
+ * The usernames the viewer has asked to follow and is waiting on, lowercased:
+ * one array, as `getFollowingList` (ONE-110).
+ */
+export const getRequestedList = async (requesterId: ProfileId): Promise<string[]> => {
+    const { data, error } = await supabase.rpc('requested_usernames', { p_requester: requesterId });
+    if (error) throw error;
+    return (data as string[] | null) ?? [];
+};
+
+/**
+ * Ask to follow a private profile. Asking twice is a no-op. The owner's
+ * notification is written by the database from the request (ONE-107).
+ */
+export const requestFollow = async (requesterId: ProfileId, targetId: string): Promise<void> => {
+    const { error } = await supabase
+        .from('follow_requests')
+        .insert({ requester_profile_id: requesterId, target_profile_id: targetId });
+
+    if (error && error.code !== '23505') throw error;
+};
+
+/** Withdraw a request the viewer made. */
+export const cancelFollowRequest = async (requesterId: ProfileId, targetId: string): Promise<void> => {
+    const { error } = await supabase
+        .from('follow_requests')
+        .delete()
+        .match({ requester_profile_id: requesterId, target_profile_id: targetId });
+    if (error) throw error;
+};
+
+/** The requests waiting on one profile's approval, newest first. */
+export const fetchFollowRequests = async (targetId: ProfileId): Promise<FollowRequest[]> => {
+    const { data, error } = await supabase
+        .from('follow_requests')
+        .select('id, created_at, requester:profiles!requester_profile_id(id, username, full_name, avatar_url, is_verified)')
+        .eq('target_profile_id', targetId)
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    return ((data || []) as any[]).flatMap((row) => {
+        const requester = Array.isArray(row.requester) ? row.requester[0] : row.requester;
+        if (!requester?.id) return [];
+        return [{
+            id: row.id,
+            createdAt: row.created_at,
+            requester: {
+                id: requester.id,
+                username: requester.username,
+                name: requester.full_name || requester.username,
+                avatar: requester.avatar_url,
+                isVerified: requester.is_verified || false,
+            },
+        }];
+    });
+};
+
+/** Let a requester in: the follow is made and the request goes, in one call. */
+export const approveFollowRequest = async (requestId: string): Promise<void> => {
+    const { error } = await supabase.rpc('approve_follow_request', { p_request_id: requestId });
+    if (error) throw error;
+};
+
+/** Turn a request down. Nothing is made, and the requester isn't told. */
+export const declineFollowRequest = async (requestId: string): Promise<void> => {
+    const { error } = await supabase.from('follow_requests').delete().eq('id', requestId);
     if (error) throw error;
 };
 
@@ -446,45 +528,30 @@ export const searchUsers = async (query: string): Promise<any[]> => {
 };
 
 export const getSmartUserSuggestions = async(userId: ProfileId): Promise<any[]> => {
-    // The original RPC function 'get_user_suggestions' causes a "column reference is ambiguous" SQL error.
-    // As we cannot modify the backend function, this implementation replaces it with a client-side query
-    // that suggests recent users the current user is not already following.
-
-    // 1. Get IDs of users the current user is following.
-    const { data: followingData, error: followingError } = await supabase
-        .from('follows')
-        .select('followed_id')
-        .eq('follower_id', userId);
-
-    if (followingError) {
-        console.error('Error fetching following list for suggestions:', followingError.message);
-        return [];
-    }
-
-    // Create a list of user IDs to exclude from suggestions (followed users + the user themselves).
-    const followingIds = followingData.map(f => f.followed_id);
-    const excludeIds = [...followingIds, userId];
-
-    // 2. Fetch a few recent profiles, excluding the ones in the `excludeIds` list.
+    // The newest profiles the viewer doesn't follow and isn't, from
+    // `suggested_profiles`. It used to send every followed id back as
+    // `.not('id', 'in', …)`, which put them all in the URL and broke at about
+    // 200 follows (ONE-106).
     const { data: suggestionsData, error: suggestionsError } = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, is_verified')
-        .not('id', 'in', `(${excludeIds.join(',')})`)
-        .order('created_at', { ascending: false })
-        .limit(5);
+        .rpc('suggested_profiles', { p_viewer: userId, p_limit: 5 })
+        // created_at is selected so the order can use it: PostgREST reads a
+        // function's result only for the columns the select names.
+        .select('id, username, avatar_url, is_verified, is_private, created_at')
+        .order('created_at', { ascending: false });
 
     if (suggestionsError) {
         console.error('Error fetching user suggestions:', suggestionsError.message);
         return [];
     }
 
-    // 3. Map the fetched profile data to the structure expected by the UserSuggestions component.
-    // The 'mutual_followers' field is set to 0 as this simplified query does not calculate them.
-    return (suggestionsData || []).map(profile => ({
+    // The shape the suggestions row expects. There is no mutual-follower
+    // count, so it is 0.
+    return ((suggestionsData || []) as any[]).map(profile => ({
         suggested_user_id: profile.id,
         username: profile.username,
         avatar_url: profile.avatar_url,
         is_verified: profile.is_verified,
+        is_private: profile.is_private,
         mutual_followers: 0,
     }));
 }

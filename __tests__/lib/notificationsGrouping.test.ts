@@ -5,6 +5,7 @@
 // 2026-09-24 at 15:00 local time.
 
 import {
+  followRequestsSummary,
   groupNotifications,
   notificationGroupFor,
   notificationSentence,
@@ -62,5 +63,16 @@ describe('notificationSentence', () => {
 
   it('says OneSnap, not story', () => {
     expect(notificationSentence('story_like')).toBe('liked your OneSnap.');
+  });
+});
+
+describe('follow requests (ONE-63)', () => {
+  it('says someone asked', () => {
+    expect(notificationSentence('follow_request')).toBe('asked to follow you.');
+  });
+
+  it('counts who is waiting, in the singular and the plural', () => {
+    expect(followRequestsSummary(1)).toBe('1 person is waiting for your approval.');
+    expect(followRequestsSummary(3)).toBe('3 people are waiting for your approval.');
   });
 });

@@ -120,10 +120,10 @@ describe('enforcement', () => {
     expect(sql).toContain('public.is_blocked_by(p.user_id)');
   });
 
-  it('leaves post visibility alone, deliberately', () => {
-    // Hiding a blocker's posts changes feed semantics and interacts with the
-    // is_private policy; it is a follow-up, and the client-side filter stays
-    // until it is decided on its own terms.
+  it('left post visibility to its own decision', () => {
+    // Hiding a blocker's posts changed feed semantics and interacted with the
+    // is_private policy, so it wasn't done here. ONE-108 decided it: a full
+    // block, both ways, pinned in supabase/tests/blocks_enforced.test.sql.
     expect(sql).not.toContain('DROP POLICY "Posts visible unless author is private"');
   });
 });

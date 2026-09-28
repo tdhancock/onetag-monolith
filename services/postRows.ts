@@ -23,9 +23,7 @@ export const POST_SELECT_QUERY = `
         full_name,
         is_verified
     ),
-    likes:likes(count),
-    comments:comments(count),
-    reposts:reposts(count),
+    stats:explore_scores(likes, comments, reposts),
     viewer_like:likes(user_id),
     viewer_repost:reposts(user_id),
     viewer_save:saves(profile_id),
@@ -46,12 +44,11 @@ export const POST_SELECT_QUERY = `
 /**
  * Restrict the viewer-scoped embeds to one profile's rows.
  *
- * `likes:likes(count)` and `viewer_like:likes(user_id)` are separate aliases
- * over the same table, so filtering the alias leaves the total count alone —
- * verified against a local stack: a post liked by two people, one of them the
- * viewer, comes back with `likes: [{count: 2}]` and a one-row `viewer_like`.
- * The embeds are left joins, so a post the viewer has not touched still
- * appears, with an empty array.
+ * The counts come from `stats` (explore_scores, ONE-109), not from the likes
+ * table, so filtering `viewer_like` to the viewer leaves them alone: a post
+ * liked by two people, one of them the viewer, comes back with
+ * `stats.likes: 2` and a one-row `viewer_like`. The embeds are left joins, so
+ * a post the viewer has not touched still appears, with an empty array.
  *
  * Signed out there is no viewer, and an impossible id is cheaper than
  * branching the select: every embed comes back empty, which is the truth.
@@ -84,6 +81,21 @@ const toNumber = (value: unknown): number => {
   return 0;
 };
 
+/**
+ * A post's totals, kept by explore_scores (ONE-104). Embedded one-to-one, so
+ * PostgREST hands back an object; an older shape or a mock may hand back a
+ * one-element array.
+ */
+const statsOf = (value: unknown): { likes?: unknown; comments?: unknown; reposts?: unknown } | null => {
+  const stats = Array.isArray(value) ? value[0] : value;
+  return stats && typeof stats === 'object' ? (stats as { likes?: unknown }) : null;
+};
+
+/**
+ * A count from a row that embeds `table(count)`, or carries a `_count`
+ * column: the shapes before post cards read explore_scores (ONE-109), still
+ * accepted from any row without `stats`.
+ */
 const extractCount = (embedded: unknown, fallback: unknown): number => {
   if (Array.isArray(embedded)) {
     const first = embedded[0] as { count?: unknown } | undefined;
@@ -134,6 +146,7 @@ export const mapPostData = (p: any): Post => {
     typeof p.image_url === 'string' && p.image_url.trim().length > 0 ? p.image_url : undefined;
 
   const profile = Array.isArray(p.profiles) ? p.profiles[0] || {} : p.profiles || {};
+  const stats = statsOf(p.stats);
 
   return {
     id: p.id,
@@ -147,9 +160,11 @@ export const mapPostData = (p: any): Post => {
     avatar: profile.avatar_url || null,
     name: profile.full_name || profile.username,
     isVerified: Boolean(profile.is_verified),
-    likes: extractCount(p.likes, p.likes_count),
-    reposts: extractCount(p.reposts, p.reposts_count),
-    replies: extractCount(p.comments, p.comments_count),
+    // Totals, not rows: under ONE-109 a counted row would check its post's
+    // visibility again, once per like.
+    likes: stats ? toNumber(stats.likes) : extractCount(p.likes, p.likes_count),
+    reposts: stats ? toNumber(stats.reposts) : extractCount(p.reposts, p.reposts_count),
+    replies: stats ? toNumber(stats.comments) : extractCount(p.comments, p.comments_count),
     // The viewer's own state, carried on the entity rather than in a Set
     // beside it — the toggle helper reads and writes it here (ONE-13).
     isLiked: hasViewerRow(p.viewer_like),

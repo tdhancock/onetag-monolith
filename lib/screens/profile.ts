@@ -218,12 +218,37 @@ export const getEditButtonProps = (
 /**
  * What the Private account switch in Settings says it does.
  *
- * Going private does not evict anyone: existing followers keep access, and
- * the copy says so, so nobody has to guess.
+ * New followers ask and are approved (ONE-63). Going private does not evict
+ * anyone: existing followers keep access, and the copy says so, so nobody has
+ * to guess.
  */
 export const PRIVATE_ACCOUNT_LABEL = 'Private account';
 export const PRIVATE_ACCOUNT_DESCRIPTION =
-  'Only your followers can see your posts. People who already follow you keep access.';
+  'Only followers you approve can see your posts. People who already follow you keep access.';
+
+/** What a locked private profile says under its title (ONE-63). */
+export const lockedProfileBody = (username: string, isRequested: boolean): string =>
+  isRequested
+    ? `You asked to follow @${username}. Their posts show here once they approve.`
+    : `Ask to follow @${username} to see their posts.`;
+
+/** A Follow button's three states (ONE-63). */
+export type FollowButtonState = 'follow' | 'requested' | 'following';
+
+export const followButtonState = (isFollowing: boolean, isRequested: boolean): FollowButtonState =>
+  isFollowing ? 'following' : isRequested ? 'requested' : 'follow';
+
+/** Its label, and whether it is the filled call to action or an outline. */
+export const followButton = (
+  isFollowing: boolean,
+  isRequested: boolean,
+): { label: string; variant: 'primary' | 'outline' } => {
+  const state = followButtonState(isFollowing, isRequested);
+  return {
+    label: state === 'following' ? 'Following' : state === 'requested' ? 'Requested' : 'Follow',
+    variant: state === 'follow' ? 'primary' : 'outline',
+  };
+};
 
 export interface ProfileVisibility {
   /** `profiles.is_private` on the profile being viewed. */

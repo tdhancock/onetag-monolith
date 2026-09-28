@@ -25,10 +25,12 @@ jest.mock('react-native', () => {
     renderItem: (info: { item: unknown }) => React.ReactNode;
     renderSectionHeader: (info: { section: unknown }) => React.ReactNode;
     ListEmptyComponent?: React.ReactNode;
+    ListHeaderComponent?: React.ReactNode;
   }) =>
     React.createElement(
       'div',
       { 'data-sections': 'true' },
+      props.ListHeaderComponent ?? null,
       props.sections.length === 0
         ? props.ListEmptyComponent
         : props.sections.map(section =>
@@ -81,6 +83,9 @@ const state = {
     refetch: jest.fn(() => Promise.resolve()),
   },
   following: new Set<string>(),
+  requested: new Set<string>(),
+  /** Requests waiting on the viewer (ONE-63). */
+  requests: [] as unknown[],
 };
 const mockMarkAll = jest.fn();
 const mockFollowToggle = jest.fn();
@@ -90,8 +95,12 @@ jest.mock('../../features/notifications', () => ({
 }));
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profileId: 'p-me' }),
-  useFollowState: () => ({ isFollowing: (u: string) => state.following.has(u) }),
+  useFollowState: () => ({
+    isFollowing: (u: string) => state.following.has(u),
+    isRequested: (u: string) => state.requested.has(u),
+  }),
   useToggleFollow: () => ({ toggle: mockFollowToggle, isPending: false }),
+  useFollowRequestsQuery: () => ({ data: state.requests, refetch: jest.fn(() => Promise.resolve()) }),
 }));
 
 import NotificationsScreen from '../../app/notifications';
@@ -127,6 +136,8 @@ beforeEach(() => {
   state.query.isPending = false;
   state.query.isError = false;
   state.following = new Set();
+  state.requested = new Set();
+  state.requests = [];
   [mockPush, mockMarkAll, mockFollowToggle].forEach(m => m.mockClear());
 });
 
@@ -190,8 +201,51 @@ describe('Notifications — rows', () => {
     const row = rowFor(el, 'ana', 'started following you.')!;
     const followButton = Array.from(row.querySelectorAll('button')).find(b => b.textContent === 'Follow')!;
     act(() => followButton.click());
-    expect(mockFollowToggle).toHaveBeenCalledWith({ userId: 'p-ana', username: 'ana' });
+    expect(mockFollowToggle).toHaveBeenCalledWith({ userId: 'p-ana', username: 'ana', isPrivate: false });
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('asks to follow back a private sender, and reads Requested while it waits (ONE-63)', () => {
+    state.query.data = [
+      notification({ id: 'f', type: 'follow', sender: { id: 'p-ana', username: 'ana', avatar_url: null, is_private: true } }),
+    ];
+    const el = mount();
+    const row = rowFor(el, 'ana', 'started following you.')!;
+    act(() => Array.from(row.querySelectorAll('button')).find(b => b.textContent === 'Follow')!.click());
+    expect(mockFollowToggle).toHaveBeenCalledWith({ userId: 'p-ana', username: 'ana', isPrivate: true });
+  });
+
+  it('reads Requested on a follow back that is waiting', () => {
+    state.requested = new Set(['ana']);
+    state.query.data = [notification({ id: 'f', type: 'follow' })];
+    const el = mount();
+    expect(rowFor(el, 'ana', 'started following you.')!.textContent).toContain('Requested');
+  });
+
+  it('shows a follow request, which leads to Follow requests (ONE-63)', () => {
+    state.query.data = [notification({ id: 'r', type: 'follow_request' })];
+    const el = mount();
+    const row = rowFor(el, 'ana', 'asked to follow you.')!;
+    expect(row).toBeDefined();
+    // Answered on its own screen, not inline.
+    expect(row.querySelector('button')).toBeNull();
+    act(() => row.click());
+    expect(mockPush).toHaveBeenCalledWith('/follow-requests');
+  });
+
+  it('heads the list with Follow requests while any are waiting', () => {
+    state.requests = [{ id: 'fr-1' }, { id: 'fr-2' }];
+    const el = mount();
+    expect(el.textContent).toContain('2 people are waiting for your approval.');
+    const header = Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('Follow requests'))!;
+    act(() => header.click());
+    expect(mockPush).toHaveBeenCalledWith('/follow-requests');
+  });
+
+  it('has no Follow requests row when none are waiting', () => {
+    state.query.data = [notification({ id: 'like' })];
+    const el = mount();
+    expect(el.textContent).not.toContain('Follow requests');
   });
 
   it('reads Following when you already follow them back', () => {

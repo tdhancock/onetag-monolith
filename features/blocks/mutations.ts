@@ -14,6 +14,10 @@ import { blockKeys } from './keys';
 import type { BlockedUser } from './types';
 import type { AuthUserId } from '../../types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
+import { profileKeys } from '../profiles';
+import { postKeys } from '../posts';
+import { storyKeys } from '../stories';
+import { exploreKeys } from '../explore';
 
 /** Enough of an account to block it and render the row. */
 export interface BlockTarget {
@@ -113,9 +117,18 @@ export const useBlockToggle = (blockerId: AuthUserId | undefined): BlockToggle =
         if (!blockerId || target.userId === blockerId) return;
 
         targets.current.set(target.userId, target);
-        mutate(target.userId);
+        mutate(target.userId, {
+          // A block removes follows both ways and hides each side's posts and
+          // OneSnaps from the other (ONE-108), so follow state, counts, the
+          // feed, the reel and Explore are all stale once it lands.
+          onSettled: () => {
+            for (const key of [profileKeys.all, postKeys.all, storyKeys.all, exploreKeys.all]) {
+              void queryClient.invalidateQueries({ queryKey: key });
+            }
+          },
+        });
       },
-      [blockerId, mutate],
+      [blockerId, mutate, queryClient],
     ),
     isPending: mutation.isPending,
   };

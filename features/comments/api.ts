@@ -1,12 +1,11 @@
 // Pure Supabase access for the comments domain.
 //
-// Moved out of the old shared service module in ONE-14. The notification and
-// mention side effects come from `services/notificationWrites.ts`, which
-// ONE-17 consolidated out of the three copies that briefly existed here, in
-// posts and in profiles.
+// Moved out of the old shared service module in ONE-14. A comment's
+// notifications, to the post's author and to anyone it @mentions, are written
+// by the database from the comment itself (ONE-107), so nothing here sends
+// them.
 
 import { supabase } from '../../services/supabase.native';
-import { notifyPostAuthor, notifyMentionedUsers } from '../../services/notificationWrites';
 import type { Comment } from './types';
 import type { ProfileId } from '../../types';
 
@@ -41,14 +40,6 @@ export async function addComment(postId: string, userId: ProfileId, content: str
   if (error) {
     console.error("Yorum ekleme hatası:", error.message || error);
     throw error;
-  }
-
-  if (data) {
-    await notifyPostAuthor(postId, userId, 'comment', {
-      commentId: data.id,
-      content: content.substring(0, 50),
-    });
-    await notifyMentionedUsers(content, userId, postId, data.id);
   }
 
   return data;

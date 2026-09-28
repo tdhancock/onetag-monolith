@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
+  Alert,
   View,
   Text,
   TextInput,
@@ -9,17 +10,35 @@ import {
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../store/AppContext.native';
-import { useCurrentProfile } from '../features/profiles';
-import { useUpdatePost } from '../features/posts';
+import { profileKeys, useCurrentProfile } from '../features/profiles';
+import { postKeys, useUpdatePost } from '../features/posts';
 import { fetchPostById as getPostById } from '../features/posts';
+import { embeddedTagWriter } from '../features/tags';
 import { Avatar, Button, EmptyState, Skeleton } from '../components/native/ui';
 import ComposeMedia from '../components/native/ComposeMedia';
 import CharacterRing from '../components/native/CharacterRing';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
+import TagPlacer from '../components/native/TagPlacer';
+import TagDestinationPicker from '../components/native/TagDestinationPicker';
 import { POST_MAX_CHARS } from '../lib/screens/compose';
+import {
+  diffTags,
+  hasTagEdits,
+  isTagRefusal,
+  moveTag,
+  placeTag,
+  previewTags,
+  removeTag,
+  saveTagEdits,
+  seedDrafts,
+  setTagDestination,
+  TAG_REFUSED_MESSAGE,
+  type DraftTag,
+} from '../lib/screens/composeTags';
 import { color, space, type } from '../theme/tokens';
-import type { Post } from '../types';
+import type { EmbeddedTag, EmbeddedTagDestination, Post } from '../types';
 
 /** What PostCard renders when a post carries no ratio. Kept in step with it. */
 const FALLBACK_ASPECT_RATIO = 1080 / 1350;
@@ -28,13 +47,23 @@ export default function EditPostScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { addToast } = useApp();
-  const { profile: userProfile } = useCurrentProfile();
+  const queryClient = useQueryClient();
+  const { profile: userProfile, profileId } = useCurrentProfile();
   const updatePost = useUpdatePost();
 
   const [post, setPost] = useState<Post | null>(null);
   const [content, setContent] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // The photo's tags (ONE-92): what the post holds on the server, and the
+  // drafts the placer edits. Saving writes the difference, and moves `saved`
+  // along as each step lands.
+  const [savedTags, setSavedTags] = useState<EmbeddedTag[]>([]);
+  const [tags, setTags] = useState<DraftTag[]>([]);
+  const [tagging, setTagging] = useState(false);
+  /** The tag whose destination picker is open. */
+  const [pickingFor, setPickingFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -44,6 +73,8 @@ export default function EditPostScreen() {
         if (data) {
           setPost(data);
           setContent(data.content || '');
+          setSavedTags(data.embeddedTags ?? []);
+          setTags(seedDrafts(data.embeddedTags ?? []));
         }
       } catch (error) {
         console.error('Failed to load post for editing', error);
@@ -55,29 +86,83 @@ export default function EditPostScreen() {
     fetchPost();
   }, [id]);
 
+  // Only your own photo post is tagged here: a text post has nothing to tag,
+  // and a tag belongs to the post's author.
+  const canTag = Boolean(
+    post?.media && post.media_type === 'image' && profileId && post.username === userProfile?.username,
+  );
+
   const isOverLimit = content.length > POST_MAX_CHARS;
-  const canSave = Boolean(post) && content.trim().length > 0 && !isSaving && content !== post?.content && !isOverLimit;
+  const captionChanged = Boolean(post) && content !== post?.content;
+  const tagsChanged = useMemo(() => canTag && hasTagEdits(diffTags(savedTags, tags)), [canTag, savedTags, tags]);
+  const canSave =
+    Boolean(post) &&
+    !isSaving &&
+    !isOverLimit &&
+    (captionChanged || tagsChanged) &&
+    // A changed caption can't be emptied; an unchanged one is left as it is.
+    (!captionChanged || content.trim().length > 0);
+
+  const handlePlaceTag = (xPct: number, yPct: number) => {
+    const placed = placeTag(tags, xPct, yPct);
+    if (!placed.ok) {
+      Alert.alert('That’s the limit', placed.message);
+      return;
+    }
+    setTags(placed.drafts);
+    setPickingFor(placed.key);
+  };
+
+  const handlePickDestination = (destination: EmbeddedTagDestination) => {
+    if (pickingFor) setTags((current) => setTagDestination(current, pickingFor, destination));
+    setPickingFor(null);
+  };
+
+  // Closed without a choice: a newly placed tag with nowhere to point goes.
+  const handleClosePicker = () => {
+    setTags((current) => current.filter((t) => t.key !== pickingFor || t.destination !== null));
+    setPickingFor(null);
+  };
 
   // Stays on the screen, spinner showing, until the save resolves. It used to
   // fire the update, report success and close at once, so a failed save
   // looked exactly like a good one and the edit was lost.
+  //
+  // One Save for caption and tags (ONE-92). A tag step that fails leaves
+  // `savedTags` at what the server holds, so saving again picks up where it
+  // stopped.
   const handleSave = useCallback(async () => {
     if (!post || !canSave) return;
     setIsSaving(true);
     try {
-      const updatedPost: Post = { ...post, content };
-      await updatePost.mutateAsync(updatedPost);
+      if (captionChanged) {
+        const updatedPost: Post = { ...post, content };
+        await updatePost.mutateAsync(updatedPost);
+        setPost(updatedPost);
+      }
+      if (tagsChanged && profileId) {
+        await saveTagEdits(savedTags, tags, embeddedTagWriter(post.id, profileId), (saved, drafts) => {
+          setSavedTags(saved);
+          setTags(drafts);
+        });
+      }
       addToast('Post updated.', 'success');
       if (router.canGoBack()) {
         router.back();
       }
     } catch (error) {
       console.error('Failed to update post', error);
-      addToast('Failed to update post.', 'error');
+      addToast(isTagRefusal(error) ? TAG_REFUSED_MESSAGE : 'Failed to update post.', 'error');
     } finally {
       setIsSaving(false);
+      // The post and every list that embeds it show its tags, whichever steps
+      // landed.
+      if (tagsChanged) {
+        void queryClient.invalidateQueries({ queryKey: postKeys.all });
+        void queryClient.invalidateQueries({ queryKey: profileKeys.all });
+      }
     }
-  }, [post, content, canSave, updatePost, addToast, router]);
+  }, [post, content, canSave, captionChanged, tagsChanged, profileId, savedTags, tags, updatePost, addToast, router, queryClient]);
 
   const header = (
     <View style={styles.header}>
@@ -159,22 +244,48 @@ export default function EditPostScreen() {
             />
           </View>
 
-          {/* The text is editable; the photo is not. */}
+          {/* The text and the tags are editable; the photo is not. */}
           {post.media && post.media_type === 'image' ? (
             <View style={styles.media}>
-              <ComposeMedia
-                uri={post.media}
-                aspectRatio={post.media_aspect_ratio || FALLBACK_ASPECT_RATIO}
-              />
+              {tagging && canTag ? (
+                <TagPlacer
+                  uri={post.media}
+                  aspectRatio={post.media_aspect_ratio || FALLBACK_ASPECT_RATIO}
+                  tags={tags}
+                  onPlace={handlePlaceTag}
+                  onMove={(key, x, y) => setTags((current) => moveTag(current, key, x, y))}
+                  onRemove={(key) => setTags((current) => removeTag(current, key))}
+                  onChoose={setPickingFor}
+                />
+              ) : (
+                <ComposeMedia
+                  uri={post.media}
+                  aspectRatio={post.media_aspect_ratio || FALLBACK_ASPECT_RATIO}
+                  tags={previewTags(tags)}
+                />
+              )}
             </View>
           ) : null}
 
           {/* Under the draft, as in Compose, so it stays above the keyboard. */}
           <View style={styles.tools}>
+            {canTag && (
+              <Button
+                size="sm"
+                variant={tagging ? 'primary' : 'outline'}
+                onPress={() => setTagging((on) => !on)}
+                accessibilityLabel={tagging ? 'Done tagging' : 'Tag profiles, products or projects in this photo'}
+              >
+                {tagging ? 'Done' : 'Tag'}
+              </Button>
+            )}
+            <View style={styles.fill} />
             {content.length > 0 && <CharacterRing length={content.length} />}
           </View>
         </ScrollView>
       </KeyboardAvoider>
+
+      <TagDestinationPicker visible={pickingFor !== null} onPick={handlePickDestination} onClose={handleClosePicker} />
     </SafeAreaView>
   );
 }

@@ -7,6 +7,8 @@ module.exports = {
   testEnvironment: 'node',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
   testMatch: ['**/__tests__/**/*.test.(ts|tsx)'],
+  // The API checks need a running local stack: `npm run check:api` (ONE-114).
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/__tests__/api/'],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: {
