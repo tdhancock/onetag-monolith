@@ -4,6 +4,7 @@
 // file inside it. See features/README.md.
 
 export {
+  CHAT_LIST_SELECT,
   getChatListUsers,
   fetchThread,
   fetchOlderMessages,
@@ -37,4 +38,4 @@ export {
 export { useMessagesRealtime } from './realtime';
 export { isPendingMessage } from './cache';
 
-export type { Conversation, Message, SendMessageInput } from './types';
+export type { Conversation, ConversationPreview, Message, SendMessageInput } from './types';

@@ -13,7 +13,7 @@ import { createAccount, deleteAccounts, type Account } from './support/accounts'
 import { POST_SELECT_QUERY, scopePostsToViewer } from '../../services/postRows';
 import { PRODUCT_SUMMARY_SELECT } from '../../services/productRows';
 import { PROJECT_SUMMARY_SELECT } from '../../services/projectRows';
-import { MESSAGE_SELECT_QUERY } from '../../features/messages/api';
+import { CHAT_LIST_SELECT, MESSAGE_SELECT_QUERY } from '../../features/messages/api';
 import { NOTIFICATION_SELECT_QUERY } from '../../features/notifications/api';
 import { PRODUCT_SELECT } from '../../features/products/api';
 import { CONTRIBUTOR_SELECT, PROJECT_SELECT } from '../../features/projects/api';
@@ -59,6 +59,14 @@ describe("the app's select strings", () => {
       .rpc('messages_thread', { p_profile: reader.profileId, p_other: reader.profileId })
       .select(MESSAGE_SELECT_QUERY)
       .order('created_at', { ascending: false });
+    expect(error).toBeNull();
+  });
+
+  it('CHAT_LIST_SELECT reads the Messages list through chat_list', async () => {
+    const { error } = await supabase
+      .rpc('chat_list', { p_profile: reader.profileId })
+      .select(CHAT_LIST_SELECT)
+      .order('last_message_at', { ascending: false });
     expect(error).toBeNull();
   });
 });

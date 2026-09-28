@@ -134,8 +134,14 @@ describe('the Messages list', () => {
   it('comes from chat_list, latest conversation first, as a list of people', async () => {
     const read = chainOf({
       data: [
-        { id: 'p-new', full_name: 'New', username: 'new', avatar_url: null, is_verified: false, last_message_at: '2026-09-28T10:00:00Z' },
-        { id: 'p-old', full_name: 'Old', username: 'old', avatar_url: 'a.jpg', is_verified: true, last_message_at: '2025-01-01T10:00:00Z' },
+        {
+          id: 'p-new', full_name: 'New', username: 'new', avatar_url: null, is_verified: false,
+          last_message_at: '2026-09-28T10:00:00Z', last_message_text: 'see you then', last_message_type: 'text', last_message_sender_id: ME,
+        },
+        {
+          id: 'p-old', full_name: 'Old', username: 'old', avatar_url: 'a.jpg', is_verified: true,
+          last_message_at: '2025-01-01T10:00:00Z', last_message_text: null, last_message_type: 'post_share', last_message_sender_id: 'p-old',
+        },
       ],
       error: null,
     });
@@ -146,8 +152,14 @@ describe('the Messages list', () => {
     expect(mockRpc).toHaveBeenCalledWith('chat_list', { p_profile: ME });
     expect(read.calls.order).toEqual([['last_message_at', { ascending: false }]]);
     expect(list).toEqual([
-      { id: 'p-new', name: 'New', username: 'new', avatar: null, isVerified: false },
-      { id: 'p-old', name: 'Old', username: 'old', avatar: 'a.jpg', isVerified: true },
+      {
+        id: 'p-new', name: 'New', username: 'new', avatar: null, isVerified: false,
+        lastMessage: { text: 'see you then', type: 'text', senderId: ME, sentAt: '2026-09-28T10:00:00Z' },
+      },
+      {
+        id: 'p-old', name: 'Old', username: 'old', avatar: 'a.jpg', isVerified: true,
+        lastMessage: { text: null, type: 'post_share', senderId: 'p-old', sentAt: '2025-01-01T10:00:00Z' },
+      },
     ]);
   });
 });

@@ -229,6 +229,22 @@ describe('Messages — inbox', () => {
     expect(row.textContent).toContain('@ana');
   });
 
+  it('previews each conversation\'s latest message under the name, with when it was sent', () => {
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    state.conversations.data = [
+      { ...ana, lastMessage: { text: 'See you\nthen', type: 'text', senderId: 'p-ana', sentAt: twoHoursAgo } },
+      { ...bo, lastMessage: { text: null, type: 'post_share', senderId: 'p-me', sentAt: twoHoursAgo } },
+    ];
+    const el = mount(<MessagesScreen />);
+
+    const anaRow = button(el, 'Conversation with ana. See you then. 2h')!;
+    expect(anaRow.textContent).toContain('See you then');
+    expect(anaRow.textContent).toContain('2h');
+    expect(anaRow.textContent).not.toContain('@ana');
+    // Yours says so, and a shared post says what it was.
+    expect(button(el, 'Conversation with bo. You: Sent a post. 2h')).not.toBeNull();
+  });
+
   it('marks an unread conversation with an ink dot, and only that one', () => {
     state.unread = new Set(['p-ana']);
     const el = mount(<MessagesScreen />);

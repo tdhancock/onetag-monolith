@@ -14,9 +14,11 @@ import {
   useDeleteConversation,
   useOlderMessages,
   isPendingMessage,
+  type Conversation,
 } from '../features/messages';
 import { cleanHtml } from '../lib/cleanHtml';
-import { bubbleGapAbove, endsRun, lastOwnMessageId, messageMetaLabel } from '../lib/screens/messages';
+import { bubbleGapAbove, conversationPreview, endsRun, lastOwnMessageId, messageMetaLabel } from '../lib/screens/messages';
+import { getTimeAgo } from '../lib/timeAgo';
 import MessageBubble from '../components/native/MessageBubble';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
 import {
@@ -403,23 +405,39 @@ export default function MessagesScreen() {
 
   // ─── Chat List View ───────────────────────────
 
-  const renderChatUser = ({ item: user }: { item: SimpleUser }) => {
+  const renderChatUser = ({ item: user }: { item: Conversation }) => {
     const hasUnread = unreadChats.has(user.id);
     const name = user.name || user.username;
+    // The latest message under the name, and when it was sent beside it.
+    const preview = conversationPreview(user.lastMessage, profileId);
+    const sentAgo = getTimeAgo(user.lastMessage?.sentAt);
 
     return (
       <ListRow
         title={name}
-        subtitle={`@${user.username}`}
+        subtitle={preview ?? `@${user.username}`}
         verified={user.isVerified}
         leading={<Avatar uri={user.avatar} name={name} size={CONVERSATION_AVATAR_SIZE} />}
-        trailing={hasUnread ? <View style={styles.unreadDot} /> : null}
+        trailing={
+          sentAgo || hasUnread ? (
+            <View style={styles.conversationMeta}>
+              {sentAgo ? <Text style={[styles.sentAgo, hasUnread && styles.sentAgoUnread]}>{sentAgo}</Text> : null}
+              {hasUnread ? <View style={styles.unreadDot} /> : null}
+            </View>
+          ) : null
+        }
         onPress={() => openChat(user)}
         onLongPress={() => {
           triggerHapticFeedback();
           setUserToDelete(user);
         }}
-        accessibilityLabel={`${hasUnread ? 'Unread. ' : ''}Conversation with ${user.username}`}
+        accessibilityLabel={[
+          `${hasUnread ? 'Unread. ' : ''}Conversation with ${user.username}`,
+          preview,
+          sentAgo,
+        ]
+          .filter(Boolean)
+          .join('. ')}
         accessibilityHint="Long press to delete the conversation"
       />
     );
@@ -577,6 +595,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: color.textMid,
     textAlign: 'center',
+  },
+  conversationMeta: {
+    alignItems: 'flex-end',
+    gap: space.xs,
+  },
+  sentAgo: {
+    fontFamily: type.body,
+    fontSize: 12,
+    color: color.textMuted,
+  },
+  sentAgoUnread: {
+    fontFamily: type.bodyBold,
+    color: color.text,
   },
   unreadDot: {
     width: 8,

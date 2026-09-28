@@ -145,8 +145,14 @@ export const fetchMessageById = async (messageId: string): Promise<Message | und
   return hydrateMessageRow(data);
 };
 
+/** What the Messages list reads for each conversation. */
+export const CHAT_LIST_SELECT =
+  'id, full_name, username, avatar_url, is_verified, last_message_at, ' +
+  'last_message_text, last_message_type, last_message_sender_id';
+
 /**
- * Everyone the user has exchanged a message with, most recent conversation first.
+ * Everyone the user has exchanged a message with, most recent conversation
+ * first, each with its latest message for the row's preview.
  *
  * `chat_list` finds each partner and their latest message in the database.
  * Reading the messages here to do it stopped at the API's 1,000 rows, so a
@@ -155,7 +161,7 @@ export const fetchMessageById = async (messageId: string): Promise<Message | und
 export const getChatListUsers = async (userId: string): Promise<Conversation[]> => {
   const { data, error } = await supabase
     .rpc('chat_list', { p_profile: userId })
-    .select('id, full_name, username, avatar_url, is_verified, last_message_at')
+    .select(CHAT_LIST_SELECT)
     .order('last_message_at', { ascending: false });
 
   if (error) throw error;
@@ -166,6 +172,14 @@ export const getChatListUsers = async (userId: string): Promise<Conversation[]> 
     username: u.username,
     avatar: u.avatar_url,
     isVerified: u.is_verified,
+    lastMessage: u.last_message_sender_id
+      ? {
+          text: u.last_message_text ?? null,
+          type: u.last_message_type ?? 'text',
+          senderId: u.last_message_sender_id,
+          sentAt: u.last_message_at,
+        }
+      : null,
   }));
 };
 
