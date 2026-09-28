@@ -22,6 +22,25 @@ export const notificationSentence = (type: Notification['type']): string => {
   }
 };
 
+/**
+ * Where tapping a push opens, from the data send-push puts on it
+ * (supabase/functions/send-push/handler.ts): the follower's profile, the
+ * requests, the thread with whoever messaged, or the post a comment, reply or
+ * mention is on. Anything else opens Notifications.
+ */
+export const pushRoute = (data: Record<string, unknown> | null | undefined): string => {
+  const type = typeof data?.type === 'string' ? data.type : undefined;
+  const username = typeof data?.username === 'string' && data.username ? data.username : undefined;
+  const postId = typeof data?.postId === 'string' && data.postId ? data.postId : undefined;
+
+  if (type === 'follow' && username) return `/user/${username}`;
+  if (type === 'follow_request') return '/follow-requests';
+  // send-push names the sender; the thread with them opens (ONE-103).
+  if (type === 'message') return username ? `/messages?chatWith=${username}` : '/messages';
+  if (postId) return `/post/${postId}`;
+  return '/notifications';
+};
+
 /** The line under Follow requests at the top of Notifications (ONE-63). */
 export const followRequestsSummary = (count: number): string =>
   count === 1 ? '1 person is waiting for your approval.' : `${count} people are waiting for your approval.`;

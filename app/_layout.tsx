@@ -21,13 +21,13 @@ import { supabase } from '../services/supabase.native';
 import {
   registerForPushNotifications,
   savePushToken,
-  addNotificationResponseListener,
   setBadgeCount,
 } from '../services/notifications';
 import ToastContainer from '../components/native/Toast';
 import { color, type } from '../theme/tokens';
 import QueryProvider from '../lib/QueryProvider';
 import { opensWithoutSession } from '../lib/screens/auth';
+import { pushRoute } from '../lib/screens/notifications';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -37,7 +37,9 @@ function RootLayoutNav() {
   const { authUserId, status: profileStatus } = useCurrentProfile();
   const segments = useSegments();
   const router = useRouter();
-  const notificationResponseListener = useRef<Notifications.EventSubscription | null>(null);
+  // The auth listener is registered once; it reads where the app is now.
+  const currentSegments = useRef(segments);
+  currentSegments.current = segments;
 
   const [fontsLoaded, fontError] = useFonts({
     DMMono_500Medium,
@@ -73,7 +75,10 @@ function RootLayoutNav() {
 
     // Auth state change listener — registered ONCE
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN') {
+      // Signing in from the sign-in or sign-up screens goes home. supabase-js
+      // also reports SIGNED_IN as it restores a saved session at launch; that
+      // must not replace the screen a tag link or a push opened the app on.
+      if (event === 'SIGNED_IN' && currentSegments.current[0] === '(auth)') {
         router.replace('/(tabs)');
       } else if (event === 'SIGNED_OUT') {
         router.replace('/(auth)/login');
@@ -111,30 +116,25 @@ function RootLayoutNav() {
     }
   }, [profileStatus, segments, router]);
 
-  // Notification tap handler — route to relevant screen
+  // A tapped push opens what it is about (pushRoute). The last response,
+  // rather than a listener, so a tap that launched the app is handled too:
+  // a listener registers after that tap has been delivered, and the app
+  // opened on the home tab instead of the follower's profile or the post.
+  // It waits for the navigator, which mounts once the fonts have loaded, and
+  // is cleared once handled so a later launch doesn't open it again.
+  const lastResponse = Notifications.useLastNotificationResponse();
+  const handledResponse = useRef<string | null>(null);
+  const navigatorReady = Boolean(fontsLoaded || fontError);
   useEffect(() => {
-    notificationResponseListener.current = addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data as Record<string, string> | undefined;
-      if (!data) return;
+    if (!navigatorReady || !lastResponse) return;
+    if (lastResponse.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+    const id = lastResponse.notification.request.identifier;
+    if (handledResponse.current === id) return;
+    handledResponse.current = id;
 
-      if (data.type === 'follow' && data.username) {
-        router.push(`/user/${data.username}`);
-      } else if (data.type === 'follow_request') {
-        router.push('/follow-requests');
-      } else if (data.type === 'message') {
-        // send-push names the sender; the thread with them opens (ONE-103).
-        router.push(data.username ? `/messages?chatWith=${data.username}` : '/messages');
-      } else if (data.postId) {
-        router.push(`/post/${data.postId}`);
-      } else {
-        router.push('/notifications');
-      }
-    });
-
-    return () => {
-      notificationResponseListener.current?.remove();
-    };
-  }, []);
+    router.push(pushRoute(lastResponse.notification.request.content.data as Record<string, unknown> | undefined) as never);
+    Notifications.clearLastNotificationResponse();
+  }, [lastResponse, navigatorReady, router]);
 
   if (!fontsLoaded && !fontError) {
     return null;
