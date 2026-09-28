@@ -17,6 +17,7 @@ import { getUserProfile } from '../../features/profiles';
 import { setUserVerified, useIsAdmin } from '../../features/admin';
 import { useAuthUserId } from '../../features/auth';
 import { reportUser } from '../../features/moderation';
+import { useBlockedByQuery } from '../../features/blocks';
 import { REPORT_REASONS } from '../../services/reportReasons';
 import ProfileHeader, { ProfileHeaderSkeleton } from '../../components/native/ProfileHeader';
 import ProfileTabs from '../../components/native/ProfileTabs';
@@ -69,6 +70,9 @@ export default function UserProfileScreen() {
   const followLabel = followButton(isFollowing, isRequested);
   const isBlocked = isUserBlocked(username || '');
   const isMyProfile = myProfile?.username === username;
+  // Whether they blocked you (ONE-108): then nothing of theirs shows, as the
+  // block sheet promises them. The server hides their posts either way.
+  const { data: blockedByThem } = useBlockedByQuery(isMyProfile ? undefined : profile?.id || undefined);
 
   // A private profile the viewer does not follow comes back from the server
   // with no posts — RLS hides them. Say why, rather than "No posts yet"
@@ -240,6 +244,15 @@ export default function UserProfileScreen() {
           body={`There's no one called @${username}.`}
           action={{ label: 'Back', onPress: back.goBack }}
         />
+      </SafeAreaView>
+    );
+  }
+
+  if (blockedByThem) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['bottom']}>
+        <Stack.Screen options={{ headerShown: true, title: `@${username}`, headerLeft }} />
+        <EmptyState title="This account isn't available" action={{ label: 'Back', onPress: back.goBack }} />
       </SafeAreaView>
     );
   }

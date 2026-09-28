@@ -137,3 +137,15 @@ export const importLocalBlocks = async (
   if (error) throw error;
   return ids.length;
 };
+
+/**
+ * Whether the account behind a profile has blocked the signed-in user
+ * (ONE-108). The block itself is unreadable to the person blocked, so this
+ * asks the database's `is_blocked_by`, which answers yes or no and nothing
+ * else.
+ */
+export const isBlockedBy = async (profileId: string): Promise<boolean> => {
+  const { data, error } = await supabase.rpc('is_blocked_by', { target: profileId });
+  if (error) throw error;
+  return data === true;
+};

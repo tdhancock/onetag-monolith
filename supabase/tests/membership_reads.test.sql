@@ -6,7 +6,8 @@
 -- Everything runs in one transaction and rolls back. Each function returns
 -- what the read it replaced returned, under the caller's own RLS.
 --
--- V: the viewer, following A and private P. B: not followed. P: private.
+-- V: the viewer, following A and private P. B: not followed, and blocked by V.
+-- C: nobody V follows or blocks. P: private.
 -- V messaged A; B messaged V; A messaged B. V blocked B's account.
 
 BEGIN;
@@ -16,7 +17,8 @@ INSERT INTO auth.users (id, email, raw_user_meta_data) VALUES
   ('00000000-0000-0000-0000-0000000106a0', 'v@one106.test', '{"username":"one106_v"}'),
   ('00000000-0000-0000-0000-0000000106a1', 'a@one106.test', '{"username":"one106_a"}'),
   ('00000000-0000-0000-0000-0000000106a2', 'b@one106.test', '{"username":"one106_b"}'),
-  ('00000000-0000-0000-0000-0000000106a3', 'p@one106.test', '{"username":"one106_p"}');
+  ('00000000-0000-0000-0000-0000000106a3', 'p@one106.test', '{"username":"one106_p"}'),
+  ('00000000-0000-0000-0000-0000000106a4', 'c@one106.test', '{"username":"one106_c"}');
 
 CREATE TEMP TABLE ids ON COMMIT DROP AS
 SELECT
@@ -102,10 +104,10 @@ SELECT is(
 
 SELECT is(
   (SELECT count(*)::int FROM public.suggested_profiles((SELECT v FROM ids), 50)
-   WHERE username IN ('one106_v', 'one106_a', 'one106_p')),
-  0, 'suggestions leave out me and everyone I follow');
+   WHERE username IN ('one106_v', 'one106_a', 'one106_p', 'one106_b')),
+  0, 'suggestions leave out me, everyone I follow, and anyone across a block (ONE-108)');
 SELECT ok(
-  (SELECT count(*) FROM public.suggested_profiles((SELECT v FROM ids), 50) WHERE username = 'one106_b') = 1,
+  (SELECT count(*) FROM public.suggested_profiles((SELECT v FROM ids), 50) WHERE username = 'one106_c') = 1,
   'and offer someone I don''t follow');
 
 -- ─── Who may call them ────────────────────────────────────────────────

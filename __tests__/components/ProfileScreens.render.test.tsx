@@ -96,6 +96,8 @@ const state = {
   me: ME as Record<string, unknown>,
   blocked: new Set<string>(),
   following: new Set<string>(),
+  /** Whether the profile being viewed has blocked the viewer (ONE-108). */
+  blockedBy: false,
   /** Private profiles the viewer has asked to follow (ONE-63). */
   requested: new Set<string>(),
   counts: { followers: 10, following: 4 },
@@ -207,6 +209,7 @@ jest.mock('../../features/posts', () => ({
 jest.mock('../../features/admin', () => ({ setUserVerified: jest.fn(), useIsAdmin: () => state.isAdmin }));
 jest.mock('../../features/auth', () => ({ useAuthUserId: () => 'a-me', useAuthStatus: () => 'signed-in' }));
 jest.mock('../../features/moderation', () => ({ reportUser: jest.fn(() => Promise.resolve(true)) }));
+jest.mock('../../features/blocks', () => ({ useBlockedByQuery: () => ({ data: state.blockedBy }) }));
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: jest.fn(() => Promise.resolve()) }),
 }));
@@ -239,6 +242,7 @@ beforeEach(() => {
   state.blocked = new Set();
   state.following = new Set();
   state.requested = new Set();
+  state.blockedBy = false;
   state.counts = { followers: 10, following: 4 };
   state.isAdmin = false;
   state.profile = { id: 'p-ana', username: 'ana', name: 'Ana Reyes', bio: 'Hi.', profilePicture: null, isVerified: false, isPrivate: false };
@@ -523,6 +527,16 @@ describe('Another profile', () => {
     expect(buttonByText(el, 'Follow')).toBeUndefined();
     expect(el.textContent).toContain('You asked to follow @ana.');
     // Still locked: a request isn't a follow.
+    expect(el.querySelector('[role="tab"]')).toBeNull();
+  });
+
+  it('shows nothing of theirs when they blocked you (ONE-108)', async () => {
+    state.blockedBy = true;
+    const el = await mount(<UserProfileScreen />);
+    expect(el.textContent).toContain("This account isn't available");
+    expect(el.textContent).not.toContain('Ana Reyes');
+    expect(buttonByText(el, 'Follow')).toBeUndefined();
+    expect(buttonByText(el, 'Message')).toBeUndefined();
     expect(el.querySelector('[role="tab"]')).toBeNull();
   });
 

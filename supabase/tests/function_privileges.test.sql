@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(37);
+SELECT plan(41);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -101,6 +101,15 @@ SELECT ok(NOT has_function_privilege('anon', 'public.accounts_for_usernames(text
   'anon cannot execute accounts_for_usernames() (ONE-106)');
 SELECT ok(NOT has_function_privilege('anon', 'public.suggested_profiles(uuid, integer)', 'EXECUTE'),
   'anon cannot execute suggested_profiles() (ONE-106)');
+
+SELECT ok(NOT has_function_privilege('anon', 'public.hidden_profile_ids()', 'EXECUTE'),
+  'anon cannot execute hidden_profile_ids() (ONE-108)');
+SELECT ok(NOT has_function_privilege('anon', 'public.post_hidden_by_block(uuid)', 'EXECUTE'),
+  'anon cannot execute post_hidden_by_block() (ONE-108)');
+SELECT ok(NOT has_function_privilege('anon', 'public.story_hidden_by_block(uuid)', 'EXECUTE'),
+  'anon cannot execute story_hidden_by_block() (ONE-108)');
+SELECT ok(NOT has_function_privilege('anon', 'public.comment_hidden_by_block(uuid)', 'EXECUTE'),
+  'anon cannot execute comment_hidden_by_block() (ONE-108)');
 
 SELECT * FROM finish();
 ROLLBACK;
