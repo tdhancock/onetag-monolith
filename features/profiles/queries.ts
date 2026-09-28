@@ -154,13 +154,18 @@ export const useProfileQuery = (username: string | undefined) =>
     enabled: Boolean(username),
   });
 
-/** The posts on a profile screen. */
-export const useProfilePostsQuery = (userId: string | undefined) =>
-  useQuery<Post[]>({
+/**
+ * The posts on a profile screen, scoped to the profile acting. The key is
+ * profile-scoped, so a switch resets it (activeProfile.ts).
+ */
+export const useProfilePostsQuery = (userId: string | undefined) => {
+  const { profileId: viewerId } = useCurrentProfile();
+  return useQuery<Post[]>({
     queryKey: profileKeys.posts(userId ?? ''),
-    queryFn: () => getUserPosts(userId!),
+    queryFn: () => getUserPosts(userId!, viewerId),
     enabled: Boolean(userId),
   });
+};
 
 /** How many posts a profile has, for its header's Posts figure. */
 export const useProfilePostCountQuery = (userId: string | undefined) =>

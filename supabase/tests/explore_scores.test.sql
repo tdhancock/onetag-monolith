@@ -332,7 +332,7 @@ SELECT throws_ok(
 
 RESET ROLE;
 SET LOCAL ROLE anon;
-SELECT throws_ok('SELECT count(*) FROM public.explore_scores', '42501', NULL, 'anonymous callers read no scores');
+SELECT is((SELECT count(*)::int FROM public.explore_scores), 0, 'anonymous callers read no scores (ONE-109 lets them name the table, so a post card can embed it)');
 RESET ROLE;
 
 SELECT ok(NOT has_function_privilege('authenticated', 'public.rebuild_explore_scores()', 'EXECUTE'),

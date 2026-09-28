@@ -236,3 +236,23 @@ describe('mapPostData', () => {
     expect(post.media_type).toBe('text');
   });
 });
+
+// ─── 5. Counts come from the stored totals (ONE-109) ────────────────────
+
+describe('mapPostData — counts', () => {
+  it('reads likes, comments and reposts from the explore_scores embed', () => {
+    const post = mapPostData({ ...row('p-1', '2026-09-21T12:00:00Z'), likes: undefined, comments: undefined, reposts: undefined,
+      stats: { likes: 7, comments: 3, reposts: 1 } });
+    expect([post.likes, post.replies, post.reposts]).toEqual([7, 3, 1]);
+  });
+
+  it('accepts the embed as a one-element array too', () => {
+    const post = mapPostData({ ...row('p-1', '2026-09-21T12:00:00Z'), stats: [{ likes: 2, comments: 0, reposts: 5 }] });
+    expect([post.likes, post.replies, post.reposts]).toEqual([2, 0, 5]);
+  });
+
+  it('prefers the stored totals over counted rows when a row carries both', () => {
+    const post = mapPostData({ ...row('p-1', '2026-09-21T12:00:00Z'), stats: { likes: 9, comments: 9, reposts: 9 } });
+    expect(post.likes).toBe(9);
+  });
+});

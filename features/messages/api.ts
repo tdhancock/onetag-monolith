@@ -13,7 +13,7 @@ import type { Conversation, Message } from './types';
 /**
  * A message row plus the post or profile it shares.
  *
- * The shared-post join selects the counts `mapPostData` reads; the profile
+ * The shared-post join selects the totals `mapPostData` reads (ONE-109); the profile
  * join selects exactly what a `SimpleUser` needs.
  */
 export const MESSAGE_SELECT_QUERY = `
@@ -21,9 +21,7 @@ export const MESSAGE_SELECT_QUERY = `
     sharedPost:shared_post_id (
       *,
       profiles (username, avatar_url, full_name, is_verified),
-      likes(count),
-      comments(count),
-      reposts(count)
+      stats:explore_scores(likes, comments, reposts)
     ),
     sharedUser:shared_profile_id(id, username, full_name, avatar_url, is_verified, bio)
 `;

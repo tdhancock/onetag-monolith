@@ -17,7 +17,7 @@ import { sendNotification } from '../../services/notificationWrites';
 import { readLocalFile } from '../../services/localFile';
 // The post select and mapper sit on shared ground in services/postRows.ts, so
 // this api.ts imports no other feature (features/README.md, rule 1).
-import { POST_SELECT_QUERY, mapPostData } from '../../services/postRows';
+import { POST_SELECT_QUERY, mapPostData, scopePostsToViewer } from '../../services/postRows';
 import type { Post } from '../../types';
 import type {
     SimpleUser,
@@ -125,10 +125,17 @@ export const getUserProfile = async (username: string): Promise<UserProfile | nu
     return mapProfileRow(data);
 };
 
-export const getUserPosts = async (userId: string): Promise<Post[]> => {
-    const { data, error } = await supabase
-        .from('posts')
-        .select(POST_SELECT_QUERY)
+/**
+ * A profile's posts, newest first, scoped to the viewer as every post list is
+ * (services/postRows.ts). Unscoped, the like and repost embeds carried every
+ * row for every post. Since ONE-109 each of those rows also checks its post's
+ * visibility.
+ */
+export const getUserPosts = async (userId: string, viewerId?: string): Promise<Post[]> => {
+    const { data, error } = await scopePostsToViewer(
+        supabase.from('posts').select(POST_SELECT_QUERY),
+        viewerId,
+    )
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
     
