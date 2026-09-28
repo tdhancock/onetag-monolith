@@ -47,13 +47,22 @@ jobs:
     # up Supabase for a CSS change is waste.
     if: github.event_name == 'pull_request'
     steps:
+      # A pull request checks out GitHub's merge commit. Two levels bring its
+      # parents, so the PR's own changes are a diff against the first parent,
+      # the base branch.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Detect schema and data-layer changes
         id: changed
         run: |
-          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
-          if git diff --name-only "origin/${{ github.base_ref }}"...HEAD | grep -qE '^(supabase/|features/|services/|__tests__/api/|jest\.api\.config\.js$)'; then
+          # The diff runs on its own, so a failure fails the job rather than
+          # reading as "nothing changed". A three-dot diff in a shallow clone
+          # found no merge base and did exactly that on every PR, so no step
+          # below had ever run (found in ONE-114).
+          changed="$(git diff --name-only HEAD^1 HEAD)"
+          if printf '%s\n' "$changed" | grep -qE '^(supabase/|features/|services/|__tests__/api/|jest\.api\.config\.js$)'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
