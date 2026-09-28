@@ -124,9 +124,12 @@ export default function ProfileScreen() {
         onPressFollowing={() => router.push({ pathname: '/user-list', params: { type: 'following', userId: profileId, title: 'Following' } })}
         // Share waits for profile links in M4 (ONE-68 allows hiding it until
         // then). A business profile creates tags from its own view (ONE-32).
+        // The buttons go straight into the header's action row, which lays
+        // them out: wrapped in a row of their own, that row had no width to
+        // share and each button shrank to an empty square.
         actions={
           editButton.isEnabled ? (
-            <View style={styles.actions}>
+            <>
               <Button variant="outline" size="sm" onPress={() => router.push(editButton.target)} style={styles.action}>
                 {editButton.label}
               </Button>
@@ -135,7 +138,7 @@ export default function ProfileScreen() {
                   Create tag
                 </Button>
               ) : null}
-            </View>
+            </>
           ) : null
         }
       />
@@ -206,10 +209,6 @@ const styles = StyleSheet.create({
   topBarActions: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: space.sm,
   },
   action: {
     flex: 1,
