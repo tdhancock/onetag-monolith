@@ -79,7 +79,7 @@ const state = {
 const mockToggle = jest.fn();
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profile: { username: 'me' }, profileId: 'p-me' }),
-  useFollowState: () => ({ isFollowing: (u: string) => state.following.has(u) }),
+  useFollowState: () => ({ isFollowing: (u: string) => state.following.has(u), isRequested: () => false }),
   useToggleFollow: () => ({ toggle: mockToggle, isPending: false }),
 }));
 
@@ -104,7 +104,7 @@ jest.mock('../../features/search', () => ({
   useProjectResultsQuery: (t: string, c: string | null) => answer('projects', t, c),
 }));
 const defaultResults = () => ({
-  profiles: [{ id: 'p-ana', username: 'ana', name: 'Ana Silva', avatarUrl: null, isVerified: false, profileType: 'individual' }],
+  profiles: [{ id: 'p-ana', username: 'ana', name: 'Ana Silva', avatarUrl: null, isVerified: false, profileType: 'individual', isPrivate: false }],
   posts: [{ id: 'po-1', content: 'Kitchen reveal\nmore', imageUrl: null, mediaType: 'text', authorUsername: 'ana', authorAvatarUrl: null }],
   products: [
     { id: 'pd-1', name: 'Oak Lamp', category: 'Lighting', imageUrl: null, businessUsername: 'oakco', businessName: 'Oak Co' },
@@ -355,7 +355,7 @@ describe('Explore — searching', () => {
     expect(el.textContent).toContain('Loft');
 
     act(() => buttonWithText(el, 'Follow')!.click());
-    expect(mockToggle).toHaveBeenCalledWith({ userId: 'p-ana', username: 'ana' });
+    expect(mockToggle).toHaveBeenCalledWith({ userId: 'p-ana', username: 'ana', isPrivate: false });
   });
 
   it('shows a product under Products as well as All', async () => {
@@ -368,7 +368,7 @@ describe('Explore — searching', () => {
   });
 
   it('shows a few of each on All, with a way into the full tab', async () => {
-    results.profiles = ['a', 'b', 'c', 'd'].map(u => ({ id: u, username: u, name: u, avatarUrl: null, isVerified: false, profileType: 'individual' }));
+    results.profiles = ['a', 'b', 'c', 'd'].map(u => ({ id: u, username: u, name: u, avatarUrl: null, isVerified: false, profileType: 'individual', isPrivate: false }));
     const el = await mount();
     await typeQuery(el, 'x');
     expect(el.querySelectorAll('button[aria-label^="View "]')).toHaveLength(3);

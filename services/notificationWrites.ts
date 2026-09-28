@@ -14,7 +14,7 @@
 import { supabase } from './supabase.native';
 
 /** The kinds of notification the app sends today. */
-export type NotificationType = 'like' | 'repost' | 'follow' | 'comment' | 'mention';
+export type NotificationType = 'like' | 'repost' | 'follow' | 'follow_request' | 'comment' | 'mention';
 
 export interface NotificationInsert {
   senderId: string;

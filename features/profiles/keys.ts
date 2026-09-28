@@ -33,6 +33,14 @@ export const profileKeys = {
    * last would win.
    */
   followingUsernames: (userId: string) => [...base.all, 'following-usernames', userId] as const,
+  /**
+   * The usernames the viewer has asked to follow and is waiting on (ONE-63) —
+   * what Requested is read from. Beside `followingUsernames`, not inside it:
+   * a pending request is never a follow.
+   */
+  requestedUsernames: (userId: string) => [...base.all, 'requested-usernames', userId] as const,
+  /** The requests waiting on one profile's approval (ONE-63). */
+  followRequests: (userId: string) => [...base.all, 'follow-requests', userId] as const,
   /** Follower/following counts, which the follow toggle moves optimistically. */
   counts: (userId: string) => [...base.all, 'counts', userId] as const,
   /** Suggested accounts for one viewer. */

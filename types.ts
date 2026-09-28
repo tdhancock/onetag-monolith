@@ -41,6 +41,8 @@ export interface SimpleUser {
     avatar: string | null;
     isVerified?: boolean;
     bio?: string;
+    /** `profiles.is_private`, where the list read it: a Follow button asks rather than follows (ONE-63). */
+    isPrivate?: boolean;
 }
 
 export interface UserProfile {
@@ -149,6 +151,8 @@ export interface NotificationSender {
     id: string;
     username: string;
     avatar_url: string | null;
+    /** So following back a private sender asks rather than follows (ONE-63). */
+    is_private?: boolean;
 }
 
 export interface NotificationPost {
@@ -171,7 +175,7 @@ export interface NotificationStory {
 
 export interface Notification {
     id: string;
-    type: 'like' | 'comment' | 'follow' | 'comment_like' | 'repost' | 'mention' | 'story_like';
+    type: 'like' | 'comment' | 'follow' | 'follow_request' | 'comment_like' | 'repost' | 'mention' | 'story_like';
     is_read: boolean;
     created_at: string;
     content?: string | null;

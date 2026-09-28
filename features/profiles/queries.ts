@@ -13,6 +13,8 @@ import {
   getFollowerCount,
   getFollowingCount,
   getFollowingList,
+  getRequestedList,
+  fetchFollowRequests,
   getSmartUserSuggestions,
   searchUsers,
 } from './api';
@@ -20,7 +22,7 @@ import { activeProfileKeys, profileKeys } from './keys';
 import { chooseActiveProfile, readActiveProfileId } from './activeProfile';
 import type { Post } from '../posts';
 import { asProfileId } from './types';
-import type { AuthUserId, ProfileId, SimpleUser, UserProfile } from './types';
+import type { AuthUserId, FollowRequest, ProfileId, SimpleUser, UserProfile } from './types';
 
 /**
  * What `useCurrentProfile().profile` shows before there is a real profile.
@@ -222,6 +224,25 @@ export const useFollowingUsernamesQuery = (userId: ProfileId | undefined) =>
     enabled: Boolean(userId),
   });
 
+/**
+ * The usernames the signed-in profile has asked to follow and is waiting on,
+ * lowercased (ONE-63) — what a Follow button reads Requested from.
+ */
+export const useRequestedUsernamesQuery = (userId: ProfileId | undefined) =>
+  useQuery<string[]>({
+    queryKey: profileKeys.requestedUsernames(userId ?? ''),
+    queryFn: () => getRequestedList(userId!),
+    enabled: Boolean(userId),
+  });
+
+/** The requests waiting on the active profile's approval, newest first (ONE-63). */
+export const useFollowRequestsQuery = (profileId: ProfileId | undefined) =>
+  useQuery<FollowRequest[]>({
+    queryKey: profileKeys.followRequests(profileId ?? ''),
+    queryFn: () => fetchFollowRequests(profileId!),
+    enabled: Boolean(profileId),
+  });
+
 export const useUserSuggestionsQuery = (userId: ProfileId | undefined) =>
   useQuery<SimpleUser[]>({
     queryKey: profileKeys.suggestions(userId ?? ''),
@@ -240,17 +261,26 @@ export const useUserSuggestionsQuery = (userId: ProfileId | undefined) =>
  *
  * Before it resolves nobody is followed, which renders a Follow button for a
  * moment rather than a wrong Following one.
+ *
+ * `isRequested` is the third state (ONE-63): asked to follow a private
+ * profile, and waiting.
  */
 export const useFollowState = (viewerId: ProfileId | undefined) => {
   const query = useFollowingUsernamesQuery(viewerId);
   const followed = query.data;
+  const requested = useRequestedUsernamesQuery(viewerId).data;
 
   const isFollowing = useCallback(
     (username: string) => Boolean(followed?.includes(username.trim().toLowerCase())),
     [followed],
   );
 
-  return { following: followed ?? [], isFollowing, query };
+  const isRequested = useCallback(
+    (username: string) => Boolean(requested?.includes(username.trim().toLowerCase())),
+    [requested],
+  );
+
+  return { following: followed ?? [], isFollowing, isRequested, query };
 };
 
 /** A profile a picker offers: either kind, found by its handle. */

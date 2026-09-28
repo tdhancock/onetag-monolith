@@ -116,6 +116,7 @@ jest.mock('../../features/profiles', () => ({
   useFollowState: () => ({
     following: state.following,
     isFollowing: (username: string) => state.followingSet.has(username),
+    isRequested: () => false,
   }),
   useToggleFollow: () => ({ toggle: mockFollowToggle }),
   profileKeys: { all: ['profiles'] },
@@ -322,7 +323,7 @@ describe('Home — empty', () => {
 
     const follow = Array.from(el.querySelectorAll('button')).find(b => b.textContent === 'Follow')!;
     act(() => follow.click());
-    expect(mockFollowToggle).toHaveBeenCalledWith({ userId: 'u-ana', username: 'ana' });
+    expect(mockFollowToggle).toHaveBeenCalledWith({ userId: 'u-ana', username: 'ana', isPrivate: false });
     // Following did not navigate anywhere…
     expect(mockPush).not.toHaveBeenCalled();
 

@@ -30,6 +30,7 @@ import type {
     BusinessProfileUpdates,
     AuthUserId,
     ProfileId,
+    FollowRequest,
 } from './types';
 
 /**
@@ -337,7 +338,7 @@ export const getFollowingList = async (userId: ProfileId): Promise<string[]> => 
 export const getFollowerUsers = async (userId: string): Promise<SimpleUser[]> => {
     const { data, error } = await supabase
         .from('follows')
-        .select('profiles!follower_id(id, username, full_name, avatar_url, is_verified)')
+        .select('profiles!follower_id(id, username, full_name, avatar_url, is_verified, is_private)')
         .eq('followed_id', userId);
     if (error || !data) return [];
     const uniqueUsers = new Map<string, SimpleUser>();
@@ -352,6 +353,7 @@ export const getFollowerUsers = async (userId: string): Promise<SimpleUser[]> =>
             name: profile.full_name || profile.username,
             avatar: profile.avatar_url,
             isVerified: profile.is_verified || false,
+            isPrivate: profile.is_private === true,
         });
     });
     return Array.from(uniqueUsers.values());
@@ -360,7 +362,7 @@ export const getFollowerUsers = async (userId: string): Promise<SimpleUser[]> =>
 export const getFollowingUsers = async (userId: string): Promise<SimpleUser[]> => {
     const { data, error } = await supabase
         .from('follows')
-        .select('profiles!followed_id(id, username, full_name, avatar_url, is_verified)')
+        .select('profiles!followed_id(id, username, full_name, avatar_url, is_verified, is_private)')
         .eq('follower_id', userId);
     if (error || !data) return [];
     const uniqueUsers = new Map<string, SimpleUser>();
@@ -375,6 +377,7 @@ export const getFollowingUsers = async (userId: string): Promise<SimpleUser[]> =
             name: profile.full_name || profile.username,
             avatar: profile.avatar_url,
             isVerified: profile.is_verified || false,
+            isPrivate: profile.is_private === true,
         });
     });
     return Array.from(uniqueUsers.values());
@@ -407,6 +410,90 @@ export const followUser = async (follower_id: ProfileId, followed_id: string): P
 
 export const unfollowUser = async (follower_id: ProfileId, followed_id: string): Promise<void> => {
     const { error } = await supabase.from('follows').delete().match({ follower_id, followed_id });
+    if (error) throw error;
+};
+
+// =========================================================
+// Follow requests (ONE-63)
+// =========================================================
+//
+// A private profile is followed by request. RLS refuses a direct follow of
+// one, and refuses a request to a public profile, so the app asking the wrong
+// way is refused rather than quietly let through.
+
+/** The usernames the viewer has asked to follow and is waiting on, lowercased. */
+export const getRequestedList = async (requesterId: ProfileId): Promise<string[]> => {
+    const { data, error } = await supabase
+        .from('follow_requests')
+        .select('target:profiles!target_profile_id(username)')
+        .eq('requester_profile_id', requesterId);
+    if (error) throw error;
+    const unique = new Set<string>();
+    for (const item of (data || []) as any[]) {
+        const target = Array.isArray(item?.target) ? item.target[0] : item?.target;
+        if (typeof target?.username === 'string' && target.username.trim().length > 0) {
+            unique.add(target.username.toLowerCase());
+        }
+    }
+    return Array.from(unique);
+};
+
+/** Ask to follow a private profile, and tell its owner. Asking twice is a no-op. */
+export const requestFollow = async (requesterId: ProfileId, targetId: string): Promise<void> => {
+    const { error } = await supabase
+        .from('follow_requests')
+        .insert({ requester_profile_id: requesterId, target_profile_id: targetId });
+
+    if (error?.code === '23505') return;
+    if (error) throw error;
+
+    await sendNotification({ senderId: requesterId, receiverId: targetId, type: 'follow_request' });
+};
+
+/** Withdraw a request the viewer made. */
+export const cancelFollowRequest = async (requesterId: ProfileId, targetId: string): Promise<void> => {
+    const { error } = await supabase
+        .from('follow_requests')
+        .delete()
+        .match({ requester_profile_id: requesterId, target_profile_id: targetId });
+    if (error) throw error;
+};
+
+/** The requests waiting on one profile's approval, newest first. */
+export const fetchFollowRequests = async (targetId: ProfileId): Promise<FollowRequest[]> => {
+    const { data, error } = await supabase
+        .from('follow_requests')
+        .select('id, created_at, requester:profiles!requester_profile_id(id, username, full_name, avatar_url, is_verified)')
+        .eq('target_profile_id', targetId)
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    return ((data || []) as any[]).flatMap((row) => {
+        const requester = Array.isArray(row.requester) ? row.requester[0] : row.requester;
+        if (!requester?.id) return [];
+        return [{
+            id: row.id,
+            createdAt: row.created_at,
+            requester: {
+                id: requester.id,
+                username: requester.username,
+                name: requester.full_name || requester.username,
+                avatar: requester.avatar_url,
+                isVerified: requester.is_verified || false,
+            },
+        }];
+    });
+};
+
+/** Let a requester in: the follow is made and the request goes, in one call. */
+export const approveFollowRequest = async (requestId: string): Promise<void> => {
+    const { error } = await supabase.rpc('approve_follow_request', { p_request_id: requestId });
+    if (error) throw error;
+};
+
+/** Turn a request down. Nothing is made, and the requester isn't told. */
+export const declineFollowRequest = async (requestId: string): Promise<void> => {
+    const { error } = await supabase.from('follow_requests').delete().eq('id', requestId);
     if (error) throw error;
 };
 
@@ -468,7 +555,7 @@ export const getSmartUserSuggestions = async(userId: ProfileId): Promise<any[]> 
     // 2. Fetch a few recent profiles, excluding the ones in the `excludeIds` list.
     const { data: suggestionsData, error: suggestionsError } = await supabase
         .from('profiles')
-        .select('id, username, avatar_url, is_verified')
+        .select('id, username, avatar_url, is_verified, is_private')
         .not('id', 'in', `(${excludeIds.join(',')})`)
         .order('created_at', { ascending: false })
         .limit(5);
@@ -485,6 +572,7 @@ export const getSmartUserSuggestions = async(userId: ProfileId): Promise<any[]> 
         username: profile.username,
         avatar_url: profile.avatar_url,
         is_verified: profile.is_verified,
+        is_private: profile.is_private,
         mutual_followers: 0,
     }));
 }

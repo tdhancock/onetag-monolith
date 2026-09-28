@@ -12,6 +12,7 @@ export const notificationSentence = (type: Notification['type']): string => {
     case 'like': return 'liked your post.';
     case 'comment': return 'commented on your post.';
     case 'follow': return 'started following you.';
+    case 'follow_request': return 'asked to follow you.';
     case 'comment_like': return 'liked your comment.';
     case 'repost': return 'reposted your post.';
     case 'mention': return 'mentioned you.';
@@ -19,6 +20,10 @@ export const notificationSentence = (type: Notification['type']): string => {
     default: return 'interacted with you.';
   }
 };
+
+/** The line under Follow requests at the top of Notifications (ONE-63). */
+export const followRequestsSummary = (count: number): string =>
+  count === 1 ? '1 person is waiting for your approval.' : `${count} people are waiting for your approval.`;
 
 export type NotificationGroupKey = 'today' | 'week' | 'earlier';
 

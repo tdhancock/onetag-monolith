@@ -118,6 +118,8 @@ function RootLayoutNav() {
 
       if (data.type === 'follow' && data.username) {
         router.push(`/user/${data.username}`);
+      } else if (data.type === 'follow_request') {
+        router.push('/follow-requests');
       } else if (data.type === 'message' && data.conversationId) {
         router.push('/messages');
       } else if (data.postId) {

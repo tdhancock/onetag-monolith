@@ -3,12 +3,13 @@ import { View, Text, SectionList, RefreshControl, StyleSheet } from 'react-nativ
 import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useCurrentProfile, useFollowState, useToggleFollow } from '../features/profiles';
+import { useCurrentProfile, useFollowRequestsQuery, useFollowState, useToggleFollow } from '../features/profiles';
 import { useNotificationsQuery, useMarkAllRead } from '../features/notifications';
-import { Avatar, Button, EmptyState, MonoLabel, Pressable, Skeleton } from '../components/native/ui';
+import { Avatar, Button, EmptyState, ListRow, MonoLabel, Pressable, Skeleton } from '../components/native/ui';
+import { ChevronRightIcon, UserIcon } from '../components/native/Icons';
 import { getTimeAgo } from '../lib/timeAgo';
-import { firstLine } from '../lib/screens/profile';
-import { groupNotifications, notificationSentence } from '../lib/screens/notifications';
+import { firstLine, followButton } from '../lib/screens/profile';
+import { followRequestsSummary, groupNotifications, notificationSentence } from '../lib/screens/notifications';
 import { color, space, type } from '../theme/tokens';
 import type { Notification } from '../types';
 
@@ -55,8 +56,11 @@ const RowSkeleton: React.FC = () => (
 export default function NotificationsScreen() {
   const { profileId } = useCurrentProfile();
   const router = useRouter();
-  const { isFollowing } = useFollowState(profileId);
+  const { isFollowing, isRequested } = useFollowState(profileId);
   const follow = useToggleFollow(profileId);
+  // Requests waiting on this profile head the list while there are any (ONE-63).
+  const followRequests = useFollowRequestsQuery(profileId);
+  const pendingRequests = followRequests.data?.length ?? 0;
 
   const query = useNotificationsQuery(profileId);
   const notifications = query.data;
@@ -85,16 +89,18 @@ export default function NotificationsScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await query.refetch();
+      await Promise.all([query.refetch(), followRequests.refetch()]);
       markAll();
     } finally {
       setRefreshing(false);
     }
-  }, [query, markAll]);
+  }, [query, followRequests, markAll]);
 
   const handlePress = useCallback((n: Notification) => {
     if (n.type === 'follow') {
       router.push(`/user/${n.sender.username}`);
+    } else if (n.type === 'follow_request') {
+      router.push('/follow-requests');
     } else if (n.post) {
       router.push(`/post/${n.post.id}`);
     }
@@ -105,7 +111,7 @@ export default function NotificationsScreen() {
   const renderItem = useCallback(({ item }: { item: Notification }) => {
     const unread = unreadAtOpen.current?.has(item.id) ?? false;
     const time = getTimeAgo(item.created_at);
-    const followsBack = item.type === 'follow' && isFollowing(item.sender.username);
+    const followBack = followButton(isFollowing(item.sender.username), isRequested(item.sender.username));
 
     return (
       <Pressable
@@ -128,18 +134,24 @@ export default function NotificationsScreen() {
         {item.type === 'follow' ? (
           <Button
             size="sm"
-            variant={followsBack ? 'outline' : 'primary'}
-            onPress={() => follow.toggle({ userId: item.sender.id, username: item.sender.username })}
+            variant={followBack.variant}
+            onPress={() =>
+              follow.toggle({
+                userId: item.sender.id,
+                username: item.sender.username,
+                isPrivate: Boolean(item.sender.is_private),
+              })
+            }
             disabled={follow.isPending}
           >
-            {followsBack ? 'Following' : 'Follow'}
+            {followBack.label}
           </Button>
         ) : (
           <Thumbnail notification={item} />
         )}
       </Pressable>
     );
-  }, [handlePress, isFollowing, follow]);
+  }, [handlePress, isFollowing, isRequested, follow]);
 
   const renderBody = () => {
     if (query.isPending) {
@@ -171,6 +183,22 @@ export default function NotificationsScreen() {
           </View>
         )}
         stickySectionHeadersEnabled={false}
+        ListHeaderComponent={
+          pendingRequests > 0 ? (
+            <ListRow
+              title="Follow requests"
+              subtitle={followRequestsSummary(pendingRequests)}
+              leading={
+                <View style={styles.requestsIcon}>
+                  <UserIcon color={color.text} size={20} />
+                </View>
+              }
+              trailing={<ChevronRightIcon color={color.textMuted} size={18} />}
+              onPress={() => router.push('/follow-requests')}
+              divider
+            />
+          ) : null
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -206,6 +234,14 @@ const styles = StyleSheet.create({
   list: {
     flexGrow: 1,
     paddingBottom: space.lg,
+  },
+  requestsIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: color.bgPanel,
   },
   sectionHeader: {
     paddingHorizontal: space.lg,

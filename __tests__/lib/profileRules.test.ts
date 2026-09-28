@@ -6,6 +6,8 @@
 
 import {
   firstLine,
+  followButton,
+  followButtonState,
   hasProfileChanges,
   profileEmptyState,
   profileGridTileSize,
@@ -162,5 +164,20 @@ describe('usernameError', () => {
 
   it('has nothing to say about an empty field; the caller decides', () => {
     expect(usernameError('')).toBeNull();
+  });
+});
+
+describe('the Follow button (ONE-63)', () => {
+  it('has three states, and Following wins over a stale request', () => {
+    expect(followButtonState(false, false)).toBe('follow');
+    expect(followButtonState(false, true)).toBe('requested');
+    expect(followButtonState(true, false)).toBe('following');
+    expect(followButtonState(true, true)).toBe('following');
+  });
+
+  it('is the filled call to action only while there is something to ask for', () => {
+    expect(followButton(false, false)).toEqual({ label: 'Follow', variant: 'primary' });
+    expect(followButton(false, true)).toEqual({ label: 'Requested', variant: 'outline' });
+    expect(followButton(true, false)).toEqual({ label: 'Following', variant: 'outline' });
   });
 });

@@ -17,6 +17,7 @@ jest.mock('../../../services/supabase.native', () => ({
 import { QueryClient, MutationObserver } from '@tanstack/react-query';
 import { toggleMutationOptions } from '../../../lib/optimisticToggle';
 import { profileKeys } from '../../../features/profiles/keys';
+import { followToggleKind } from '../../../features/profiles/mutations';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────
 
@@ -216,5 +217,84 @@ describe('query keys', () => {
     ]) {
       expect(key[0]).toBe(profileKeys.all[0]);
     }
+  });
+});
+
+// ─── Follow requests (ONE-63) ───────────────────────────────────────────
+
+describe('which toggle a tap drives', () => {
+  it('asks a private profile the viewer doesn\'t follow', () => {
+    expect(followToggleKind({ following: false, requested: false, isPrivate: true })).toBe('request');
+  });
+
+  it('withdraws a pending request, even if the profile has since gone public', () => {
+    expect(followToggleKind({ following: false, requested: true, isPrivate: true })).toBe('request');
+    expect(followToggleKind({ following: false, requested: true, isPrivate: false })).toBe('request');
+  });
+
+  it('follows a public profile, and unfollows anyone followed, private or not', () => {
+    expect(followToggleKind({ following: false, requested: false, isPrivate: false })).toBe('follow');
+    expect(followToggleKind({ following: true, requested: false, isPrivate: true })).toBe('follow');
+  });
+});
+
+describe('asking to follow', () => {
+  const requestedKey = profileKeys.requestedUsernames(VIEWER);
+
+  /** The request toggle `useToggleFollow` builds: a second list, and no counts. */
+  const requestConfig = (serverCall: () => Promise<unknown>) => ({
+    entityKey: () => requestedKey,
+    listKey: profileKeys.all,
+    entityId: () => '',
+    isOn: (names: string[], username: string) => names.includes(username.toLowerCase()),
+    count: (names: string[]) => names.length,
+    apply: (names: string[], next: { isOn: boolean }, username: string) =>
+      next.isOn ? [...names, username.toLowerCase()] : names.filter((n) => n !== username.toLowerCase()),
+    mutationFn: () => serverCall(),
+  });
+
+  const runRequest = async (client: QueryClient, serverCall: () => Promise<unknown>) => {
+    const observer = new MutationObserver<unknown, Error, string>(
+      client,
+      toggleMutationOptions(client, requestConfig(serverCall)) as never,
+    );
+    await observer.mutate(TARGET.username).catch(() => undefined);
+  };
+
+  it('reads Requested at once, and moves no count: a request isn\'t a follow', async () => {
+    const client = newClient();
+    seed(client, []);
+    client.setQueryData(requestedKey, []);
+
+    await runRequest(client, async () => undefined);
+
+    expect(client.getQueryData<string[]>(requestedKey)).toEqual(['layla']);
+    expect(client.getQueryData<string[]>(listKey)).toEqual([]);
+    expect(counts(client, targetCountsKey).followers).toBe(10);
+  });
+
+  it('withdraws the request on a second tap', async () => {
+    const client = newClient();
+    seed(client, []);
+    client.setQueryData(requestedKey, ['layla']);
+
+    await runRequest(client, async () => undefined);
+
+    expect(client.getQueryData<string[]>(requestedKey)).toEqual([]);
+  });
+
+  it('goes back to Follow when the server refuses', async () => {
+    const client = newClient();
+    seed(client, []);
+    client.setQueryData(requestedKey, []);
+
+    await runRequest(client, async () => { throw new Error('refused'); });
+
+    expect(client.getQueryData<string[]>(requestedKey)).toEqual([]);
+  });
+
+  it('keeps requests under their own key, beside follow state', () => {
+    expect(requestedKey).not.toEqual(listKey);
+    expect(requestedKey[0]).toBe(profileKeys.all[0]);
   });
 });

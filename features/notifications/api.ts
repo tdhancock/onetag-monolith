@@ -22,7 +22,7 @@ import type { Notification } from './types';
  */
 export const NOTIFICATION_SELECT_QUERY = `
     id, type, is_read, created_at, content, comment_id,
-    sender:profiles!notifications_sender_id_fkey(id, username, avatar_url),
+    sender:profiles!notifications_sender_id_fkey(id, username, avatar_url, is_private),
     post:posts!notifications_post_id_fkey(id, content, media:image_url, media_type),
     comment:comments!notifications_comment_id_fkey(id, text:content),
     story:stories!notifications_story_id_fkey(id, media_url)

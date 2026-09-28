@@ -7,6 +7,8 @@ export interface SearchProfile {
   avatarUrl: string | null;
   isVerified: boolean;
   profileType: 'individual' | 'business';
+  /** So its Follow button asks rather than follows (ONE-63). */
+  isPrivate: boolean;
 }
 
 export interface SearchPost {

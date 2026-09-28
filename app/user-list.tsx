@@ -7,7 +7,7 @@ import { useFollowState, useToggleFollow, useCurrentProfile } from '../features/
 import { getFollowerUsers, getFollowingUsers } from '../features/profiles';
 import { getPostLikers, getPostReposters } from '../features/posts';
 import { Button, EmptyState, ListRow, Skeleton } from '../components/native/ui';
-import { userListEmptyTitle, type UserListType } from '../lib/screens/profile';
+import { followButton, userListEmptyTitle, type UserListType } from '../lib/screens/profile';
 import { color, space } from '../theme/tokens';
 import type { SimpleUser } from '../types';
 
@@ -35,7 +35,7 @@ export default function UserListScreen() {
   const router = useRouter();
   const { isUserBlocked } = useApp();
   const { profileId } = useCurrentProfile();
-  const { isFollowing: isUserFollowing } = useFollowState(profileId);
+  const { isFollowing: isUserFollowing, isRequested: isUserRequested } = useFollowState(profileId);
   const follow = useToggleFollow(profileId);
 
   const [users, setUsers] = useState<SimpleUser[]>([]);
@@ -74,7 +74,8 @@ export default function UserListScreen() {
   // The optimistic toggle flips the cache immediately, so there is no per-row
   // pending state to keep (ONE-15).
   const handleToggleFollow = useCallback(
-    (user: SimpleUser) => follow.toggle({ userId: user.id, username: user.username }),
+    (user: SimpleUser) =>
+      follow.toggle({ userId: user.id, username: user.username, isPrivate: Boolean(user.isPrivate) }),
     [follow],
   );
 
@@ -97,7 +98,7 @@ export default function UserListScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: SimpleUser }) => {
-      const isFollowing = isUserFollowing(item.username);
+      const button = followButton(isUserFollowing(item.username), isUserRequested(item.username));
       const isSelf = Boolean(profileId && item.id === profileId);
 
       return (
@@ -113,18 +114,18 @@ export default function UserListScreen() {
             isSelf ? null : (
               <Button
                 size="sm"
-                variant={isFollowing ? 'outline' : 'primary'}
+                variant={button.variant}
                 onPress={() => handleToggleFollow(item)}
                 disabled={follow.isPending}
               >
-                {isFollowing ? 'Following' : 'Follow'}
+                {button.label}
               </Button>
             )
           }
         />
       );
     },
-    [handleToggleFollow, isUserFollowing, follow.isPending, router, profileId],
+    [handleToggleFollow, isUserFollowing, isUserRequested, follow.isPending, router, profileId],
   );
 
   const keyExtractor = useCallback((item: SimpleUser) => item.id || item.username, []);
