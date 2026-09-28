@@ -30,10 +30,12 @@ export const FEED_PAGE_SIZE = 20;
 const scopeToViewer = scopePostsToViewer;
 
 /**
- * A cursor into the feed: the `created_at` of the last post on the previous
- * page. `null` means "start from the top".
+ * A cursor into the feed: the last post on the previous page, by its
+ * `created_at` and id. Posts sharing a timestamp are ordered by id, so the
+ * next page starts right after that post and none is skipped (ONE-113).
+ * `null` means "start from the top".
  */
-export type FeedCursor = string | null;
+export type FeedCursor = { createdAt: string; id: string } | null;
 
 export interface FetchFeedPageArgs {
   userId: string;
@@ -48,7 +50,7 @@ export interface FetchFeedPageArgs {
  * Paging is by cursor rather than offset: a post published while the reader
  * is scrolling shifts every offset by one and would make them see a
  * duplicate at the page boundary. Comparing against the previous page's last
- * `created_at` is stable under inserts.
+ * post, by `created_at` then id, is stable under inserts and under ties.
  *
  * Throws on failure. The caller is a query with retry and error state
  * configured on the client, so swallowing the error here would take both
@@ -73,7 +75,8 @@ export const fetchFeedPage = async ({
   const { data: page, error: pageError } = await supabase
     .rpc('feed_posts', {
       p_viewer: userId,
-      p_before: pageParam ?? null,
+      p_before: pageParam?.createdAt ?? null,
+      p_before_id: pageParam?.id ?? null,
       p_interest: interest || null,
       p_limit: FEED_PAGE_SIZE,
     })
@@ -88,7 +91,8 @@ export const fetchFeedPage = async ({
     userId,
   )
     .in('id', ids)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false });
 
   if (error) throw error;
   return (data || []).map(mapPostData);
@@ -100,9 +104,10 @@ export const fetchFeedPage = async ({
  * A short page means the end of the feed. Exported so the rule is testable
  * without standing up a query.
  */
-export const nextFeedCursor = (page: Post[]): string | undefined => {
+export const nextFeedCursor = (page: Post[]): FeedCursor | undefined => {
   if (page.length < FEED_PAGE_SIZE) return undefined;
-  return page[page.length - 1]?.timestamp ?? undefined;
+  const last = page[page.length - 1];
+  return last?.timestamp ? { createdAt: last.timestamp, id: last.id } : undefined;
 };
 
 /**

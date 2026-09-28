@@ -23,13 +23,14 @@ import {
   removePost,
 } from '../../../features/posts/cache';
 import type { FeedData } from '../../../features/posts/cache';
+import type { FeedCursor } from '../../../features/posts/api';
 import type { Post } from '../../../types';
 
 const post = (id: string, likes = 0): Post =>
   ({ id, likes, username: 'layla', content: id, timestamp: `t-${id}` }) as Post;
 
 const feed = (...pages: Post[][]): FeedData =>
-  ({ pages, pageParams: pages.map(() => null) }) as InfiniteData<Post[], string | null>;
+  ({ pages, pageParams: pages.map(() => null) }) as InfiniteData<Post[], FeedCursor>;
 
 // ─── 1. Reading across pages ────────────────────────────────────────────
 

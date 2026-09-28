@@ -15,7 +15,7 @@ jest.mock('../../../services/supabase.native', () => ({
  * What one feed read asked for: the arguments `feed_posts` was called with,
  * which picks the page (ONE-106), and the ids the posts were then read by.
  */
-type Call = { args: Record<string, unknown>; pageIds?: string[] };
+type Call = { args: Record<string, unknown>; pageIds?: string[]; order?: [string, boolean][] };
 
 let calls: Call[] = [];
 /** The page `feed_posts` picks: its post ids. */
@@ -43,7 +43,12 @@ supabase.from.mockImplementation((table: string) => {
       call.pageIds = ids;
       return chain;
     },
-    order: () => Promise.resolve(postsResult),
+    order: (column: string, options: { ascending: boolean }) => {
+      (call.order ??= []).push([column, options.ascending]);
+      return chain;
+    },
+    then: (resolve: (value: unknown) => unknown, reject: (error: unknown) => unknown) =>
+      Promise.resolve(postsResult).then(resolve, reject),
   };
   return chain;
 });
@@ -73,6 +78,9 @@ const page = (n: number): Post[] =>
     mapPostData(row(`p-${i}`, new Date(BASE_MS - i * 60_000).toISOString())),
   );
 
+/** The cursor a full page ending on post p-19 hands the next. */
+const CURSOR = { createdAt: '2026-09-21T10:00:00Z', id: 'p-19' };
+
 beforeEach(() => {
   calls = [];
   pageResult = { data: [{ id: 'p-0' }, { id: 'p-1' }], error: null };
@@ -84,22 +92,27 @@ beforeEach(() => {
 describe('fetchFeedPage — paging is an argument', () => {
   it('asks for no cursor on the first page, and a page of FEED_PAGE_SIZE', async () => {
     await fetchFeedPage({ userId: 'me', pageParam: null });
-    expect(calls[0]!.args).toMatchObject({ p_viewer: 'me', p_before: null, p_limit: FEED_PAGE_SIZE });
+    expect(calls[0]!.args).toMatchObject({ p_viewer: 'me', p_before: null, p_before_id: null, p_limit: FEED_PAGE_SIZE });
   });
 
-  it('asks for posts older than the cursor on a later page', async () => {
-    await fetchFeedPage({ userId: 'me', pageParam: '2026-09-21T10:00:00Z' });
-    expect(calls[0]!.args.p_before).toBe('2026-09-21T10:00:00Z');
+  it('asks for posts after the cursor\'s post on a later page, by time and id (ONE-113)', async () => {
+    await fetchFeedPage({ userId: 'me', pageParam: CURSOR });
+    expect(calls[0]!.args).toMatchObject({ p_before: '2026-09-21T10:00:00Z', p_before_id: 'p-19' });
   });
 
   it('two sequences do not interfere — the second starts from the top', async () => {
     // This is the whole ticket: the old module-level cursor meant a second
     // mount silently continued the first one's pagination.
     await fetchFeedPage({ userId: 'me', pageParam: null });
-    await fetchFeedPage({ userId: 'me', pageParam: '2026-09-21T10:00:00Z' });
+    await fetchFeedPage({ userId: 'me', pageParam: CURSOR });
     await fetchFeedPage({ userId: 'me', pageParam: null });
 
     expect(calls.map((c) => c.args.p_before)).toEqual([null, '2026-09-21T10:00:00Z', null]);
+  });
+
+  it('orders the page it reads as feed_posts chose it: by time, then id', async () => {
+    await fetchFeedPage({ userId: 'me', pageParam: null });
+    expect(calls[0]!.order).toEqual([['created_at', false], ['id', false]]);
   });
 });
 
@@ -108,7 +121,7 @@ describe('fetchFeedPage — paging is an argument', () => {
 describe('fetchFeedPage — no follow list in the URL (ONE-106)', () => {
   it('sends the reader, not the people they follow', async () => {
     await fetchFeedPage({ userId: 'me', pageParam: null });
-    expect(Object.keys(calls[0]!.args).sort()).toEqual(['p_before', 'p_interest', 'p_limit', 'p_viewer']);
+    expect(Object.keys(calls[0]!.args).sort()).toEqual(['p_before', 'p_before_id', 'p_interest', 'p_limit', 'p_viewer']);
   });
 
   it('reads the posts by the page\'s own ids, never more than a page', async () => {
@@ -163,17 +176,23 @@ describe('nextFeedCursor', () => {
     expect(nextFeedCursor([])).toBeUndefined();
   });
 
-  it('returns the last post timestamp on a full page', () => {
+  it('returns the last post, by its timestamp and id, on a full page', () => {
     const full = page(FEED_PAGE_SIZE);
-    expect(nextFeedCursor(full)).toBe(full[full.length - 1]!.timestamp);
+    const last = full[full.length - 1]!;
+    expect(nextFeedCursor(full)).toEqual({ createdAt: last.timestamp, id: last.id });
   });
 
-  it('hands back a cursor strictly older than the page it came from', () => {
+  it('hands back a cursor no older than the page it came from', () => {
     // Otherwise the next page would re-fetch the post it started from.
     const full = page(FEED_PAGE_SIZE);
     const cursor = nextFeedCursor(full)!;
-    expect(full.filter((p) => String(p.timestamp) < cursor)).toHaveLength(0);
-    expect(cursor).toBe(full.at(-1)!.timestamp);
+    expect(full.filter((p) => String(p.timestamp) < cursor.createdAt)).toHaveLength(0);
+  });
+
+  it('names the last post even when every post on the page shares its time (ONE-113)', () => {
+    // A timestamp alone can't say where in a tie the page ended; the id can.
+    const tied = Array.from({ length: FEED_PAGE_SIZE }, (_, i) => mapPostData(row(`p-${i}`, '2026-09-21T12:00:00Z')));
+    expect(nextFeedCursor(tied)).toEqual({ createdAt: '2026-09-21T12:00:00Z', id: `p-${FEED_PAGE_SIZE - 1}` });
   });
 });
 

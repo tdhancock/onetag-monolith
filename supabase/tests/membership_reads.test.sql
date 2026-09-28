@@ -114,10 +114,10 @@ SELECT ok(
 -- ─── Who may call them ────────────────────────────────────────────────
 
 RESET ROLE;
-SELECT ok(NOT has_function_privilege('anon', 'public.feed_posts(uuid, timestamptz, text, integer)', 'EXECUTE'),
+SELECT ok(NOT has_function_privilege('anon', 'public.feed_posts(uuid, timestamptz, text, integer, uuid)', 'EXECUTE'),
   'anon cannot execute feed_posts()');
 SELECT ok(
-  has_function_privilege('authenticated', 'public.feed_posts(uuid, timestamptz, text, integer)', 'EXECUTE')
+  has_function_privilege('authenticated', 'public.feed_posts(uuid, timestamptz, text, integer, uuid)', 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.reel_stories(uuid, timestamptz)', 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.chat_list(uuid)', 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.blocked_profiles(uuid)', 'EXECUTE')

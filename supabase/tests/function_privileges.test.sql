@@ -89,7 +89,7 @@ SELECT ok(NOT has_function_privilege('authenticated', 'public.request_push(text,
 SELECT ok(NOT has_function_privilege('anon', 'public.request_push(text, uuid)', 'EXECUTE'),
   'anon cannot execute request_push() (ONE-103)');
 
-SELECT ok(NOT has_function_privilege('anon', 'public.feed_posts(uuid, timestamptz, text, integer)', 'EXECUTE'),
+SELECT ok(NOT has_function_privilege('anon', 'public.feed_posts(uuid, timestamptz, text, integer, uuid)', 'EXECUTE'),
   'anon cannot execute feed_posts() (ONE-106)');
 SELECT ok(NOT has_function_privilege('anon', 'public.reel_stories(uuid, timestamptz)', 'EXECUTE'),
   'anon cannot execute reel_stories() (ONE-106)');
