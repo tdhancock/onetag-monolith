@@ -25,6 +25,12 @@ jest.mock('../../../services/supabase.native', () => ({
   supabase: {
     auth: { getUser: async () => ({ data: { user: { id: 'me' } } }) },
     from: () => builder(),
+    // The reel reads through reel_stories, which joins the follows in the
+    // database rather than taking them as an id list in the URL (ONE-106).
+    rpc: (...args: unknown[]) => {
+      mockCalls.push({ method: 'rpc', args });
+      return builder();
+    },
   },
 }));
 
@@ -52,7 +58,13 @@ const cutoffs = () =>
 describe('24-hour expiry', () => {
   it('the reel only asks for stories newer than 24 hours', async () => {
     await getStories(asProfileId('me'));
-    expect(cutoffs()).toEqual([new Date(NOW - STORY_LIFETIME_MS).toISOString()]);
+    const reel = mockCalls.find((call) => call.method === 'rpc')!;
+    expect(reel.args).toEqual(['reel_stories', { p_viewer: 'me', p_since: new Date(NOW - STORY_LIFETIME_MS).toISOString() }]);
+  });
+
+  it('the reel sends the viewer, never the list of people they follow (ONE-106)', async () => {
+    await getStories(asProfileId('me'));
+    expect(mockCalls.some((call) => call.method === 'in')).toBe(false);
   });
 
   it('"Your story" only asks for stories newer than 24 hours', async () => {

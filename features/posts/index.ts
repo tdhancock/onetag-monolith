@@ -13,7 +13,6 @@ export {
   fetchFeedPage,
   fetchPostById,
   nextFeedCursor,
-  getFeedUserIds,
   mapPostData,
   getPostLikers,
   getPostReposters,

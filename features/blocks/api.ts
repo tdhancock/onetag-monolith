@@ -35,17 +35,17 @@ export const fetchBlocks = async (blockerId: AuthUserId): Promise<BlockedUser[]>
   if (error) throw error;
   if (!blocks || blocks.length === 0) return [];
 
-  // A block names an account; its profiles are found by `user_id` (ONE-21).
+  // A block names an account; its profiles are found by `user_id` (ONE-21),
+  // in the database rather than as an id list in the URL (ONE-106).
   const { data: profiles, error: profileError } = await supabase
-    .from('profiles')
-    .select('user_id, profile_type, username, full_name, avatar_url')
-    .in('user_id', blocks.map((b: { blocked_id: string }) => b.blocked_id));
+    .rpc('blocked_profiles', { p_blocker: blockerId })
+    .select('user_id, profile_type, username, full_name, avatar_url');
 
   if (profileError) throw profileError;
 
   // Each account's profiles, the Individual Profile first.
   const byAccount = new Map<string, any[]>();
-  for (const profile of profiles || []) {
+  for (const profile of (profiles || []) as any[]) {
     const list = byAccount.get(profile.user_id) ?? [];
     list.push(profile);
     byAccount.set(profile.user_id, list);
@@ -103,13 +103,11 @@ export const resolveUsernames = async (usernames: string[]): Promise<string[]> =
   if (usernames.length === 0) return [];
 
   // The account behind each handle — blocks key on accounts, not profiles.
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('user_id')
-    .in('username', usernames);
+  // The handles go in the request body, not the URL (ONE-106).
+  const { data, error } = await supabase.rpc('accounts_for_usernames', { p_usernames: usernames });
 
   if (error) throw error;
-  return Array.from(new Set((data || []).map((row: { user_id: string }) => row.user_id)));
+  return Array.from(new Set((data || []) as string[]));
 };
 
 /**

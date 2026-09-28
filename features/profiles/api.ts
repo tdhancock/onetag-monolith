@@ -533,41 +533,25 @@ export const searchUsers = async (query: string): Promise<any[]> => {
 };
 
 export const getSmartUserSuggestions = async(userId: ProfileId): Promise<any[]> => {
-    // The original RPC function 'get_user_suggestions' causes a "column reference is ambiguous" SQL error.
-    // As we cannot modify the backend function, this implementation replaces it with a client-side query
-    // that suggests recent users the current user is not already following.
-
-    // 1. Get IDs of users the current user is following.
-    const { data: followingData, error: followingError } = await supabase
-        .from('follows')
-        .select('followed_id')
-        .eq('follower_id', userId);
-
-    if (followingError) {
-        console.error('Error fetching following list for suggestions:', followingError.message);
-        return [];
-    }
-
-    // Create a list of user IDs to exclude from suggestions (followed users + the user themselves).
-    const followingIds = followingData.map(f => f.followed_id);
-    const excludeIds = [...followingIds, userId];
-
-    // 2. Fetch a few recent profiles, excluding the ones in the `excludeIds` list.
+    // The newest profiles the viewer doesn't follow and isn't, from
+    // `suggested_profiles`. It used to send every followed id back as
+    // `.not('id', 'in', …)`, which put them all in the URL and broke at about
+    // 200 follows (ONE-106).
     const { data: suggestionsData, error: suggestionsError } = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, is_verified, is_private')
-        .not('id', 'in', `(${excludeIds.join(',')})`)
-        .order('created_at', { ascending: false })
-        .limit(5);
+        .rpc('suggested_profiles', { p_viewer: userId, p_limit: 5 })
+        // created_at is selected so the order can use it: PostgREST reads a
+        // function's result only for the columns the select names.
+        .select('id, username, avatar_url, is_verified, is_private, created_at')
+        .order('created_at', { ascending: false });
 
     if (suggestionsError) {
         console.error('Error fetching user suggestions:', suggestionsError.message);
         return [];
     }
 
-    // 3. Map the fetched profile data to the structure expected by the UserSuggestions component.
-    // The 'mutual_followers' field is set to 0 as this simplified query does not calculate them.
-    return (suggestionsData || []).map(profile => ({
+    // The shape the suggestions row expects. There is no mutual-follower
+    // count, so it is 0.
+    return ((suggestionsData || []) as any[]).map(profile => ({
         suggested_user_id: profile.id,
         username: profile.username,
         avatar_url: profile.avatar_url,

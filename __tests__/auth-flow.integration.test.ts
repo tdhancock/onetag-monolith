@@ -230,8 +230,8 @@ describe('Integration — login → feed → profile', () => {
     // ── 2. FEED LOAD ────────────────────────────────────────────────────
     //
     // Home tab mounts → the feed query calls fetchFeedPage() with the signed
-    // in user's id. That fires `from('follows')` to compute the feed
-    // audience, then `from('posts')` for the page.
+    // in user's id. That calls `rpc('feed_posts')` to choose the page in the
+    // database (ONE-106), then `from('posts')` to read it.
     const feedPosts = [
       makeFeedPost({ id: 'p-1', content: 'First post' }),
       makeFeedPost({ id: 'p-2', content: 'Second post', isVerified: true }),
@@ -240,14 +240,12 @@ describe('Integration — login → feed → profile', () => {
 
     testHooks.mockGetUser.mockResolvedValue({ data: { user: authUser }, error: null });
 
-    // Sequence-aware handlers — holds counts so we can assert that
-    // `follows` and `posts` were queried exactly once each.
-    let followsCalls = 0;
+    // Sequence-aware handlers — holds counts so we can assert that the page
+    // was chosen once and the posts read once.
     let postsCalls = 0;
-    testHooks.setHandler('follows', () => {
-      followsCalls++;
-      return { data: [{ followed_id: 'user-1' }, { followed_id: 'user-2' }], error: null };
-    });
+    testHooks.mockRpc.mockImplementation(() =>
+      makeQueryBuilder({ data: feedPosts.map((p) => ({ id: p.id })), error: null }),
+    );
     testHooks.setHandler('posts', () => {
       postsCalls++;
       return {
@@ -280,9 +278,9 @@ describe('Integration — login → feed → profile', () => {
     expect(timeline[0].content).toBe('First post');
     expect(timeline[0].username).toBe('layla');
     expect(timeline[2].media_type).toBe('image');
-    expect(followsCalls).toBe(1);
+    expect(testHooks.mockRpc).toHaveBeenCalledTimes(1);
+    expect(testHooks.mockRpc).toHaveBeenCalledWith('feed_posts', expect.objectContaining({ p_viewer: authUser.id }));
     expect(postsCalls).toBe(1);
-    expect(testHooks.mockFrom).toHaveBeenCalledWith('follows');
     expect(testHooks.mockFrom).toHaveBeenCalledWith('posts');
 
     // Cross-validate against the page-size constant imported from the
@@ -389,20 +387,17 @@ describe('Integration — login (focused)', () => {
 // ─── 5. FEED-only — covers the second integration step in focus ────────
 
 describe('Integration — feed load (focused)', () => {
-  it('hits follows + posts tables when an authenticated user requests the feed', async () => {
+  it('chooses the page with feed_posts, then reads its posts, when an authenticated user requests the feed', async () => {
     const authUser = { id: 'user-feed', email: 'f@example.com', user_metadata: {} };
     testHooks.mockGetUser.mockResolvedValue({ data: { user: authUser }, error: null });
 
-    testHooks.setHandler('follows', () => ({
-      data: [{ followed_id: 'user-feed' }],
-      error: null,
-    }));
+    testHooks.mockRpc.mockImplementation(() => makeQueryBuilder({ data: [{ id: 'p-9' }], error: null }));
     testHooks.setHandler('posts', () => ({ data: [], error: null }));
 
     const timeline = await fetchFeedPage({ userId: authUser.id, pageParam: null });
     expect(Array.isArray(timeline)).toBe(true);
     expect(timeline).toHaveLength(0);
-    expect(testHooks.mockFrom).toHaveBeenCalledWith('follows');
+    expect(testHooks.mockRpc).toHaveBeenCalledWith('feed_posts', expect.objectContaining({ p_viewer: authUser.id }));
     expect(testHooks.mockFrom).toHaveBeenCalledWith('posts');
   });
 });

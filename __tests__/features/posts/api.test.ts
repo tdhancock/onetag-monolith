@@ -8,46 +8,42 @@
 // last timestamp, and that two sequences do not interfere.
 
 jest.mock('../../../services/supabase.native', () => ({
-  supabase: { from: jest.fn() },
+  supabase: { from: jest.fn(), rpc: jest.fn() },
 }));
 
-/** Records the chain a query built, so the test can assert on it. */
-type Call = { lt?: string; limit?: number; inIds?: string[]; eqs: [string, unknown][] };
+/**
+ * What one feed read asked for: the arguments `feed_posts` was called with,
+ * which picks the page (ONE-106), and the ids the posts were then read by.
+ */
+type Call = { args: Record<string, unknown>; pageIds?: string[] };
 
 let calls: Call[] = [];
+/** The page `feed_posts` picks: its post ids. */
+let pageResult: { data: { id: string }[] | null; error: unknown } = { data: [], error: null };
+/** The posts read by those ids. */
 let postsResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
-let followsResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { supabase } = require('../../../services/supabase.native');
 
-supabase.from.mockImplementation((table: string) => {
-  if (table === 'follows') {
-    return { select: () => ({ eq: () => Promise.resolve(followsResult) }) };
-  }
-
-  const call: Call = { eqs: [] };
+supabase.rpc.mockImplementation((fn: string, args: Record<string, unknown>) => {
+  if (fn !== 'feed_posts') throw new Error(`unexpected rpc ${fn}`);
+  const call: Call = { args };
   calls.push(call);
+  return { select: () => Promise.resolve(pageResult) };
+});
 
+supabase.from.mockImplementation((table: string) => {
+  if (table !== 'posts') throw new Error(`unexpected table ${table}`);
+  const call = calls[calls.length - 1]!;
   const chain = {
+    select: () => chain,
+    eq: () => chain,
     in: (_col: string, ids: string[]) => {
-      call.inIds = ids;
+      call.pageIds = ids;
       return chain;
     },
-    order: () => chain,
-    limit: (n: number) => {
-      call.limit = n;
-      return Object.assign(Promise.resolve(postsResult), chain);
-    },
-    lt: (_col: string, cursor: string) => {
-      call.lt = cursor;
-      return Object.assign(Promise.resolve(postsResult), chain);
-    },
-    select: () => chain,
-    eq: (col: string, value: unknown) => {
-      call.eqs.push([col, value]);
-      return Object.assign(Promise.resolve(postsResult), chain);
-    },
+    order: () => Promise.resolve(postsResult),
   };
   return chain;
 });
@@ -79,22 +75,21 @@ const page = (n: number): Post[] =>
 
 beforeEach(() => {
   calls = [];
+  pageResult = { data: [{ id: 'p-0' }, { id: 'p-1' }], error: null };
   postsResult = { data: [], error: null };
-  followsResult = { data: [{ followed_id: 'friend-1' }], error: null };
 });
 
 // ─── 1. No module-level state ───────────────────────────────────────────
 
 describe('fetchFeedPage — paging is an argument', () => {
-  it('asks for no cursor on the first page', async () => {
+  it('asks for no cursor on the first page, and a page of FEED_PAGE_SIZE', async () => {
     await fetchFeedPage({ userId: 'me', pageParam: null });
-    expect(calls[0]!.lt).toBeUndefined();
-    expect(calls[0]!.limit).toBe(FEED_PAGE_SIZE);
+    expect(calls[0]!.args).toMatchObject({ p_viewer: 'me', p_before: null, p_limit: FEED_PAGE_SIZE });
   });
 
   it('asks for posts older than the cursor on a later page', async () => {
     await fetchFeedPage({ userId: 'me', pageParam: '2026-09-21T10:00:00Z' });
-    expect(calls[0]!.lt).toBe('2026-09-21T10:00:00Z');
+    expect(calls[0]!.args.p_before).toBe('2026-09-21T10:00:00Z');
   });
 
   it('two sequences do not interfere — the second starts from the top', async () => {
@@ -104,36 +99,39 @@ describe('fetchFeedPage — paging is an argument', () => {
     await fetchFeedPage({ userId: 'me', pageParam: '2026-09-21T10:00:00Z' });
     await fetchFeedPage({ userId: 'me', pageParam: null });
 
-    expect(calls.map((c) => c.lt)).toEqual([undefined, '2026-09-21T10:00:00Z', undefined]);
-  });
-
-  it('fetches the feed audience: everyone followed, plus the reader', async () => {
-    await fetchFeedPage({ userId: 'me', pageParam: null });
-    expect(calls[0]!.inIds).toEqual(['friend-1', 'me']);
-  });
-
-  it('does not duplicate the reader when they somehow follow themselves', async () => {
-    followsResult = { data: [{ followed_id: 'me' }], error: null };
-    await fetchFeedPage({ userId: 'me', pageParam: null });
-    expect(calls[0]!.inIds).toEqual(['me']);
+    expect(calls.map((c) => c.args.p_before)).toEqual([null, '2026-09-21T10:00:00Z', null]);
   });
 });
 
-// ─── 2. Errors reach the query ──────────────────────────────────────────
+// ─── 2. The page is chosen in the database (ONE-106) ────────────────────
+
+describe('fetchFeedPage — no follow list in the URL (ONE-106)', () => {
+  it('sends the reader, not the people they follow', async () => {
+    await fetchFeedPage({ userId: 'me', pageParam: null });
+    expect(Object.keys(calls[0]!.args).sort()).toEqual(['p_before', 'p_interest', 'p_limit', 'p_viewer']);
+  });
+
+  it('reads the posts by the page\'s own ids, never more than a page', async () => {
+    await fetchFeedPage({ userId: 'me', pageParam: null });
+    expect(calls[0]!.pageIds).toEqual(['p-0', 'p-1']);
+  });
+
+  it('reads no posts when the page is empty', async () => {
+    pageResult = { data: [], error: null };
+    await expect(fetchFeedPage({ userId: 'me', pageParam: null })).resolves.toEqual([]);
+    expect(calls[0]!.pageIds).toBeUndefined();
+  });
+});
 
 describe('fetchFeedPage — the interest filter (ONE-49)', () => {
-  it('narrows the query itself, so a filtered page is still full-length', async () => {
-    calls = [];
+  it('narrows the page in the database, so a filtered page is still full-length', async () => {
     await fetchFeedPage({ userId: 'me', pageParam: null, interest: 'custom-homes' });
-    const call = calls[calls.length - 1];
-    expect(call.eqs).toContainEqual(['interest_slug', 'custom-homes']);
-    expect(call.limit).toBe(FEED_PAGE_SIZE);
+    expect(calls[0]!.args).toMatchObject({ p_interest: 'custom-homes', p_limit: FEED_PAGE_SIZE });
   });
 
   it('adds no filter for All, so untagged posts appear there', async () => {
-    calls = [];
     await fetchFeedPage({ userId: 'me', pageParam: null });
-    expect(calls[calls.length - 1].eqs.map(([col]) => col)).not.toContain('interest_slug');
+    expect(calls[0]!.args.p_interest).toBeNull();
   });
 });
 
@@ -145,8 +143,8 @@ describe('fetchFeedPage — errors', () => {
     await expect(fetchFeedPage({ userId: 'me', pageParam: null })).rejects.toBeDefined();
   });
 
-  it('propagates a follows failure too', async () => {
-    followsResult = { data: null, error: { message: 'nope' } };
+  it('propagates a failure choosing the page too', async () => {
+    pageResult = { data: null, error: { message: 'nope' } };
     await expect(fetchFeedPage({ userId: 'me', pageParam: null })).rejects.toBeDefined();
   });
 

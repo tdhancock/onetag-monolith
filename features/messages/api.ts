@@ -108,14 +108,15 @@ export const getChatListUsers = async (userId: string): Promise<Conversation[]> 
 
   if (latestMessageTimestamps.size === 0) return [];
 
+  // `chat_partners` finds them in the database: their ids as `.in('id', …)`
+  // went in the URL, which broke at about 200 conversations (ONE-106).
   const { data: profiles, error: profilesError } = await supabase
-    .from('profiles')
-    .select('id, full_name, username, avatar_url, is_verified')
-    .in('id', Array.from(latestMessageTimestamps.keys()));
+    .rpc('chat_partners', { p_profile: userId })
+    .select('id, full_name, username, avatar_url, is_verified');
 
   if (profilesError) throw profilesError;
 
-  const users: Conversation[] = (profiles || []).map((u: any) => ({
+  const users: Conversation[] = ((profiles || []) as any[]).map((u: any) => ({
     id: u.id,
     name: u.full_name,
     username: u.username,

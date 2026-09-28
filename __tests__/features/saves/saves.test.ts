@@ -32,6 +32,7 @@ import {
   type SaveRow,
 } from '../../../features/saves';
 import { toggleMutationOptions } from '../../../lib/optimisticToggle';
+import { fetchSavedItems, inBatches, IDS_PER_REQUEST } from '../../../features/saves/api';
 
 /** A query builder whose every method chains, and which awaits to `result`. */
 function builder(result: unknown) {
@@ -255,5 +256,49 @@ describe('keys', () => {
   it('give each profile its own list, so a switch reads the newly active profile\'s saves', () => {
     expect(saveKeys.mine('p-ana')).toEqual(['saves', 'list', { profileId: 'p-ana' }]);
     expect(saveKeys.mine('p-ana')).not.toEqual(saveKeys.mine('p-studio'));
+  });
+});
+
+// ─── 4. Hundreds of saves (ONE-106) ─────────────────────────────────────
+
+describe('a Saves tab with hundreds of saves', () => {
+  it('splits ids into batches of at most IDS_PER_REQUEST', () => {
+    const ids = Array.from({ length: 250 }, (_, i) => `x-${i}`);
+    const batches = inBatches(ids);
+    expect(batches.map((b) => b.length)).toEqual([100, 100, 50]);
+    expect(batches.flat()).toEqual(ids);
+    expect(inBatches([])).toEqual([]);
+    expect(IDS_PER_REQUEST).toBeLessThanOrEqual(100);
+  });
+
+  it('reads 250 saved posts in batches, so no request carries them all, and lists every one', async () => {
+    const saved = Array.from({ length: 250 }, (_, i) => ({
+      ...ROW,
+      id: `s-${i}`,
+      saved_product_id: null,
+      saved_post_id: `post-${i}`,
+      saved_at: new Date(Date.UTC(2026, 8, 1) - i * 60_000).toISOString(),
+    }));
+    const batchesAsked: string[][] = [];
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'saves') return builder({ data: saved, error: null }).chain;
+      const read = builder(undefined);
+      let asked: string[] = [];
+      read.chain.in = (_col: unknown, ids: string[]) => {
+        asked = ids;
+        batchesAsked.push(ids);
+        return read.chain;
+      };
+      read.chain.then = (resolve: (v: unknown) => unknown) =>
+        Promise.resolve({ data: asked.map((id) => ({ id, content: 'x', created_at: '2026-09-01T00:00:00Z' })), error: null }).then(resolve);
+      return read.chain;
+    });
+
+    const items = await fetchSavedItems('p-ana');
+
+    expect(batchesAsked.every((ids) => ids.length <= IDS_PER_REQUEST)).toBe(true);
+    expect(batchesAsked.flat().sort()).toEqual(saved.map((row) => row.saved_post_id).sort());
+    // Every save listed, newest first, as fetchSaves ordered them.
+    expect(items.map((item) => item.saveId)).toEqual(saved.map((row) => row.id));
   });
 });

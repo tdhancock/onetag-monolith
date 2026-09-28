@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(31);
+SELECT plan(37);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -88,6 +88,19 @@ SELECT ok(NOT has_function_privilege('authenticated', 'public.request_push(text,
   'authenticated cannot execute request_push() (ONE-103)');
 SELECT ok(NOT has_function_privilege('anon', 'public.request_push(text, uuid)', 'EXECUTE'),
   'anon cannot execute request_push() (ONE-103)');
+
+SELECT ok(NOT has_function_privilege('anon', 'public.feed_posts(uuid, timestamptz, text, integer)', 'EXECUTE'),
+  'anon cannot execute feed_posts() (ONE-106)');
+SELECT ok(NOT has_function_privilege('anon', 'public.reel_stories(uuid, timestamptz)', 'EXECUTE'),
+  'anon cannot execute reel_stories() (ONE-106)');
+SELECT ok(NOT has_function_privilege('anon', 'public.chat_partners(uuid)', 'EXECUTE'),
+  'anon cannot execute chat_partners() (ONE-106)');
+SELECT ok(NOT has_function_privilege('anon', 'public.blocked_profiles(uuid)', 'EXECUTE'),
+  'anon cannot execute blocked_profiles() (ONE-106)');
+SELECT ok(NOT has_function_privilege('anon', 'public.accounts_for_usernames(text[])', 'EXECUTE'),
+  'anon cannot execute accounts_for_usernames() (ONE-106)');
+SELECT ok(NOT has_function_privilege('anon', 'public.suggested_profiles(uuid, integer)', 'EXECUTE'),
+  'anon cannot execute suggested_profiles() (ONE-106)');
 
 SELECT * FROM finish();
 ROLLBACK;

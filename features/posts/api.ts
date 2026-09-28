@@ -30,19 +30,6 @@ export const FEED_PAGE_SIZE = 20;
 /** Restrict the viewer-scoped embeds to one profile's rows (services/postRows.ts). */
 const scopeToViewer = scopePostsToViewer;
 
-/** The author ids whose posts make up a user's feed: everyone they follow, plus themselves. */
-export const getFeedUserIds = async (userId: string): Promise<string[]> => {
-  const { data: followingData, error: followingError } = await supabase
-    .from('follows')
-    .select('followed_id')
-    .eq('follower_id', userId);
-
-  if (followingError) throw followingError;
-
-  const followingIds = (followingData || []).map((f: { followed_id: string }) => f.followed_id);
-  return Array.from(new Set([...followingIds, userId]));
-};
-
 /**
  * A cursor into the feed: the `created_at` of the last post on the previous
  * page. `null` means "start from the top".
@@ -67,36 +54,42 @@ export interface FetchFeedPageArgs {
  * Throws on failure. The caller is a query with retry and error state
  * configured on the client, so swallowing the error here would take both
  * away and make an outage indistinguishable from an empty feed.
+ *
+ * Two steps. `feed_posts` chooses the page — the reader's posts and those of
+ * everyone they follow — and hands back its ids. It used to fetch the follow
+ * list and send it back as `.in('user_id', …)`, which put every id in the URL
+ * and broke at about 200 follows (ONE-106); a page's ids are at most
+ * FEED_PAGE_SIZE. Then the page is read from the table as every post list is,
+ * scoped to the reader. It isn't read through the function itself: PostgREST
+ * 14 fails the viewer-scoped embeds on a function's result.
+ *
+ * The interest narrows the page in the database, never a fetched page, so a
+ * filtered page is still full-length (ONE-49).
  */
 export const fetchFeedPage = async ({
   userId,
   pageParam,
   interest = null,
 }: FetchFeedPageArgs): Promise<Post[]> => {
-  const userIdsToFetch = await getFeedUserIds(userId);
+  const { data: page, error: pageError } = await supabase
+    .rpc('feed_posts', {
+      p_viewer: userId,
+      p_before: pageParam ?? null,
+      p_interest: interest || null,
+      p_limit: FEED_PAGE_SIZE,
+    })
+    .select('id');
 
-  let query = scopeToViewer(
-    supabase
-      .from('posts')
-      .select(POST_SELECT_QUERY),
+  if (pageError) throw pageError;
+  const ids = ((page || []) as { id: string }[]).map((row) => row.id);
+  if (ids.length === 0) return [];
+
+  const { data, error } = await scopeToViewer(
+    supabase.from('posts').select(POST_SELECT_QUERY),
     userId,
   )
-    .in('user_id', userIdsToFetch)
-    .order('created_at', { ascending: false })
-    .limit(FEED_PAGE_SIZE);
-
-  if (pageParam) {
-    query = query.lt('created_at', pageParam);
-  }
-
-  // Narrowed in the query, never by filtering a fetched page: a page cut
-  // down on the client comes back short, or empty (ONE-49). Untagged posts
-  // have no interest, so they appear under All only.
-  if (interest) {
-    query = query.eq('interest_slug', interest);
-  }
-
-  const { data, error } = await query;
+    .in('id', ids)
+    .order('created_at', { ascending: false });
 
   if (error) throw error;
   return (data || []).map(mapPostData);
