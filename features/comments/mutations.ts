@@ -14,6 +14,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
 import { addComment, deleteComment, toggleCommentLike } from './api';
 import { commentKeys } from './keys';
+import { addToThreads, removeFromThreads } from './thread';
 import type { Comment } from './types';
 import type { CommentLikes } from './queries';
 import { postKeys, type Post } from '../posts';
@@ -42,6 +43,7 @@ const moveReplyCount = (queryClient: QueryClient, postId: string, delta: number)
 const optimisticComment = (
   text: string,
   author: CommentAuthor,
+  parentId: string | null,
 ): Comment => ({
   id: `temp-${Date.now()}`,
   userId: author.id ?? '',
@@ -51,6 +53,7 @@ const optimisticComment = (
   timestamp: new Date(),
   likes: 0,
   isLiked: false,
+  parentId,
   replies: [],
 } as unknown as Comment);
 
@@ -65,12 +68,15 @@ export interface AddCommentVariables {
   postId: string;
   text: string;
   author: CommentAuthor;
+  /** The comment this replies to: the opening comment of its thread. */
+  parentId?: string | null;
 }
 
 /**
- * Post a comment.
+ * Post a comment, or a reply to one.
  *
- * The comment appears immediately with a temporary id and the reply count
+ * The comment appears immediately with a temporary id — a new thread at the
+ * top, or a reply at the foot of its thread — and the post's comment count
  * moves with it; on success the server row replaces the placeholder, and on
  * failure both are taken back.
  */
@@ -78,19 +84,19 @@ export const useAddComment = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ postId, text, author }: AddCommentVariables) => {
+    mutationFn: ({ postId, text, author, parentId }: AddCommentVariables) => {
       if (!author.id) throw new Error('You must be signed in to comment.');
-      return addComment(postId, author.id, text);
+      return addComment(postId, author.id, text, parentId);
     },
 
-    onMutate: async ({ postId, text, author }: AddCommentVariables) => {
+    onMutate: async ({ postId, text, author, parentId }: AddCommentVariables) => {
       const listKey = commentKeys.forPost(postId);
       await queryClient.cancelQueries({ queryKey: listKey });
 
       const previous = queryClient.getQueryData<Comment[]>(listKey);
-      const pending = optimisticComment(text, author);
+      const pending = optimisticComment(text, author, parentId ?? null);
 
-      queryClient.setQueryData<Comment[]>(listKey, (comments) => [pending, ...(comments ?? [])]);
+      queryClient.setQueryData<Comment[]>(listKey, (comments) => addToThreads(comments ?? [], pending, parentId));
       moveReplyCount(queryClient, postId, 1);
 
       return { previous, pendingId: pending.id };
@@ -115,7 +121,11 @@ export interface DeleteCommentVariables {
   commentId: string;
 }
 
-/** Remove a comment, optimistically. */
+/**
+ * Remove a comment, optimistically. Removing the comment a thread opens with
+ * removes its replies too, as the database does, and the post's count drops
+ * by all of them.
+ */
 export const useDeleteComment = () => {
   const queryClient = useQueryClient();
 
@@ -132,22 +142,19 @@ export const useDeleteComment = () => {
       await queryClient.cancelQueries({ queryKey: listKey });
 
       const previous = queryClient.getQueryData<Comment[]>(listKey);
-      const existed = Boolean(previous?.some((comment) => comment.id === commentId));
+      const { threads, removed } = removeFromThreads(previous ?? [], commentId);
 
-      queryClient.setQueryData<Comment[]>(listKey, (comments) =>
-        (comments ?? []).filter((comment) => comment.id !== commentId),
-      );
+      queryClient.setQueryData<Comment[]>(listKey, threads);
+      if (removed > 0) moveReplyCount(queryClient, postId, -removed);
 
-      if (existed) moveReplyCount(queryClient, postId, -1);
-
-      return { previous, existed };
+      return { previous, removed };
     },
 
     onError: (_error, { postId }, context) => {
       if (!context) return;
 
       queryClient.setQueryData(commentKeys.forPost(postId), context.previous);
-      if (context.existed) moveReplyCount(queryClient, postId, 1);
+      if (context.removed > 0) moveReplyCount(queryClient, postId, context.removed);
     },
 
     onSettled: (_data, _error, { postId }) => {

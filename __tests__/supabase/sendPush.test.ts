@@ -5,7 +5,7 @@
 // data and a fake Expo. What the database queues for it is pinned by
 // supabase/tests/push_notifications.test.sql.
 
-import { readFileSync } from 'fs';
+import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import {
   MESSAGE_SENTENCE,
@@ -162,8 +162,15 @@ describe('wiring', () => {
   });
 
   it('is queued for exactly the types that push', () => {
-    const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '20260928130000_push_notifications.sql'), 'utf8');
-    const listed = sql.match(/WHEN \(NEW\.type IN \(([^)]*)\)\)/)![1]!.match(/'([a-z_]+)'/g)!.map((s) => s.slice(1, -1));
+    // The trigger as the latest migration to make it left it.
+    const dir = join(ROOT, 'supabase', 'migrations');
+    const latest = readdirSync(dir)
+      .filter((name) => name.endsWith('.sql'))
+      .sort()
+      .map((name) => readFileSync(join(dir, name), 'utf8'))
+      .filter((sql) => sql.includes('CREATE TRIGGER notifications_push'))
+      .pop()!;
+    const listed = latest.match(/WHEN \(NEW\.type IN \(([^)]*)\)\)/)![1]!.match(/'([a-z_]+)'/g)!.map((s) => s.slice(1, -1));
     expect(listed).toEqual([...PUSH_NOTIFICATION_TYPES]);
   });
 });

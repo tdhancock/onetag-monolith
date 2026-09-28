@@ -13,6 +13,7 @@ export {
 } from './api';
 
 export { commentKeys } from './keys';
+export { threadComments, addToThreads, removeFromThreads, threadIdFor } from './thread';
 
 export { useCommentsQuery, useCommentLikesQuery } from './queries';
 export type { CommentLikes } from './queries';

@@ -12,10 +12,12 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
-import { useCommentsQuery, useAddComment, useDeleteComment } from '../../features/comments';
+import { useCommentsQuery, useAddComment, useDeleteComment, threadIdFor } from '../../features/comments';
 import { cleanHtml } from '../../lib/cleanHtml';
-import CommentRow, { CommentRowSkeleton, COMMENT_AVATAR_SIZE } from '../../components/native/CommentRow';
-import { Avatar, EmptyState, TextField } from '../../components/native/ui';
+import { hiddenRepliesLabel, replyPrefill, visibleReplies } from '../../lib/screens/comments';
+import CommentRow, { CommentRowSkeleton, COMMENT_AVATAR_SIZE, REPLY_INDENT } from '../../components/native/CommentRow';
+import { Avatar, EmptyState, IconButton, TextField } from '../../components/native/ui';
+import { XIcon } from '../../components/native/Icons';
 import KeyboardAvoider from '../../components/native/KeyboardAvoider';
 import { color, space, type } from '../../theme/tokens';
 import type { Comment } from '../../types';
@@ -37,6 +39,10 @@ export default function CommentsScreen() {
 
   const [newCommentText, setNewCommentText] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  // The comment being replied to, while the composer is answering one.
+  const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
+  // Threads opened past their first replies.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
   // One query, keyed by post. Two mounts in quick succession share a single
   // request because TanStack dedupes by key — which is what made the 209-line
@@ -63,10 +69,17 @@ export default function CommentsScreen() {
     const text = newCommentText.trim();
     if (!text || !postId || addCommentMutation.isPending) return;
 
+    // A reply goes in the thread of the comment it answers, which opens so
+    // the reply shows where it landed.
+    const parentId = replyingTo ? threadIdFor(replyingTo) : null;
+    if (parentId) setExpanded((open) => new Set(open).add(parentId));
+
     setNewCommentText('');
+    setReplyingTo(null);
     addCommentMutation.mutate({
       postId,
       text: cleanHtml(text),
+      parentId,
       author: {
         id: profileId,
         username: userProfile?.username || '',
@@ -74,6 +87,18 @@ export default function CommentsScreen() {
       },
     });
   };
+
+  const handleReply = useCallback((comment: Comment) => {
+    setReplyingTo(comment);
+    // Their handle leads the reply, so they hear of it however deep it sits.
+    setNewCommentText(replyPrefill(comment.username, userProfile?.username));
+    inputRef.current?.focus();
+  }, [userProfile?.username]);
+
+  const cancelReply = useCallback(() => {
+    setReplyingTo(null);
+    setNewCommentText('');
+  }, []);
 
   const handleDeleteComment = useCallback((commentId: string) => {
     if (!postId) return;
@@ -106,16 +131,43 @@ export default function CommentsScreen() {
     ({ item }: { item: Comment }) => {
       // Only your own comments delete, by the account's author id where the
       // comment carries one.
-      const mine = item.userId ? item.userId === profileId : item.username === userProfile?.username;
+      const isMine = (comment: Comment) =>
+        comment.userId ? comment.userId === profileId : comment.username === userProfile?.username;
+      const replies = item.replies ?? [];
+      const shown = visibleReplies(replies, expanded.has(item.id));
+      const hidden = hiddenRepliesLabel(replies.length - shown.length);
       return (
-        <CommentRow
-          comment={item}
-          onViewProfile={handleViewProfile}
-          onDelete={mine ? handleDeleteComment : undefined}
-        />
+        <View>
+          <CommentRow
+            comment={item}
+            onViewProfile={handleViewProfile}
+            onDelete={isMine(item) ? handleDeleteComment : undefined}
+            onReply={handleReply}
+          />
+          {shown.map((reply) => (
+            <CommentRow
+              key={reply.id}
+              comment={reply}
+              isReply
+              onViewProfile={handleViewProfile}
+              onDelete={isMine(reply) ? handleDeleteComment : undefined}
+              onReply={handleReply}
+            />
+          ))}
+          {hidden ? (
+            <Pressable
+              onPress={() => setExpanded((open) => new Set(open).add(item.id))}
+              accessibilityRole="button"
+              hitSlop={4}
+              style={styles.moreReplies}
+            >
+              <Text style={styles.moreRepliesLabel}>{hidden}</Text>
+            </Pressable>
+          ) : null}
+        </View>
       );
     },
-    [handleDeleteComment, handleViewProfile, profileId, userProfile?.username],
+    [expanded, handleDeleteComment, handleReply, handleViewProfile, profileId, userProfile?.username],
   );
 
   const renderBody = () => {
@@ -142,6 +194,7 @@ export default function CommentsScreen() {
         data={localComments}
         keyExtractor={item => item.id}
         renderItem={renderItem}
+        extraData={expanded}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
@@ -176,6 +229,19 @@ export default function CommentsScreen() {
       <KeyboardAvoider style={styles.fill}>
         {renderBody()}
 
+        {replyingTo ? (
+          <View style={styles.replyBanner}>
+            <Text style={styles.replyBannerText} numberOfLines={1}>
+              Replying to <Text style={styles.replyBannerName}>@{replyingTo.username}</Text>
+            </Text>
+            <IconButton
+              icon={<XIcon color={color.textMid} size={18} />}
+              accessibilityLabel="Cancel reply"
+              onPress={cancelReply}
+            />
+          </View>
+        ) : null}
+
         {/* The composer, pinned above the keyboard and the home indicator. */}
         <View style={styles.composer}>
           <Avatar
@@ -187,7 +253,7 @@ export default function CommentsScreen() {
             ref={inputRef}
             value={newCommentText}
             onChangeText={setNewCommentText}
-            placeholder="Add a comment…"
+            placeholder={replyingTo ? `Reply to @${replyingTo.username}…` : 'Add a comment…'}
             multiline
             // Return sends rather than adding a line: a comment is one thought.
             submitBehavior="submit"
@@ -195,7 +261,7 @@ export default function CommentsScreen() {
             onSubmitEditing={handleAddComment}
             containerStyle={styles.composerField}
             inputStyle={styles.composerInput}
-            accessibilityLabel="Add a comment"
+            accessibilityLabel={replyingTo ? `Reply to ${replyingTo.username}` : 'Add a comment'}
           />
           <Pressable
             onPress={handleAddComment}
@@ -225,6 +291,36 @@ const styles = StyleSheet.create({
   list: {
     flexGrow: 1,
     paddingVertical: space.xs,
+  },
+  moreReplies: {
+    minHeight: 32,
+    justifyContent: 'center',
+    paddingLeft: space.lg + REPLY_INDENT,
+    paddingBottom: space.xs,
+  },
+  moreRepliesLabel: {
+    fontFamily: type.bodyBold,
+    fontSize: 13,
+    color: color.textMid,
+  },
+  replyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    borderTopWidth: 1,
+    borderTopColor: color.border,
+    backgroundColor: color.bgPanel,
+  },
+  replyBannerText: {
+    flex: 1,
+    fontFamily: type.body,
+    fontSize: 13,
+    color: color.textMid,
+  },
+  replyBannerName: {
+    fontFamily: type.bodyBold,
+    color: color.text,
   },
   composer: {
     flexDirection: 'row',

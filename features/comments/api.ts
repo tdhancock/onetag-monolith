@@ -6,9 +6,14 @@
 // them.
 
 import { supabase } from '../../services/supabase.native';
+import { threadComments } from './thread';
 import type { Comment } from './types';
 import type { ProfileId } from '../../types';
 
+/**
+ * A post's comments as threads: newest first, each with its replies beneath
+ * it, oldest first (see ./thread).
+ */
 export const getCommentsForPost = async (postId: string): Promise<Comment[]> => {
     const { data, error } = await supabase
         .from('comments')
@@ -17,7 +22,7 @@ export const getCommentsForPost = async (postId: string): Promise<Comment[]> => 
         .order('created_at', { ascending: false });
 
     if (error) return [];
-    return (data || []).map((c: any) => ({
+    return threadComments((data || []).map((c: any) => ({
         id: c.id,
         userId: c.user_id,
         username: c.profiles.username,
@@ -26,19 +31,24 @@ export const getCommentsForPost = async (postId: string): Promise<Comment[]> => 
         timestamp: new Date(c.created_at),
         likes: 0, // Simplified for now
         isLiked: false, // Simplified for now
-        replies: [], // Simplified for now
-    }));
+        parentId: c.parent_id ?? null,
+        replies: [],
+    })));
 };
 
-export async function addComment(postId: string, userId: ProfileId, content: string) {
+/**
+ * Comment on a post, or reply to one of its comments. The database files a
+ * reply to a reply under the comment that reply answers.
+ */
+export async function addComment(postId: string, userId: ProfileId, content: string, parentId?: string | null) {
   const { data, error } = await supabase
     .from('comments')
-    .insert([{ post_id: postId, user_id: userId, content }])
+    .insert([{ post_id: postId, user_id: userId, content, parent_id: parentId ?? null }])
     .select('*, profiles!user_id(username, avatar_url)')
     .single();
 
   if (error) {
-    console.error("Yorum ekleme hatası:", error.message || error);
+    console.error('Failed to add a comment:', error.message || error);
     throw error;
   }
 

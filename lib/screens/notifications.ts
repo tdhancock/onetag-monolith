@@ -11,6 +11,7 @@ export const notificationSentence = (type: Notification['type']): string => {
   switch (type) {
     case 'like': return 'liked your post.';
     case 'comment': return 'commented on your post.';
+    case 'reply': return 'replied to your comment.';
     case 'follow': return 'started following you.';
     case 'follow_request': return 'asked to follow you.';
     case 'comment_like': return 'liked your comment.';

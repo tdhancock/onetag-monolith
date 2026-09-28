@@ -1,0 +1,37 @@
+//
+// target: __tests__/lib/commentReplies.test.ts
+//
+// How the comments screen shows a thread's replies, and how a reply starts
+// (lib/screens/comments).
+
+import { hiddenRepliesLabel, replyPrefill, REPLIES_SHOWN, visibleReplies } from '../../lib/screens/comments';
+
+describe('visibleReplies', () => {
+  it('shows a short thread whole', () => {
+    expect(visibleReplies(['a', 'b'], false)).toEqual(['a', 'b']);
+    expect(REPLIES_SHOWN).toBe(2);
+  });
+
+  it('folds a longer one until it is opened', () => {
+    expect(visibleReplies(['a', 'b', 'c'], false)).toEqual([]);
+    expect(visibleReplies(['a', 'b', 'c'], true)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('hiddenRepliesLabel', () => {
+  it('counts what is folded, and is nothing when nothing is', () => {
+    expect(hiddenRepliesLabel(1)).toBe('View 1 reply');
+    expect(hiddenRepliesLabel(4)).toBe('View 4 replies');
+    expect(hiddenRepliesLabel(0)).toBeNull();
+  });
+});
+
+describe('replyPrefill', () => {
+  it('starts with the handle of whoever is answered', () => {
+    expect(replyPrefill('ana', 'me')).toBe('@ana ');
+  });
+
+  it('is empty when answering yourself', () => {
+    expect(replyPrefill('me', 'me')).toBe('');
+  });
+});
