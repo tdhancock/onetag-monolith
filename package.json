@@ -18,7 +18,8 @@
     "db:status": "npx supabase status",
     "db:reset": "npx supabase db reset",
     "db:diff": "npx supabase db diff -f",
-    "db:test": "npx supabase test db"
+    "db:test": "npx supabase test db",
+    "check:api": "jest -c jest.api.config.js"
   },
   "dependencies": {
     "@expo-google-fonts/dm-mono": "^0.4.2",
