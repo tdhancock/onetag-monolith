@@ -7,6 +7,8 @@ export {
   resolveTag,
   recordScan,
   createEmbeddedTags,
+  moveEmbeddedTag,
+  TagNotFoundError,
   mapResolveTagRow,
   TagResolutionError,
   fetchMyTags,
@@ -28,6 +30,7 @@ export {
   useDeleteTag,
   useTagActiveToggle,
   activeAfterFlip,
+  embeddedTagWriter,
 } from './mutations';
 export type { RecordScanInput, UpdateTagInput, CreateEmbeddedTagsInput } from './mutations';
 export type {

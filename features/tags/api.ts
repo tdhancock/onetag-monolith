@@ -224,20 +224,22 @@ export const createTag = async (tag: NewTag): Promise<OwnedTag> => {
 };
 
 /**
- * Embed tags in a just-published post (ONE-46), all in one insert: they land
- * together or not at all, so a retry never doubles the ones that made it.
- * Attributed to the post's author, the profile that published it — RLS
- * refuses anyone else, and a private project (ONE-44).
+ * Embed tags in a post (ONE-46), all in one insert: they land together or
+ * not at all, so a retry never doubles the ones that made it. Attributed to
+ * the post's author, the profile that published it — RLS refuses anyone
+ * else, and a private project (ONE-44).
  *
- * No RETURNING: the post is refetched with its tags embedded.
+ * Resolves to the new tags' ids, in the order given. Compose ignores them;
+ * editing a published post (ONE-92) keys its drafts on them, so a save that
+ * fails part way can be retried without inserting a tag twice.
  */
 export const createEmbeddedTags = async (
   hostPostId: string,
   ownerProfileId: ProfileId,
   tags: NewEmbeddedTag[],
-): Promise<void> => {
-  if (tags.length === 0) return;
-  const { error } = await supabase.from('tags').insert(
+): Promise<string[]> => {
+  if (tags.length === 0) return [];
+  const { data, error } = await supabase.from('tags').insert(
     tags.map((tag) => ({
       owner_profile_id: ownerProfileId,
       tag_type: 'embedded',
@@ -246,9 +248,34 @@ export const createEmbeddedTags = async (
       tag_y_pct: tag.yPct,
       [DESTINATION_COLUMN[tag.destination.kind]]: tag.destination.id,
     })),
-  );
+  ).select('id');
   if (error) throw error;
+  return (data ?? []).map((row: { id: string }) => row.id);
 };
+
+/**
+ * Move an embedded tag on its photo (ONE-92). Its position is all that can
+ * change: `protect_tag_identity` freezes the rest. Resolves false when the
+ * tag is gone — its destination's owner may remove it (ONE-44) — which the
+ * caller treats as nothing to move, not a failure.
+ */
+export const moveEmbeddedTag = async (tagId: string, xPct: number, yPct: number): Promise<boolean> => {
+  const { data, error } = await supabase
+    .from('tags')
+    .update({ tag_x_pct: xPct, tag_y_pct: yPct })
+    .eq('id', tagId)
+    .select('id');
+  if (error) throw error;
+  return Boolean(data && data.length > 0);
+};
+
+/** A tag that isn't there, or that RLS filtered out of the write. */
+export class TagNotFoundError extends Error {
+  constructor() {
+    super('Tag not found.');
+    this.name = 'TagNotFoundError';
+  }
+}
 
 /**
  * Change a tag's name or note. Nothing else goes through here: the short code
@@ -262,14 +289,14 @@ export const updateTag = async (tagId: string, updates: TagUpdates): Promise<voi
   const { data, error } = await supabase.from('tags').update(row).eq('id', tagId).select('id');
   if (error) throw error;
   // RLS filters a row the caller does not own out of the update silently.
-  if (!data || data.length === 0) throw new Error('Tag not found.');
+  if (!data || data.length === 0) throw new TagNotFoundError();
 };
 
 /** Pause or resume a tag. A paused tag resolves to the inactive state. */
 export const setTagActive = async (tagId: string, active: boolean): Promise<void> => {
   const { data, error } = await supabase.from('tags').update({ active }).eq('id', tagId).select('id');
   if (error) throw error;
-  if (!data || data.length === 0) throw new Error('Tag not found.');
+  if (!data || data.length === 0) throw new TagNotFoundError();
 };
 
 /**
@@ -279,5 +306,5 @@ export const setTagActive = async (tagId: string, active: boolean): Promise<void
 export const deleteTag = async (tagId: string): Promise<void> => {
   const { data, error } = await supabase.from('tags').delete().eq('id', tagId).select('id');
   if (error) throw error;
-  if (!data || data.length === 0) throw new Error('Tag not found.');
+  if (!data || data.length === 0) throw new TagNotFoundError();
 };
