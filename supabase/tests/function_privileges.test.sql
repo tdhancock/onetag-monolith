@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(27);
+SELECT plan(29);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -78,6 +78,11 @@ SELECT ok(NOT has_function_privilege('anon', 'public.approve_follow_request(uuid
   'anon cannot execute approve_follow_request() (ONE-63)');
 SELECT ok(has_function_privilege('authenticated', 'public.approve_follow_request(uuid)', 'EXECUTE'),
   'authenticated can execute approve_follow_request(): the owner approving a request');
+
+SELECT ok(NOT has_function_privilege('authenticated', 'public.rebuild_explore_scores()', 'EXECUTE'),
+  'authenticated cannot execute rebuild_explore_scores() (ONE-104)');
+SELECT ok(NOT has_function_privilege('anon', 'public.rebuild_explore_scores()', 'EXECUTE'),
+  'anon cannot execute rebuild_explore_scores() (ONE-104)');
 
 SELECT * FROM finish();
 ROLLBACK;
