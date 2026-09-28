@@ -5,9 +5,12 @@ turn it on in production.
 
 ## How it works
 
-1. The app registers an Expo push token for the account and saves it in
-   `push_tokens` (`services/notifications.ts`). There is one token per
-   account, keyed by the auth user id.
+1. The app registers the device's Expo push token for the signed-in account
+   with `register_push_token()` (`services/notifications.ts`). `push_tokens`
+   has a row per device, keyed by the token: an account signed in on a phone
+   and a tablet has two, and a device that signs in to another account moves
+   to it. Signing out deletes the device's row first.
+   (`supabase/migrations/20260928190000_push_tokens_per_device.sql`)
 2. When a `notifications` row of a type that pushes is written (`follow`,
    `follow_request`, `comment`, `mention`), or a `messages` row, a trigger
    calls `request_push()`. That queues a POST through `pg_net` to the
@@ -18,8 +21,9 @@ turn it on in production.
    The insert never waits on the network, and a failure to queue never fails
    the insert.
 4. `send-push` loads the row with the service role, looks up the receiving
-   account's token, and sends through Expo. A token Expo reports as
-   `DeviceNotRegistered` is deleted. (`supabase/functions/send-push`)
+   account's tokens, and sends to each of its devices through Expo. A token
+   Expo reports as `DeviceNotRegistered` is deleted.
+   (`supabase/functions/send-push`)
 5. A tapped push is routed in `app/_layout.tsx`: a follow opens the sender's
    profile, a follow request opens Follow requests, a comment or mention opens
    the post, and a message opens the thread with the sender.
@@ -65,8 +69,9 @@ first, for example with `openssl rand -hex 32`.
    select status_code, content, created from net._http_response order by created desc limit 5;
    ```
 
-   Each should be `200` with `{"sent":1}` when the receiver has a token.
-   `{"sent":0}` means the receiving account has no push token.
+   Each should be `200` with `{"sent":1}` for a receiver signed in on one
+   device, and one more for each other device. `{"sent":0}` means the
+   receiving account has no device registered.
 
 To rotate the secret, change it in both places: `supabase secrets set …`, and
 `select vault.update_secret(id, '<new>') from vault.secrets where name = 'send_push_secret';`.
@@ -86,7 +91,8 @@ travel the whole way without reaching Expo:
 3. In the local database, create the two Vault secrets with
    `http://host.docker.internal:54321/functions/v1/send-push` and the same
    secret.
-4. Write a `follow` notification between two throwaway accounts, one with a
-   `push_tokens` row, and watch the stand-in receive it.
+4. Have one throwaway account follow another that has a `push_tokens` row,
+   and watch the stand-in receive it. (Clients can't write notifications
+   since ONE-107; the follow writes it.)
 
 Delete the Vault secrets afterwards, or `npm run db:reset`.

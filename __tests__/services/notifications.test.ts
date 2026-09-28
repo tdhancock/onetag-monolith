@@ -72,16 +72,18 @@ jest.mock('expo-notifications', () => ({
 jest.mock('../../services/supabase.native', () => ({
   supabase: {
     from: jest.fn(),
+    rpc: jest.fn(),
   },
 }));
 
 // ---------------------------------------------------------------------------
 // Imports (modules resolved after mocks are wired)
 // ---------------------------------------------------------------------------
-import { asAuthUserId } from '../../types';
 import {
   registerForPushNotifications,
   savePushToken,
+  removePushToken,
+  REMOVE_TOKEN_TIMEOUT_MS,
   addNotificationResponseListener,
   addNotificationReceivedListener,
   setBadgeCount,
@@ -347,45 +349,36 @@ describe('registerForPushNotifications — under Expo Go', () => {
 // savePushToken
 // ===========================================================================
 describe('savePushToken', () => {
-  let upsertMock: jest.Mock;
-
   beforeEach(() => {
     jest.clearAllMocks();
     mockPlatformOS = 'ios';
-    upsertMock = jest.fn().mockResolvedValue({ error: null });
-    (supabase.from as jest.Mock).mockReturnValue({ upsert: upsertMock });
+    (supabase.rpc as jest.Mock).mockResolvedValue({ error: null });
   });
 
   // -----------------------------------------------------------------------
-  // Test 5a — happy path upsert
+  // Test 5a — registers this device for the signed-in account (ONE-112)
   // -----------------------------------------------------------------------
-  it('upserts push token into Supabase push_tokens table', async () => {
-    await savePushToken(asAuthUserId('user-1'), 'ExpoPushToken[save-1]');
+  it('registers the device through register_push_token, keyed by the token', async () => {
+    await savePushToken('ExpoPushToken[save-1]');
 
-    expect(supabase.from).toHaveBeenCalledWith('push_tokens');
-    expect(upsertMock).toHaveBeenCalledWith(
-      {
-        user_id: 'user-1',
-        token: 'ExpoPushToken[save-1]',
-        platform: 'ios',
-        updated_at: expect.any(String),
-      },
-      { onConflict: 'user_id' },
-    );
+    expect(supabase.rpc).toHaveBeenCalledWith('register_push_token', {
+      p_token: 'ExpoPushToken[save-1]',
+      p_platform: 'ios',
+    });
+    // Nothing writes the table directly: the row may be another account's.
+    expect(supabase.from).not.toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------
-  // Test 5b — Supabase upsert error handled gracefully
+  // Test 5b — an error is logged, never thrown
   // -----------------------------------------------------------------------
-  it('handles Supabase upsert error gracefully', async () => {
+  it('handles a failed registration gracefully', async () => {
     const consoleErrorSpy = jest
       .spyOn(console, 'error')
       .mockImplementation(() => {});
-    upsertMock.mockRejectedValue(new Error('DB connection failed'));
+    (supabase.rpc as jest.Mock).mockRejectedValue(new Error('DB connection failed'));
 
-    await expect(
-      savePushToken(asAuthUserId('user-2'), 'ExpoPushToken[fail]'),
-    ).resolves.not.toThrow();
+    await expect(savePushToken('ExpoPushToken[fail]')).resolves.not.toThrow();
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       'Failed to save push token:',
@@ -395,19 +388,119 @@ describe('savePushToken', () => {
     consoleErrorSpy.mockRestore();
   });
 
+  it('logs a refusal from the database the same way', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    (supabase.rpc as jest.Mock).mockResolvedValue({ error: { code: '42501', message: 'Sign in to register for pushes.' } });
+
+    await expect(savePushToken('ExpoPushToken[refused]')).resolves.toBeUndefined();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to save push token:', expect.objectContaining({ code: '42501' }));
+    consoleErrorSpy.mockRestore();
+  });
+
   // -----------------------------------------------------------------------
   // Additional: platform in payload
   // -----------------------------------------------------------------------
-  it('includes correct platform in the upsert payload', async () => {
+  it('sends the device platform', async () => {
     mockPlatformOS = 'android';
-    (supabase.from as jest.Mock).mockReturnValue({ upsert: upsertMock });
 
-    await savePushToken(asAuthUserId('user-3'), 'ExpoPushToken[android-save]');
+    await savePushToken('ExpoPushToken[android-save]');
 
-    expect(upsertMock).toHaveBeenCalledWith(
-      expect.objectContaining({ platform: 'android' }),
-      expect.any(Object),
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'register_push_token',
+      expect.objectContaining({ p_platform: 'android' }),
     );
+  });
+});
+
+// ===========================================================================
+// removePushToken (ONE-112)
+// ===========================================================================
+describe('removePushToken', () => {
+  /** A delete that resolves to `result`, recording which token it was for. */
+  const deleting = (result: Promise<unknown>) => {
+    const eq = jest.fn(() => result);
+    const del = jest.fn(() => ({ eq }));
+    (supabase.from as jest.Mock).mockReturnValue({ delete: del });
+    return eq;
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    (supabase.rpc as jest.Mock).mockResolvedValue({ error: null });
+    // Start from a device with nothing registered.
+    deleting(Promise.resolve({ error: null }));
+    await removePushToken();
+    jest.clearAllMocks();
+  });
+
+  it('deletes exactly the token this device registered', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ error: null });
+    await savePushToken('ExpoPushToken[this-device]');
+    const eq = deleting(Promise.resolve({ error: null }));
+
+    await removePushToken();
+
+    expect(supabase.from).toHaveBeenCalledWith('push_tokens');
+    expect(eq).toHaveBeenCalledWith('token', 'ExpoPushToken[this-device]');
+  });
+
+  it('does nothing when this device never registered', async () => {
+    await removePushToken();
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it("doesn't remember a token whose registration failed", async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    (supabase.rpc as jest.Mock).mockResolvedValue({ error: { message: 'refused' } });
+    await savePushToken('ExpoPushToken[never-saved]');
+
+    await removePushToken();
+
+    expect(supabase.from).not.toHaveBeenCalled();
+    (console.error as jest.Mock).mockRestore();
+  });
+
+  it('removes it once: a second sign-out has nothing left to remove', async () => {
+    await savePushToken('ExpoPushToken[once]');
+    deleting(Promise.resolve({ error: null }));
+
+    await removePushToken();
+    await removePushToken();
+
+    expect(supabase.from).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs a failed delete and never throws, so signing out still happens', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    await savePushToken('ExpoPushToken[offline]');
+    deleting(Promise.resolve({ error: { message: 'network down' } }));
+
+    await expect(removePushToken()).resolves.toBeUndefined();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to remove push token:', expect.objectContaining({ message: 'network down' }));
+    consoleErrorSpy.mockRestore();
+  });
+
+  it(`gives up waiting after ${REMOVE_TOKEN_TIMEOUT_MS}ms, so signing out offline isn't held up`, async () => {
+    jest.useFakeTimers();
+    try {
+      await savePushToken('ExpoPushToken[hanging]');
+      deleting(new Promise(() => {}));
+
+      let done = false;
+      const removal = removePushToken().then(() => {
+        done = true;
+      });
+      await Promise.resolve();
+      expect(done).toBe(false);
+
+      jest.advanceTimersByTime(REMOVE_TOKEN_TIMEOUT_MS);
+      await removal;
+      expect(done).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 

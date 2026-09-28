@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(47);
+SELECT plan(48);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -124,6 +124,9 @@ SELECT ok(NOT has_function_privilege('anon', 'public.following_usernames(uuid)',
   'anon cannot execute following_usernames() (ONE-110)');
 SELECT ok(NOT has_function_privilege('anon', 'public.requested_usernames(uuid)', 'EXECUTE'),
   'anon cannot execute requested_usernames() (ONE-110)');
+
+SELECT ok(NOT has_function_privilege('anon', 'public.register_push_token(text, text)', 'EXECUTE'),
+  'anon cannot execute register_push_token() (ONE-112)');
 
 SELECT * FROM finish();
 ROLLBACK;

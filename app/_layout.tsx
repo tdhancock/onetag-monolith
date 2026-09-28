@@ -87,13 +87,14 @@ function RootLayoutNav() {
 
   // Push notifications registration
   // Account-scoped: a device registers for the account, never for one of its
-  // profiles (ONE-21), so this keys on the auth user id.
+  // profiles (ONE-21), so this keys on the auth user id. The session says
+  // which account; the token says which device (ONE-112).
   useEffect(() => {
     if (!authUserId) return;
 
     registerForPushNotifications().then(async (token) => {
       if (token) {
-        await savePushToken(authUserId, token);
+        await savePushToken(token);
       }
     });
 
