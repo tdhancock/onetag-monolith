@@ -32,13 +32,12 @@ import {
 import { Avatar, EmptyState, IconButton, ListRow, MonoLabel, TextField } from '../components/native/ui';
 import { HeartIcon, XIcon, TrashIcon, EyeIcon, SendIcon } from '../components/native/Icons';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
-import { gradientFor } from '../lib/oneSnaps';
+import { gradientFor, oneSnapRemainingMs, oneSnapTapTarget } from '../lib/oneSnaps';
 import { getTimeAgo } from '../lib/timeAgo';
 import { color, radius, space, type, withAlpha } from '../theme/tokens';
 import type { Story } from '../types';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const STORY_DURATION = 15000;
 const SWIPE_THRESHOLD = 60;
 
 // The viewer stays dark for the content's sake. Its black is the ink token,
@@ -163,29 +162,6 @@ export default function StoryViewerScreen() {
     }
   }, [currentIndex]);
 
-  // Auto-advance timer
-  const startTimer = useCallback(() => {
-    progressAnim.setValue(0);
-    timerRef.current?.stop();
-
-    const anim = Animated.timing(progressAnim, {
-      toValue: 1,
-      duration: STORY_DURATION,
-      useNativeDriver: false,
-    });
-    timerRef.current = anim;
-    anim.start(({ finished }) => {
-      if (finished) goNext();
-    });
-  }, [progressAnim, goNext]);
-
-  useEffect(() => {
-    if (!isPaused && stories.length > 0 && !loading) {
-      startTimer();
-    }
-    return () => timerRef.current?.stop();
-  }, [currentIndex, isPaused, startTimer, loading]);
-
   const handleClose = useCallback(() => {
     Animated.timing(opacityAnim, {
       toValue: 0,
@@ -194,22 +170,45 @@ export default function StoryViewerScreen() {
     }).start(() => router.back());
   }, [router, opacityAnim]);
 
-  // Tap zones
-  const handleTap = useCallback(
-    (x: number) => {
-      const leftZone = SCREEN_WIDTH * 0.3;
-      const rightZone = SCREEN_WIDTH * 0.7;
+  // The gesture responder and the timer are made once each and outlive the
+  // renders, so they reach the current handlers through this. Holding the
+  // first render's instead, a tap or swipe forward closed the viewer (that
+  // render had no stories yet) and a tap back did nothing.
+  const latest = useRef({ goNext, goPrev, handleClose });
+  latest.current = { goNext, goPrev, handleClose };
 
-      if (x < leftZone) {
-        goPrev();
-      } else if (x > rightZone) {
-        goNext();
-      } else {
-        setIsPaused(prev => !prev);
-      }
-    },
-    [goPrev, goNext],
-  );
+  // Auto-advance. A new OneSnap plays from the start; one resumed after a
+  // hold plays out what was left, rather than starting again.
+  const playingId = useRef<string | null>(null);
+  const currentId = currentStory?.id ?? null;
+  useEffect(() => {
+    if (isPaused || loading || !currentId) {
+      timerRef.current?.stop();
+      return undefined;
+    }
+    const restart = playingId.current !== currentId;
+    playingId.current = currentId;
+    progressAnim.stopAnimation((value) => {
+      const from = restart ? 0 : value;
+      progressAnim.setValue(from);
+      const anim = Animated.timing(progressAnim, {
+        toValue: 1,
+        duration: oneSnapRemainingMs(from),
+        useNativeDriver: false,
+      });
+      timerRef.current = anim;
+      anim.start(({ finished }) => {
+        if (finished) latest.current.goNext();
+      });
+    });
+    return () => timerRef.current?.stop();
+  }, [currentId, isPaused, loading, progressAnim]);
+
+  // A tap moves back or on; holding (the responder's grant) pauses.
+  const handleTap = useCallback((x: number) => {
+    if (oneSnapTapTarget(x, SCREEN_WIDTH) === 'previous') latest.current.goPrev();
+    else latest.current.goNext();
+  }, []);
 
   const resetPosition = useCallback(() => {
     Animated.parallel([
@@ -245,13 +244,13 @@ export default function StoryViewerScreen() {
         }
 
         if (gs.dy > SWIPE_THRESHOLD) {
-          handleClose();
+          latest.current.handleClose();
           return;
         }
 
         if (Math.abs(gs.dx) > SWIPE_THRESHOLD) {
-          if (gs.dx < 0) goNext();
-          else goPrev();
+          if (gs.dx < 0) latest.current.goNext();
+          else latest.current.goPrev();
         }
 
         setIsPaused(false);

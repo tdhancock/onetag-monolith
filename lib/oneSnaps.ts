@@ -47,3 +47,26 @@ export const latestOneSnap = <T extends Pick<Story, 'timestamp'>>(stories: reado
   }
   return latest;
 };
+
+// ─── Playing them ───────────────────────────────────────────────────────
+
+/** How long one OneSnap shows before the next, in milliseconds. */
+export const ONESNAP_DURATION_MS = 15000;
+
+/** The left share of the screen a tap goes back from; anywhere else goes on. */
+export const ONESNAP_BACK_ZONE = 0.3;
+
+/**
+ * Where a tap on a playing OneSnap goes. Holding pauses it, so a tap only
+ * ever moves: back from the left edge, on from anywhere else.
+ */
+export const oneSnapTapTarget = (x: number, screenWidth: number): 'previous' | 'next' =>
+  x < screenWidth * ONESNAP_BACK_ZONE ? 'previous' : 'next';
+
+/**
+ * How long is left to play of a OneSnap that has played `progress` (0 to 1)
+ * of its time: all of it when it starts, the rest when it resumes after a
+ * hold, so a pause never sends it back to the start.
+ */
+export const oneSnapRemainingMs = (progress: number, duration: number = ONESNAP_DURATION_MS): number =>
+  Math.max(0, Math.round(duration * (1 - Math.min(1, Math.max(0, progress)))));

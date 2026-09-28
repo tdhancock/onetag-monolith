@@ -3,7 +3,14 @@
 // OneSnap drawing rules — lib/oneSnaps, plus the withAlpha token helper the
 // OneSnap screens lean on for their overlays.
 
-import { gradientFor, isOneSnapGradientKey, latestOneSnap } from '../../lib/oneSnaps';
+import {
+  gradientFor,
+  isOneSnapGradientKey,
+  latestOneSnap,
+  ONESNAP_DURATION_MS,
+  oneSnapRemainingMs,
+  oneSnapTapTarget,
+} from '../../lib/oneSnaps';
 import { color, oneSnapGradientKeys, oneSnapGradients, withAlpha } from '../../theme/tokens';
 
 const allGradients = Object.values(oneSnapGradients);
@@ -102,5 +109,19 @@ describe('withAlpha', () => {
   it('refuses anything but a six-digit hex', () => {
     expect(() => withAlpha('red', 0.5)).toThrow();
     expect(() => withAlpha('#fff', 0.5)).toThrow();
+  });
+});
+
+describe('playing a OneSnap', () => {
+  it('goes back from a tap on the left edge, and on from a tap anywhere else', () => {
+    expect(oneSnapTapTarget(40, 390)).toBe('previous');
+    expect(oneSnapTapTarget(195, 390)).toBe('next');
+    expect(oneSnapTapTarget(380, 390)).toBe('next');
+  });
+
+  it('plays a new one for its full time, and resumes a held one where it stopped', () => {
+    expect(oneSnapRemainingMs(0)).toBe(ONESNAP_DURATION_MS);
+    expect(oneSnapRemainingMs(0.6)).toBe(ONESNAP_DURATION_MS * 0.4);
+    expect(oneSnapRemainingMs(1.2)).toBe(0);
   });
 });
