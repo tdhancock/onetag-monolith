@@ -172,12 +172,19 @@ CREATE TRIGGER saves_explore_scores AFTER INSERT OR DELETE ON public.saves
 --
 -- The backfill below, and a repair tool if the counts are ever doubted.
 -- Nobody but the database owner calls it.
+--
+-- Nested-loop joins are off for its run. It joins every post to grouped
+-- counts, where a hash join is always right. Without fresh statistics (right
+-- after a bulk load, say) the planner guessed a handful of groups, chose a
+-- nested loop, and re-aggregated a million likes per post: minutes, not
+-- seconds. The setting makes it independent of statistics.
 
 CREATE OR REPLACE FUNCTION public.rebuild_explore_scores()
 RETURNS VOID
 LANGUAGE sql
 SECURITY DEFINER
 SET search_path = ''
+SET enable_nestloop = off
 AS $$
   DELETE FROM public.explore_scores;
 
