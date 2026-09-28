@@ -37,6 +37,7 @@ app.config.ts              app.json plus universal links for the tag host (repo 
 public/.well-known/        the files the tag host serves so the OS opens the app for /t/*
 docs/deep-links.md         how tag links reach the app, and how to verify universal links
 docs/push-notifications.md how a notification becomes a push, and how to turn it on in production
+docs/testing-with-expo-go.md how testers open OneTag in Expo Go, and how to publish for them
 scripts/                   CI gates
 ```
 
@@ -60,6 +61,7 @@ npm run verify          # typecheck + test + raw-hex gate — what CI runs
 npm run db:start        # local Supabase; also db:stop, db:status, db:reset, db:diff
 npm run db:test         # the pgTAP suite in supabase/tests, against the local stack
 npm run check:api       # the API checks in __tests__/api, against the local stack
+npm run publish:preview # publish for testers in Expo Go (docs/testing-with-expo-go.md)
 ```
 
 Tests run on **ts-jest** in a `node` environment with no React Native preset (`jest.config.js`);

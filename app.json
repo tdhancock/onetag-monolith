@@ -2,7 +2,15 @@
   "expo": {
     "name": "OneTag",
     "slug": "onetag",
+    "owner": "swoopdev",
+    "platforms": ["ios", "android"],
     "version": "1.0.8",
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/5a29bbd7-9fe3-44cc-97d6-4b51b5c8287b"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "onetag",
@@ -70,6 +78,12 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-sharing"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5a29bbd7-9fe3-44cc-97d6-4b51b5c8287b"
+      }
+    }
   }
 }
