@@ -39,9 +39,12 @@ jobs:
         run: sh scripts/check-no-raw-hex.sh
 
   migrations:
+    # The name is kept so an existing required check still matches it. The
+    # job also runs the pgTAP suite now (ONE-111).
     name: Migrations apply from scratch
     runs-on: ubuntu-latest
-    # Only when schema changed. Spinning up Postgres for a CSS change is waste.
+    # Only when the schema or its tests changed. Spinning up Postgres for a
+    # CSS change is waste.
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +53,7 @@ jobs:
         id: changed
         run: |
           git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
-          if git diff --name-only "origin/${{ github.base_ref }}"...HEAD | grep -q '^supabase/migrations/'; then
+          if git diff --name-only "origin/${{ github.base_ref }}"...HEAD | grep -qE '^supabase/(migrations|tests)/'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
@@ -71,3 +74,10 @@ jobs:
       - name: Show migration status
         if: steps.changed.outputs.run == 'true'
         run: supabase migration list --local
+
+      # Every RLS rule, function privilege and trigger the schema promises is
+      # pinned in supabase/tests. Until ONE-111 nothing ran them in CI, so a
+      # change that opened a table to anon merged green.
+      - name: Run the pgTAP suite
+        if: steps.changed.outputs.run == 'true'
+        run: supabase test db
