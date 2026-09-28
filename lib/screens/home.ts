@@ -43,6 +43,18 @@ export const HOME_FEED_ERROR_ACTION = 'Retry' as const;
 export const HOME_EXPLORE_TARGET = '/(tabs)/search' as const;
 
 /**
+ * Whether a post someone just published belongs at the top of the home feed:
+ * the feed is your own posts and those of accounts you follow, and nothing
+ * else. Handles compare as the follow list stores them, lowercased.
+ */
+export const belongsInHomeFeed = (
+  authorUsername: string,
+  myUsername: string | null | undefined,
+  isFollowing: (username: string) => boolean,
+): boolean =>
+  authorUsername.trim().toLowerCase() === (myUsername ?? '').trim().toLowerCase() || isFollowing(authorUsername);
+
+/**
  * Description of the state the feed's empty area renders. `kind`
  * discriminates the branches in the component; `title` and `body` are the
  * literal strings shown to the user, and `action` its single button.

@@ -39,6 +39,7 @@ import InterestFilter, { useInterestName } from '../../components/native/Interes
 import { Avatar, Button, Card, EmptyState, MonoLabel } from '../../components/native/ui';
 import { VerifiedIcon } from '../../components/native/Icons';
 import {
+  belongsInHomeFeed,
   HOME_EXPLORE_TARGET,
   HOME_SUGGESTIONS_HEADING,
   getHomeEmptyState,
@@ -214,19 +215,28 @@ export default function HomeFeedScreen() {
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         const postId = payload.new?.id;
         if (!postId) return;
+        const isInsert = payload.eventType === 'INSERT';
+        // The stream carries every post in the system. An edit matters only
+        // to a post already in the feed, and a new post only if its author
+        // follows (or is) you — a stranger has none to follow — so most
+        // events never cost a read.
+        if (!isInsert && !feedPosts(queryClient.getQueryData<FeedData>(feedKey)).some((post) => post.id === postId)) return;
+        if (isInsert && payload.new?.user_id !== profileId && following.length === 0) return;
+
         const fullPost = await fetchPostById(postId);
         if (!fullPost || isUserBlocked(fullPost.username)) return;
+        // The feed is your posts and your follows' (feed_candidates). Before,
+        // any stranger's new post landed at the top of it.
+        if (isInsert && !belongsInHomeFeed(fullPost.username, userProfile?.username, isUserFollowing)) return;
 
         queryClient.setQueryData(feedKey, (data: FeedData | undefined) =>
-          payload.eventType === 'INSERT'
-            ? prependPost(data, fullPost)
-            : replacePost(data, fullPost),
+          isInsert ? prependPost(data, fullPost) : replacePost(data, fullPost),
         );
       }
     } catch (error) {
       console.error('Realtime post handling error:', error);
     }
-  }, [isUserBlocked, queryClient, feedKey, profileId]);
+  }, [isUserBlocked, isUserFollowing, following.length, userProfile?.username, queryClient, feedKey, profileId]);
 
   useRealtimeSync({
     table: 'posts',

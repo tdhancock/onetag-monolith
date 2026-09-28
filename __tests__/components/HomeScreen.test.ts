@@ -17,6 +17,7 @@
 //   4. Header action targets (/notifications and /messages) and labels
 
 import {
+    belongsInHomeFeed,
     HOME_EMPTY_FOLLOWING_ACTION,
     HOME_EMPTY_FOLLOWING_BODY,
     HOME_EMPTY_FOLLOWING_TITLE,
@@ -199,5 +200,18 @@ describe('HomeScreen – header action labels', () => {
         expect(getHomeHeaderLabel('notifications', 3)).toBe('Notifications, 3 unread');
         expect(getHomeHeaderLabel('messages', 0)).toBe('Messages');
         expect(getHomeHeaderLabel('messages', 120)).toBe('Messages, 120 unread');
+    });
+});
+
+describe('HomeScreen — live posts', () => {
+    const follows = (username: string) => ['ana'].includes(username.toLowerCase());
+
+    it('takes a new post from someone you follow, or from you', () => {
+        expect(belongsInHomeFeed('Ana', 'me', follows)).toBe(true);
+        expect(belongsInHomeFeed('me', 'Me', follows)).toBe(true);
+    });
+
+    it("leaves out a stranger's, which the feed never holds", () => {
+        expect(belongsInHomeFeed('stranger', 'me', follows)).toBe(false);
     });
 });
