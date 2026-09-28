@@ -19,7 +19,8 @@
     "db:reset": "npx supabase db reset",
     "db:diff": "npx supabase db diff -f",
     "db:test": "npx supabase test db",
-    "check:api": "jest -c jest.api.config.js"
+    "check:api": "jest -c jest.api.config.js",
+    "publish:preview": "npx eas-cli@latest update --branch preview --environment preview"
   },
   "dependencies": {
     "@expo-google-fonts/dm-mono": "^0.4.2",
@@ -51,6 +52,7 @@
     "expo-sharing": "~57.0.22",
     "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
+    "expo-updates": "~57.0.23",
     "nativewind": "^4.1.23",
     "react": "19.2.3",
     "react-dom": "19.2.3",
