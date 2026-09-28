@@ -43,6 +43,8 @@ import {
   tagsToWrite,
   TAGS_FAILED_TITLE,
   TAGS_FAILED_MESSAGE,
+  TAG_REFUSED_MESSAGE,
+  isTagRefusal,
   type DraftTag,
 } from '../lib/screens/composeTags';
 import { postingAsLabel, profileKindLabel } from '../lib/screens/profile';
@@ -140,6 +142,14 @@ export default function ComposeScreen() {
           .then(() => resolve())
           .catch((error) => {
             console.error('Failed to save the post’s tags', error);
+            // A refusal (a private project, or a block either way) fails the
+            // same way every time, so it offers no retry (ONE-102).
+            if (isTagRefusal(error)) {
+              Alert.alert(TAGS_FAILED_TITLE, TAG_REFUSED_MESSAGE, [
+                { text: 'Leave without tags', style: 'cancel', onPress: () => resolve() },
+              ]);
+              return;
+            }
             Alert.alert(TAGS_FAILED_TITLE, TAGS_FAILED_MESSAGE, [
               { text: 'Leave without tags', style: 'cancel', onPress: () => resolve() },
               { text: 'Try again', onPress: attempt },

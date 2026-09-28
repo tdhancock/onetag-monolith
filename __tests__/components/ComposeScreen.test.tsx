@@ -136,7 +136,7 @@ jest.mock('../../services/mediaPicker', () => ({
 
 import { Alert } from 'react-native';
 import ComposeScreen from '../../app/compose';
-import { TAG_LIMIT_MESSAGE, TAGS_FAILED_TITLE } from '../../lib/screens/composeTags';
+import { TAG_LIMIT_MESSAGE, TAG_REFUSED_MESSAGE, TAGS_FAILED_TITLE } from '../../lib/screens/composeTags';
 import { MediaUploadError } from '../../services/mediaUpload';
 import { UPLOAD_FAILED_NOTE } from '../../components/native/ComposeMedia';
 import { POST_MAX_CHARS } from '../../lib/screens/compose';
@@ -470,6 +470,28 @@ describe('Compose — tagging', () => {
 
     expect(mockCreateTags).toHaveBeenCalledTimes(2);
     expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+    expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('offers no retry when the database refuses a tag, which would fail the same way again (ONE-102)', async () => {
+    mockParams.current = { mediaUri: 'file:///photo.jpg' };
+    mockMutateAsync.mockResolvedValue({ id: 'post-1' });
+    mockCreateTags.mockRejectedValueOnce({ code: '42501', message: 'row-level security' });
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const el = mount();
+    tagAt(el, 200, 112.5);
+
+    await act(async () => { postButton(el).click(); });
+
+    const [title, message, buttons] = (Alert.alert as jest.Mock).mock.calls[0];
+    expect(title).toBe(TAGS_FAILED_TITLE);
+    expect(message).toBe(TAG_REFUSED_MESSAGE);
+    expect((buttons as { text: string }[]).map(b => b.text)).toEqual(['Leave without tags']);
+
+    const leave = (buttons as { text: string; onPress: () => void }[])[0]!;
+    await act(async () => { leave.onPress(); });
+    act(() => { jest.runAllTimers(); });
+    expect(mockCreateTags).toHaveBeenCalledTimes(1);
     expect(mockBack).toHaveBeenCalled();
   });
 
