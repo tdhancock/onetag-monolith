@@ -22,3 +22,17 @@ export const hiddenRepliesLabel = (hidden: number): string | null =>
  */
 export const replyPrefill = (username: string, myUsername: string | null | undefined): string =>
   username && username !== myUsername ? `@${username} ` : '';
+
+/**
+ * Asked before deleting a comment others have replied to: its replies go
+ * with it, as on Instagram, and that is everyone's words, not only yours.
+ * Null when it has none, and the comment goes at once.
+ */
+export const deleteCommentConfirm = (replies: number) =>
+  replies <= 0
+    ? null
+    : {
+        title: 'Delete this comment?',
+        body: `Its ${replies === 1 ? 'reply' : `${replies} replies`} will be deleted too.`,
+        confirm: 'Delete',
+      };

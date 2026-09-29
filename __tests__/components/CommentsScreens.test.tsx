@@ -358,6 +358,23 @@ describe('Comments — replies', () => {
     expect(mockAdd).toHaveBeenCalledWith(expect.objectContaining({ parentId: 'c1' }));
   });
 
+  it('asks before deleting a comment others replied to, since their replies go with it', () => {
+    const { Alert } = jest.requireMock('react-native') as { Alert: { alert: jest.Mock } };
+    Alert.alert.mockClear();
+    state.comments.data = [
+      { ...comment('c2', 'me', 'mine', 'p-me'), replies: [{ ...comment('r1', 'bo', 'agreed'), parentId: 'c2' }] },
+    ];
+    const el = mount(<CommentsScreen />);
+    act(() => button(el, 'Delete comment')!.click());
+    expect(mockDelete).not.toHaveBeenCalled();
+    const [title, body, actions] = Alert.alert.mock.calls[0] as [string, string, { text: string; onPress?: () => void }[]];
+    expect(title).toBe('Delete this comment?');
+    expect(body).toBe('Its reply will be deleted too.');
+
+    act(() => actions.find((a) => a.text === 'Delete')!.onPress!());
+    expect(mockDelete).toHaveBeenCalledWith({ postId: 'post-1', commentId: 'c2' }, expect.anything());
+  });
+
   it('can be called off, leaving an ordinary comment', () => {
     const el = mount(<CommentsScreen />);
     act(() => button(el, 'Reply to ana')!.click());

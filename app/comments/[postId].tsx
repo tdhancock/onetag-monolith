@@ -6,6 +6,7 @@ import {
   Pressable,
   FlatList,
   RefreshControl,
+  Alert,
   StyleSheet,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -14,7 +15,7 @@ import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
 import { useCommentsQuery, useAddComment, useDeleteComment, threadIdFor } from '../../features/comments';
 import { cleanHtml } from '../../lib/cleanHtml';
-import { hiddenRepliesLabel, replyPrefill, visibleReplies } from '../../lib/screens/comments';
+import { deleteCommentConfirm, hiddenRepliesLabel, replyPrefill, visibleReplies } from '../../lib/screens/comments';
 import CommentRow, { CommentRowSkeleton, COMMENT_AVATAR_SIZE, REPLY_INDENT } from '../../components/native/CommentRow';
 import { Avatar, EmptyState, IconButton, TextField } from '../../components/native/ui';
 import { XIcon } from '../../components/native/Icons';
@@ -103,16 +104,30 @@ export default function CommentsScreen() {
   const handleDeleteComment = useCallback((commentId: string) => {
     if (!postId) return;
 
-    deleteCommentMutation.mutate(
-      { postId, commentId },
-      {
-        onError: (error) => {
-          console.error('Failed to delete comment', error);
-          addToast('Failed to delete comment.', 'error');
+    const remove = () =>
+      deleteCommentMutation.mutate(
+        { postId, commentId },
+        {
+          onError: (error) => {
+            console.error('Failed to delete comment', error);
+            addToast('Failed to delete comment.', 'error');
+          },
         },
-      },
-    );
-  }, [addToast, deleteCommentMutation, postId]);
+      );
+
+    // Deleting a comment deletes the replies under it. Asked first when
+    // there are any, since they are other people's words too.
+    const replies = comments?.find((c) => c.id === commentId)?.replies?.length ?? 0;
+    const confirm = deleteCommentConfirm(replies);
+    if (!confirm) {
+      remove();
+      return;
+    }
+    Alert.alert(confirm.title, confirm.body, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: confirm.confirm, style: 'destructive', onPress: remove },
+    ]);
+  }, [addToast, comments, deleteCommentMutation, postId]);
 
   const handleViewProfile = useCallback((username: string) => {
     router.push(`/user/${username}`);

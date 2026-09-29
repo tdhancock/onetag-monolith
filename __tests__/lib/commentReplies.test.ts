@@ -4,7 +4,7 @@
 // How the comments screen shows a thread's replies, and how a reply starts
 // (lib/screens/comments).
 
-import { hiddenRepliesLabel, replyPrefill, REPLIES_SHOWN, visibleReplies } from '../../lib/screens/comments';
+import { deleteCommentConfirm, hiddenRepliesLabel, replyPrefill, REPLIES_SHOWN, visibleReplies } from '../../lib/screens/comments';
 
 describe('visibleReplies', () => {
   it('shows a short thread whole', () => {
@@ -33,5 +33,16 @@ describe('replyPrefill', () => {
 
   it('is empty when answering yourself', () => {
     expect(replyPrefill('me', 'me')).toBe('');
+  });
+});
+
+describe('deleteCommentConfirm', () => {
+  it('asks first when replies would go with the comment, and counts them', () => {
+    expect(deleteCommentConfirm(1)!.body).toBe('Its reply will be deleted too.');
+    expect(deleteCommentConfirm(3)!.body).toBe('Its 3 replies will be deleted too.');
+  });
+
+  it('asks nothing of a comment nobody replied to', () => {
+    expect(deleteCommentConfirm(0)).toBeNull();
   });
 });
