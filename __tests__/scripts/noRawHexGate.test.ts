@@ -24,9 +24,20 @@ const gatedDirs = (): string[] => {
   return match[1]!.split(/\s+/).filter(Boolean);
 };
 
+/**
+ * The shell to run the gate with. Git Bash and CI have `sh` on the PATH;
+ * PowerShell on Windows doesn't, so there it's Git for Windows' own copy,
+ * three folders above `git --exec-path` (…/Git/mingw64/libexec/git-core).
+ */
+const SH = (() => {
+  if (!spawnSync('sh', ['-c', 'exit 0']).error) return 'sh';
+  const execPath = spawnSync('git', ['--exec-path'], { encoding: 'utf8' }).stdout.trim();
+  return path.resolve(execPath, '..', '..', '..', 'bin', 'sh.exe');
+})();
+
 /** Runs the gate from the repo root, over `paths` if given. */
 const runGate = (...paths: string[]) => {
-  const result = spawnSync('sh', [SCRIPT, ...paths], { cwd: ROOT, encoding: 'utf8' });
+  const result = spawnSync(SH, [SCRIPT, ...paths], { cwd: ROOT, encoding: 'utf8' });
   if (result.error) throw result.error;
   return { status: result.status, output: `${result.stdout}${result.stderr}` };
 };
