@@ -11,7 +11,7 @@
 //   * the screen shows the QR large, with the tag's name and destination and
 //     the short code beneath in DM Mono;
 //   * Save asks for Photos permission on the tap, never on mount, and writes
-//     a PNG drawn at print resolution (at least 1024px) to the camera roll;
+//     the tag's PNG, drawn at print resolution, to the camera roll;
 //   * with permission refused it says why, and Share still works;
 //   * the tag's link can be copied.
 
@@ -41,27 +41,18 @@ jest.mock('react-native-safe-area-context', () => {
 });
 jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 jest.mock('expo-image', () => require('../support/expoImageStub'));
-
-/** The size each export asked the renderer for. */
-const mockExportSizes: unknown[] = [];
-const mockSvg = {
-  toDataURL: (callback: (base64: string) => void, options?: unknown) => {
-    mockExportSizes.push(options);
-    callback('UE5HQkFTRTY0');
-  },
-};
 jest.mock('react-native-qrcode-svg', () => {
   const React = require('react');
   return {
     __esModule: true,
-    default: (props: { value: string; size: number; getRef?: (svg: unknown) => void }) => {
-      // The real component hands its Svg ref over once, on mount.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      React.useEffect(() => props.getRef?.(mockSvg), []);
-      return React.createElement('div', { 'data-qr': props.value, 'data-size': props.size });
-    },
+    default: (props: { value: string; size: number }) =>
+      React.createElement('div', { 'data-qr': props.value, 'data-size': props.size }),
   };
 });
+
+// The export encodes with the qrcode package, which uses TextEncoder. jsdom
+// leaves it out; node has it.
+(globalThis as { TextEncoder?: unknown }).TextEncoder ??= require('util').TextEncoder;
 
 const mockRequestPermissions = jest.fn();
 const mockAssetCreate = jest.fn(() => Promise.resolve({}));
@@ -70,7 +61,7 @@ jest.mock('expo-media-library', () => ({
   Asset: { create: (...args: unknown[]) => mockAssetCreate(...(args as [])) },
 }));
 
-const mockWritten: { uri: string; content: string; options: unknown }[] = [];
+const mockWritten: { uri: string; content: Uint8Array; options: unknown }[] = [];
 jest.mock('expo-file-system', () => ({
   Paths: { cache: 'file:///cache' },
   File: class {
@@ -79,7 +70,7 @@ jest.mock('expo-file-system', () => ({
       this.uri = `${dir}/${name}`;
     }
     create() {}
-    write(content: string, options: unknown) {
+    write(content: Uint8Array, options: unknown) {
       mockWritten.push({ uri: this.uri, content, options });
     }
   },
@@ -133,7 +124,8 @@ jest.mock('../../services/supabase.native', () => {
 import ExportTagScreen from '../../app/tags/[id]/export';
 import { buildTagUrl } from '../../lib/tagLinks';
 import { PHOTOS_DENIED_MESSAGE } from '../../lib/screens/tags';
-import { TAG_QR_EXPORT_PX } from '../../services/tagSharing';
+import { PNG_SIGNATURE } from '../../lib/png';
+import { TAG_QR_EXPORT_PX, tagQrPng } from '../../lib/tagQr';
 import { type } from '../../theme/tokens';
 
 let root: Root | null = null;
@@ -173,7 +165,6 @@ async function tap(button: HTMLButtonElement) {
 
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  mockExportSizes.length = 0;
   mockWritten.length = 0;
   [mockRequestPermissions, mockAssetCreate, mockShareAsync, mockSetString, mockToast, mockOpenSettings].forEach((m) =>
     m.mockClear(),
@@ -211,11 +202,15 @@ describe('the export screen', () => {
     await tap(byText(el, 'Save to Photos'));
 
     expect(mockRequestPermissions).toHaveBeenCalledWith(true, ['photo']);
-    expect(TAG_QR_EXPORT_PX).toBeGreaterThanOrEqual(1024);
-    expect(mockExportSizes).toEqual([{ width: TAG_QR_EXPORT_PX, height: TAG_QR_EXPORT_PX }]);
-    expect(mockWritten).toEqual([
-      { uri: 'file:///cache/onetag-ABC23XYZ.png', content: 'UE5HQkFTRTY0', options: { encoding: 'base64' } },
-    ]);
+    expect(mockWritten).toHaveLength(1);
+    const { uri, content, options } = mockWritten[0]!;
+    expect(uri).toBe('file:///cache/onetag-ABC23XYZ.png');
+    expect(options).toBeUndefined();
+    expect(Array.from(content)).toEqual(Array.from(tagQrPng('ABC23XYZ').png));
+    expect(Array.from(content.subarray(0, 8))).toEqual(PNG_SIGNATURE);
+    // IHDR's width, big-endian, straight after the signature and chunk header.
+    const width = new DataView(content.buffer, content.byteOffset).getUint32(16);
+    expect(width).toBeGreaterThanOrEqual(TAG_QR_EXPORT_PX);
     expect(mockAssetCreate).toHaveBeenCalledWith('file:///cache/onetag-ABC23XYZ.png');
     expect(mockToast).toHaveBeenCalledWith('Saved to Photos.', 'success');
     expect(el.textContent).not.toContain(PHOTOS_DENIED_MESSAGE);

@@ -10,6 +10,7 @@ import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
 import { File, Paths } from 'expo-file-system';
 import { buildTagUrl } from '../lib/tagLinks';
+import { tagQrPng } from '../lib/tagQr';
 
 /** Put a tag's link on the clipboard. */
 export const copyTagLink = async (shortCode: string): Promise<void> => {
@@ -25,44 +26,15 @@ export const shareTagLink = async (shortCode: string): Promise<void> => {
   await Share.share(Platform.OS === 'ios' ? { url } : { message: url });
 };
 
-/** A rendered QR code's Svg, as react-native-svg hands it to `getRef`. */
-export interface QrSvgHandle {
-  toDataURL: (callback: (base64: string) => void, options?: { width: number; height: number }) => void;
-}
-
 /**
- * The exported image's width and height, in pixels. A QR captured at its
- * on-screen size prints blurry; this is drawn from the vector at print
- * resolution, whatever size the preview is.
+ * A tag's QR code, drawn at print resolution (lib/tagQr.ts) and written where
+ * it is saved or shared from. The image is built from the code itself, not
+ * captured from the preview, so its size on screen doesn't matter.
  */
-export const TAG_QR_EXPORT_PX = 1200;
-
-/** How long to wait for the native renderer before calling an export failed. */
-const EXPORT_TIMEOUT_MS = 10_000;
-
-/** A QR code as a base64 PNG, `px` square (quiet zone included). */
-export const qrPngBase64 = (svg: QrSvgHandle, px: number = TAG_QR_EXPORT_PX): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('The QR code could not be rendered.')), EXPORT_TIMEOUT_MS);
-    try {
-      svg.toDataURL(
-        (base64) => {
-          clearTimeout(timer);
-          resolve(base64);
-        },
-        { width: px, height: px },
-      );
-    } catch (error) {
-      clearTimeout(timer);
-      reject(error);
-    }
-  });
-
-/** Where a QR export is written before it is saved or shared. */
-const writeQrPng = (base64Png: string, shortCode: string): string => {
+const writeQrPng = (shortCode: string): string => {
   const file = new File(Paths.cache, `onetag-${shortCode}.png`);
   file.create({ overwrite: true });
-  file.write(base64Png, { encoding: 'base64' });
+  file.write(tagQrPng(shortCode).png);
   return file.uri;
 };
 
@@ -75,11 +47,11 @@ export type SaveToPhotosResult = 'saved' | 'denied';
  * write-only, since saving needs no read access to anyone's photos. A refusal
  * is a result, not an error: the screen explains it and Share still works.
  */
-export const saveTagQrToPhotos = async (base64Png: string, shortCode: string): Promise<SaveToPhotosResult> => {
+export const saveTagQrToPhotos = async (shortCode: string): Promise<SaveToPhotosResult> => {
   const permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
   if (!permission.granted) return 'denied';
 
-  await MediaLibrary.Asset.create(writeQrPng(base64Png, shortCode));
+  await MediaLibrary.Asset.create(writeQrPng(shortCode));
   return 'saved';
 };
 
@@ -87,12 +59,12 @@ export const saveTagQrToPhotos = async (base64Png: string, shortCode: string): P
  * Share a QR export as an image through the native share sheet. Needs no
  * permission. Where the platform cannot share a file, the link goes instead.
  */
-export const shareTagQrImage = async (base64Png: string, shortCode: string): Promise<void> => {
+export const shareTagQrImage = async (shortCode: string): Promise<void> => {
   if (!(await Sharing.isAvailableAsync())) {
     await shareTagLink(shortCode);
     return;
   }
-  await Sharing.shareAsync(writeQrPng(base64Png, shortCode), {
+  await Sharing.shareAsync(writeQrPng(shortCode), {
     mimeType: 'image/png',
     UTI: 'public.png',
     dialogTitle: 'Share QR code',
