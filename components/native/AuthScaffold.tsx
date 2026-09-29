@@ -3,8 +3,8 @@ import { View, Text, Dimensions, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KeyboardAvoider from './KeyboardAvoider';
 import FormScrollView from './FormScrollView';
-import { Pressable, letterSpacingFor } from './ui';
-import { HOME_HEADER_BRAND } from '../../lib/screens/home';
+import { Pressable } from './ui';
+import Wordmark from './Wordmark';
 import { color, space, type } from '../../theme/tokens';
 
 export interface AuthScaffoldProps {
@@ -34,9 +34,7 @@ const AuthScaffold: React.FC<AuthScaffoldProps> = ({ subtitle, children, footer 
         keyboardDismissMode="interactive"
       >
         <View style={styles.header}>
-          <Text style={styles.wordmark} accessibilityRole="header">
-            {HOME_HEADER_BRAND}
-          </Text>
+          <Wordmark size={WORDMARK_SIZE} />
           <Text style={styles.subtitle}>{subtitle}</Text>
         </View>
         <View style={styles.form}>{children}</View>
@@ -111,12 +109,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: HEADER_TOP,
     paddingBottom: space.xxl,
-  },
-  wordmark: {
-    fontFamily: type.mono,
-    fontSize: WORDMARK_SIZE,
-    letterSpacing: letterSpacingFor(WORDMARK_SIZE),
-    color: color.text,
   },
   subtitle: {
     marginTop: space.sm,

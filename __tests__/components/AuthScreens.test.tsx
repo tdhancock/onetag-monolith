@@ -115,9 +115,21 @@ const span = (el: HTMLElement, text: string) =>
   Array.from(el.querySelectorAll('span')).find(s => s.textContent === text) as HTMLElement | undefined;
 
 /** The props React rendered a DOM node with — for RN-only props like textContentType. */
+/**
+ * The props the screen gave the TextInput behind `node`. The DOM shim keeps
+ * React Native's own props off the <input>, so they're read from the
+ * TextInput's fiber, the input's parent in React's tree. The node keeps the
+ * fiber it was created with, which after a re-render may be the stale half of
+ * the pair; the live one is whichever holds the node's current props.
+ */
+type Fiber = { memoizedProps: unknown; alternate: Fiber | null; return: Fiber };
 const propsOf = (node: Element): Record<string, unknown> => {
-  const key = Object.keys(node).find(k => k.startsWith('__reactProps$'))!;
-  return (node as unknown as Record<string, Record<string, unknown>>)[key]!;
+  const own = node as unknown as Record<string, unknown>;
+  const keys = Object.keys(own);
+  const created = own[keys.find(k => k.startsWith('__reactFiber$'))!] as Fiber;
+  const current = own[keys.find(k => k.startsWith('__reactProps$'))!];
+  const live = created.memoizedProps === current ? created : created.alternate!;
+  return live.return.memoizedProps as Record<string, unknown>;
 };
 
 const typeInto = (field: HTMLInputElement, value: string) =>
@@ -138,8 +150,9 @@ const rgb = (hex: string) => {
 describe('Sign in', () => {
   it('is white with the centred mono wordmark, labelled fields and a full-width Sign in', () => {
     const el = mount(<LoginScreen />);
-    const wordmark = span(el, 'OneTag')!;
-    expect(wordmark.style.fontFamily).toBe(type.mono);
+    const wordmark = el.querySelector('[aria-label="OneTag"]')!;
+    expect(wordmark).not.toBeNull();
+    expect(span(el, 'netag')!.style.fontFamily).toBe(type.mono);
     expect(el.textContent).toContain('Sign in to continue');
     expect(span(el, 'Email or username')).toBeDefined();
     expect(span(el, 'Password')).toBeDefined();

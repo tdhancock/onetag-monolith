@@ -18,6 +18,8 @@
 //      without error — the fallback stays for legacy rows, which is why the
 //      ticket ruled out a backfill.
 
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 

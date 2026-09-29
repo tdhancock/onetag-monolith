@@ -23,20 +23,27 @@ export const flattenStyle = (style: unknown): Record<string, unknown> => {
   return style as Record<string, unknown>;
 };
 
+/**
+ * The props that mean something on a DOM element. Everything else a native
+ * component takes (`accessibilityRole`, `hitSlop`, `numberOfLines`,
+ * `onLayout`, …) is React Native's own, and react-dom warns about each one
+ * that reaches it, so only these, `aria-*` and `data-*` pass through.
+ */
+const DOM_PROPS = new Set([
+  'ref', 'id', 'role', 'title', 'tabIndex', 'disabled', 'type', 'name',
+  'value', 'defaultValue', 'checked', 'readOnly', 'maxLength', 'autoFocus',
+  'src', 'alt', 'href',
+  'onClick', 'onChange', 'onInput', 'onFocus', 'onBlur', 'onKeyDown', 'onKeyUp',
+  'onMouseDown', 'onMouseUp', 'onContextMenu', 'onSubmit', 'onScroll', 'onLoad', 'onError',
+]);
+const isDomProp = (key: string) => DOM_PROPS.has(key) || key.startsWith('aria-') || key.startsWith('data-');
+
 const passthroughProps = (props: Record<string, unknown>) => {
-  // `accessible` and `selectable` are RN-only; dropping them keeps React's
-  // DOM warnings quiet.
-  const {
-    style,
-    children,
-    testID,
-    className,
-    accessible: _accessible,
-    selectable: _selectable,
-    accessibilityLabel,
-    ...rest
-  } = props;
-  const domProps: Record<string, unknown> = { ...rest };
+  const { style, children: _children, testID, className, accessibilityLabel, ...rest } = props;
+  const domProps: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(rest)) {
+    if (isDomProp(key)) domProps[key] = value;
+  }
   if (typeof accessibilityLabel === 'string') domProps['aria-label'] = accessibilityLabel;
   if (typeof testID === 'string') domProps['data-testid'] = testID;
   if (typeof className === 'string') domProps.className = className;

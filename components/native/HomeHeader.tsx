@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { IconButton, ICON_BUTTON_SIZE, letterSpacingFor } from './ui';
+import { View, StyleSheet } from 'react-native';
+import { IconButton, ICON_BUTTON_SIZE } from './ui';
+import Wordmark from './Wordmark';
 import { BellIcon, SendIcon } from './Icons';
-import { HOME_HEADER_BRAND, getHomeHeaderLabel } from '../../lib/screens/home';
-import { color, space, type } from '../../theme/tokens';
+import { getHomeHeaderLabel } from '../../lib/screens/home';
+import { color, space } from '../../theme/tokens';
 
 export interface HomeHeaderProps {
   notificationCount: number;
@@ -16,8 +17,6 @@ export interface HomeHeaderProps {
 
 /** The bar's height below the safe-area top. */
 export const HOME_HEADER_HEIGHT = 52;
-/** The wordmark's size. Its tracking scales with it, as MonoLabel's does. */
-const WORDMARK_SIZE = 18;
 const ACTION_ICON_SIZE = 24;
 
 /**
@@ -35,9 +34,7 @@ const HomeHeader: React.FC<HomeHeaderProps> = ({
   onPressMessages,
 }) => (
   <View style={[styles.bar, scrolled && styles.barScrolled]}>
-    <Text style={styles.wordmark} accessibilityRole="header">
-      {HOME_HEADER_BRAND}
-    </Text>
+    <Wordmark />
     <View style={styles.actions}>
       <IconButton
         icon={<BellIcon color={color.text} size={ACTION_ICON_SIZE} strokeWidth={1.8} />}
@@ -72,12 +69,6 @@ const styles = StyleSheet.create({
   },
   barScrolled: {
     borderBottomColor: color.border,
-  },
-  wordmark: {
-    fontFamily: type.mono,
-    fontSize: WORDMARK_SIZE,
-    letterSpacing: letterSpacingFor(WORDMARK_SIZE),
-    color: color.text,
   },
   actions: {
     flexDirection: 'row',
