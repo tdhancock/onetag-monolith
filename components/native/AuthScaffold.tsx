@@ -1,12 +1,9 @@
-import React, { forwardRef, useState } from 'react';
+import React from 'react';
 import { View, Text, Dimensions, StyleSheet } from 'react-native';
-import type { TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KeyboardAvoider from './KeyboardAvoider';
 import FormScrollView from './FormScrollView';
-import { IconButton, Pressable, TextField, letterSpacingFor } from './ui';
-import type { TextFieldProps } from './ui';
-import { EyeIcon, EyeSlashIcon } from './Icons';
+import { Pressable, letterSpacingFor } from './ui';
 import { HOME_HEADER_BRAND } from '../../lib/screens/home';
 import { color, space, type } from '../../theme/tokens';
 
@@ -95,39 +92,8 @@ export const AuthFormError: React.FC<{ message: string }> = ({ message }) => (
   </View>
 );
 
-/**
- * A TextField for a password, with a show/hide control inside its trailing
- * edge. Everything else — autofill hints, return key — is the caller's.
- */
-export const PasswordField = forwardRef<TextInput, Omit<TextFieldProps, 'secureTextEntry' | 'trailing'>>(
-  (props, ref) => {
-    const [visible, setVisible] = useState(false);
-    return (
-      <TextField
-        ref={ref}
-        {...props}
-        secureTextEntry={!visible}
-        autoCapitalize="none"
-        autoCorrect={false}
-        trailing={
-          <IconButton
-            icon={
-              visible ? (
-                <EyeSlashIcon color={color.textMid} size={20} strokeWidth={1.6} />
-              ) : (
-                <EyeIcon color={color.textMid} size={20} strokeWidth={1.6} />
-              )
-            }
-            accessibilityLabel={visible ? 'Hide password' : 'Show password'}
-            onPress={() => setVisible(v => !v)}
-          />
-        }
-      />
-    );
-  },
-);
-
-PasswordField.displayName = 'PasswordField';
+/** The password field, which lives in ./PasswordField so a form can use it without this frame. */
+export { default as PasswordField } from './PasswordField';
 
 const styles = StyleSheet.create({
   screen: {

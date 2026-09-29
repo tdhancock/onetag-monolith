@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { Button, IconButton, MonoLabel, Pressable, Sheet, SheetRow, TextField } from './ui';
+import { formOptions, useStore } from '@tanstack/react-form';
+import { Button, IconButton, MonoLabel, Pressable, Sheet, SheetRow } from './ui';
 import { DotsHorizontalIcon, PlusIcon } from './Icons';
+import { withForm } from './form';
 import { pickImageFromLibrary } from '../../services/mediaPicker';
+import { draftValidator } from '../../lib/formErrors';
 import {
-  moveItem,
+  EMPTY_PRODUCT_DRAFT,
   newDraftKey,
   PRODUCT_CATEGORY_MAX_LENGTH,
   PRODUCT_DESCRIPTION_MAX_LENGTH,
@@ -17,10 +20,17 @@ import {
 } from '../../lib/screens/products';
 import { color, space, type } from '../../theme/tokens';
 
-export interface ProductFormProps {
-  draft: ProductDraft;
-  onChange: (draft: ProductDraft) => void;
-}
+const validateProduct = draftValidator(productDraftErrors);
+
+/**
+ * What Add and Edit build their product form from: the draft's shape, and its
+ * rules checked from the start and on every change, so Save waits for a valid
+ * draft. Each screen adds its own starting draft and what saving does.
+ */
+export const productFormOptions = formOptions({
+  defaultValues: EMPTY_PRODUCT_DRAFT as ProductDraft,
+  validators: { onMount: validateProduct, onChange: validateProduct },
+});
 
 /** A photo's or a spec's options, open in the sheet. */
 type Selection = { kind: 'photo' | 'spec'; index: number } | null;
@@ -35,195 +45,207 @@ const PHOTO_TILE = 88;
  * Order is the owner's to set, since the first photo represents the product
  * everywhere else: each photo and spec opens a sheet to move it or remove it.
  */
-const ProductForm: React.FC<ProductFormProps> = ({ draft, onChange }) => {
-  const [selection, setSelection] = useState<Selection>(null);
-  const [nameTouched, setNameTouched] = useState(false);
-  const errors = productDraftErrors(draft);
+const ProductForm = withForm({
+  ...productFormOptions,
+  render: function ProductFields({ form }) {
+    const [selection, setSelection] = useState<Selection>(null);
+    const media = useStore(form.store, (state) => state.values.media);
+    const specs = useStore(form.store, (state) => state.values.specs);
 
-  const set = <K extends keyof ProductDraft>(key: K, value: ProductDraft[K]) => onChange({ ...draft, [key]: value });
+    const addPhoto = async () => {
+      const result = await pickImageFromLibrary({ aspect: [1, 1] });
+      if (result.status !== 'selected') return;
+      form.pushFieldValue('media', { key: newDraftKey(), uri: result.media.uri });
+    };
 
-  const addPhoto = async () => {
-    const result = await pickImageFromLibrary({ aspect: [1, 1] });
-    if (result.status !== 'selected') return;
-    onChange({ ...draft, media: [...draft.media, { key: newDraftKey(), uri: result.media.uri }] });
-  };
+    const addSpec = () => form.pushFieldValue('specs', { key: newDraftKey(), label: '', value: '' });
 
-  const setSpec = (index: number, field: 'label' | 'value', value: string) =>
-    set(
-      'specs',
-      draft.specs.map((spec, i) => (i === index ? { ...spec, [field]: value } : spec)),
-    );
+    const close = () => setSelection(null);
+    const selectedListLength = selection?.kind === 'photo' ? media.length : specs.length;
+    const move = (to: number) => {
+      if (!selection) return;
+      form.moveFieldValues(selection.kind === 'photo' ? 'media' : 'specs', selection.index, to);
+      close();
+    };
+    const remove = () => {
+      if (!selection) return;
+      void form.removeFieldValue(selection.kind === 'photo' ? 'media' : 'specs', selection.index);
+      close();
+    };
 
-  const addSpec = () => set('specs', [...draft.specs, { key: newDraftKey(), label: '', value: '' }]);
-
-  const close = () => setSelection(null);
-  const selectedListLength = selection?.kind === 'photo' ? draft.media.length : draft.specs.length;
-  const move = (to: number) => {
-    if (!selection) return;
-    if (selection.kind === 'photo') set('media', moveItem(draft.media, selection.index, to));
-    else set('specs', moveItem(draft.specs, selection.index, to));
-    close();
-  };
-  const remove = () => {
-    if (!selection) return;
-    if (selection.kind === 'photo') set('media', draft.media.filter((_, i) => i !== selection.index));
-    else set('specs', draft.specs.filter((_, i) => i !== selection.index));
-    close();
-  };
-
-  return (
-    <>
-      <View style={styles.section}>
-        <MonoLabel color="textMid" style={styles.label}>
-          Photos
-        </MonoLabel>
-        <Text style={styles.hint}>The first photo represents the product everywhere. Tap a photo to move it.</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photos}>
-          {draft.media.map((media, index) => (
-            <Pressable
-              key={media.key}
-              onPress={() => setSelection({ kind: 'photo', index })}
-              accessibilityRole="button"
-              accessibilityLabel={`Photo ${index + 1} of ${draft.media.length}${index === 0 ? ', the cover' : ''}`}
-              accessibilityHint="Opens options to move or remove it"
-              style={styles.photo}
-            >
-              <Image source={{ uri: media.uri }} style={styles.photoImage} contentFit="cover" />
-              {index === 0 ? (
-                <View style={styles.cover}>
-                  <MonoLabel color="inverse">
-                    Cover
-                  </MonoLabel>
-                </View>
-              ) : null}
-            </Pressable>
-          ))}
-          {draft.media.length < PRODUCT_MEDIA_MAX ? (
-            <Pressable
-              onPress={() => void addPhoto()}
-              accessibilityRole="button"
-              accessibilityLabel="Add a photo"
-              style={[styles.photo, styles.addPhoto]}
-            >
-              <PlusIcon color={color.text} size={22} />
-              <MonoLabel color="textMid" style={styles.addPhotoLabel}>
-                Add photo
-              </MonoLabel>
-            </Pressable>
-          ) : null}
-        </ScrollView>
-      </View>
-
-      <View style={[styles.section, styles.fields]}>
-        <TextField
-          label="Name"
-          value={draft.name}
-          onChangeText={(value) => set('name', value)}
-          onBlur={() => setNameTouched(true)}
-          placeholder="What it's called"
-          maxLength={PRODUCT_NAME_MAX_LENGTH}
-          error={nameTouched ? errors.name : null}
-          accessibilityLabel="Name"
-        />
-        <TextField
-          label="Category"
-          value={draft.category}
-          onChangeText={(value) => set('category', value)}
-          placeholder="Optional, e.g. Lighting"
-          maxLength={PRODUCT_CATEGORY_MAX_LENGTH}
-          accessibilityLabel="Category"
-        />
-        <TextField
-          label="Description"
-          value={draft.description}
-          onChangeText={(value) => set('description', value)}
-          placeholder="Optional"
-          multiline
-          maxLength={PRODUCT_DESCRIPTION_MAX_LENGTH}
-          inputStyle={styles.description}
-          accessibilityLabel="Description"
-        />
-        <View>
-          <View style={styles.priceRow}>
-            <TextField
-              label="Price"
-              value={draft.price}
-              onChangeText={(value) => set('price', value)}
-              placeholder="Optional"
-              keyboardType="decimal-pad"
-              containerStyle={styles.price}
-              error={errors.price}
-              accessibilityLabel="Price"
-            />
-            <TextField
-              label="Currency"
-              value={draft.currency}
-              onChangeText={(value) => set('currency', value.toUpperCase())}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={3}
-              containerStyle={styles.currency}
-              error={errors.currency}
-              accessibilityLabel="Currency"
-            />
-          </View>
-          <Text style={styles.hint}>Shown on the product for information. Nothing is sold through OneTag.</Text>
+    return (
+      <>
+        <View style={styles.section}>
+          <MonoLabel color="textMid" style={styles.label}>
+            Photos
+          </MonoLabel>
+          <Text style={styles.hint}>The first photo represents the product everywhere. Tap a photo to move it.</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photos}>
+            {media.map((photo, index) => (
+              <Pressable
+                key={photo.key}
+                onPress={() => setSelection({ kind: 'photo', index })}
+                accessibilityRole="button"
+                accessibilityLabel={`Photo ${index + 1} of ${media.length}${index === 0 ? ', the cover' : ''}`}
+                accessibilityHint="Opens options to move or remove it"
+                style={styles.photo}
+              >
+                <Image source={{ uri: photo.uri }} style={styles.photoImage} contentFit="cover" />
+                {index === 0 ? (
+                  <View style={styles.cover}>
+                    <MonoLabel color="inverse">
+                      Cover
+                    </MonoLabel>
+                  </View>
+                ) : null}
+              </Pressable>
+            ))}
+            {media.length < PRODUCT_MEDIA_MAX ? (
+              <Pressable
+                onPress={() => void addPhoto()}
+                accessibilityRole="button"
+                accessibilityLabel="Add a photo"
+                style={[styles.photo, styles.addPhoto]}
+              >
+                <PlusIcon color={color.text} size={22} />
+                <MonoLabel color="textMid" style={styles.addPhotoLabel}>
+                  Add photo
+                </MonoLabel>
+              </Pressable>
+            ) : null}
+          </ScrollView>
         </View>
-      </View>
 
-      <View style={styles.section}>
-        <MonoLabel color="textMid" style={styles.label}>
-          Specs
-        </MonoLabel>
-        {draft.specs.length === 0 ? (
-          <Text style={styles.hint}>Details like material, size or finish, as label and value.</Text>
-        ) : null}
-        {draft.specs.map((spec, index) => (
-          <View key={spec.key} style={styles.specRow}>
-            <TextField
-              value={spec.label}
-              onChangeText={(value) => setSpec(index, 'label', value)}
-              placeholder="Label"
-              containerStyle={styles.specField}
-              accessibilityLabel={`Spec ${index + 1} label`}
-            />
-            <TextField
-              value={spec.value}
-              onChangeText={(value) => setSpec(index, 'value', value)}
-              placeholder="Value"
-              containerStyle={styles.specField}
-              accessibilityLabel={`Spec ${index + 1} value`}
-            />
-            <IconButton
-              icon={<DotsHorizontalIcon color={color.text} size={20} />}
-              accessibilityLabel={`Options for spec ${index + 1}`}
-              onPress={() => setSelection({ kind: 'spec', index })}
-            />
+        <View style={[styles.section, styles.fields]}>
+          <form.AppField name="name">
+            {(field) => (
+              <field.TextField
+                label="Name"
+                placeholder="What it's called"
+                maxLength={PRODUCT_NAME_MAX_LENGTH}
+                accessibilityLabel="Name"
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="category">
+            {(field) => (
+              <field.TextField
+                label="Category"
+                placeholder="Optional, e.g. Lighting"
+                maxLength={PRODUCT_CATEGORY_MAX_LENGTH}
+                accessibilityLabel="Category"
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="description">
+            {(field) => (
+              <field.TextField
+                label="Description"
+                placeholder="Optional"
+                multiline
+                maxLength={PRODUCT_DESCRIPTION_MAX_LENGTH}
+                inputStyle={styles.description}
+                accessibilityLabel="Description"
+              />
+            )}
+          </form.AppField>
+          <View>
+            <View style={styles.priceRow}>
+              <form.AppField name="price">
+                {(field) => (
+                  <field.TextField
+                    label="Price"
+                    placeholder="Optional"
+                    keyboardType="decimal-pad"
+                    containerStyle={styles.price}
+                    errorWhileTyping
+                    accessibilityLabel="Price"
+                  />
+                )}
+              </form.AppField>
+              <form.AppField name="currency">
+                {(field) => (
+                  <field.TextField
+                    label="Currency"
+                    format={(value) => value.toUpperCase()}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    maxLength={3}
+                    containerStyle={styles.currency}
+                    errorWhileTyping
+                    accessibilityLabel="Currency"
+                  />
+                )}
+              </form.AppField>
+            </View>
+            <Text style={styles.hint}>Shown on the product for information. Nothing is sold through OneTag.</Text>
           </View>
-        ))}
-        {errors.specs ? <Text style={styles.error}>{errors.specs}</Text> : null}
-        {draft.specs.length < PRODUCT_SPECS_MAX ? (
-          <Button variant="outline" size="sm" onPress={addSpec} style={styles.addSpec}>
-            Add a spec
-          </Button>
-        ) : null}
-      </View>
+        </View>
 
-      <Sheet visible={selection !== null} onClose={close}>
-        {selection && selection.index > 0 ? (
-          <>
-            {selection.kind === 'photo' ? <SheetRow label="Make it the cover" onPress={() => move(0)} /> : null}
-            <SheetRow label="Move earlier" onPress={() => move(selection.index - 1)} />
-          </>
-        ) : null}
-        {selection && selection.index < selectedListLength - 1 ? (
-          <SheetRow label="Move later" onPress={() => move(selection.index + 1)} />
-        ) : null}
-        <SheetRow label={selection?.kind === 'photo' ? 'Remove photo' : 'Remove spec'} destructive onPress={remove} />
-      </Sheet>
-    </>
-  );
-};
+        <View style={styles.section}>
+          <MonoLabel color="textMid" style={styles.label}>
+            Specs
+          </MonoLabel>
+          {specs.length === 0 ? (
+            <Text style={styles.hint}>Details like material, size or finish, as label and value.</Text>
+          ) : null}
+          {specs.map((spec, index) => (
+            <View key={spec.key} style={styles.specRow}>
+              <form.AppField name={`specs[${index}].label`}>
+                {(field) => (
+                  <field.TextField
+                    placeholder="Label"
+                    containerStyle={styles.specField}
+                    accessibilityLabel={`Spec ${index + 1} label`}
+                  />
+                )}
+              </form.AppField>
+              <form.AppField name={`specs[${index}].value`}>
+                {(field) => (
+                  <field.TextField
+                    placeholder="Value"
+                    containerStyle={styles.specField}
+                    accessibilityLabel={`Spec ${index + 1} value`}
+                  />
+                )}
+              </form.AppField>
+              <IconButton
+                icon={<DotsHorizontalIcon color={color.text} size={20} />}
+                accessibilityLabel={`Options for spec ${index + 1}`}
+                onPress={() => setSelection({ kind: 'spec', index })}
+              />
+            </View>
+          ))}
+          {/* A spec left half filled is said at once: it blocks Save. */}
+          <form.Field name="specs" mode="array">
+            {(field) => {
+              const error = field.state.meta.errors.find((e): e is string => typeof e === 'string');
+              return error ? <Text style={styles.error}>{error}</Text> : null;
+            }}
+          </form.Field>
+          {specs.length < PRODUCT_SPECS_MAX ? (
+            <Button variant="outline" size="sm" onPress={addSpec} style={styles.addSpec}>
+              Add a spec
+            </Button>
+          ) : null}
+        </View>
+
+        <Sheet visible={selection !== null} onClose={close}>
+          {selection && selection.index > 0 ? (
+            <>
+              {selection.kind === 'photo' ? <SheetRow label="Make it the cover" onPress={() => move(0)} /> : null}
+              <SheetRow label="Move earlier" onPress={() => move(selection.index - 1)} />
+            </>
+          ) : null}
+          {selection && selection.index < selectedListLength - 1 ? (
+            <SheetRow label="Move later" onPress={() => move(selection.index + 1)} />
+          ) : null}
+          <SheetRow label={selection?.kind === 'photo' ? 'Remove photo' : 'Remove spec'} destructive onPress={remove} />
+        </Sheet>
+      </>
+    );
+  },
+});
 
 const styles = StyleSheet.create({
   section: {

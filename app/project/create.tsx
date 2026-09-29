@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useStore } from '@tanstack/react-form';
 import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
 import { useCreateProject } from '../../features/projects';
@@ -9,13 +10,12 @@ import { MediaUploadError } from '../../services/mediaUpload';
 import KeyboardAvoider from '../../components/native/KeyboardAvoider';
 import FormScrollView from '../../components/native/FormScrollView';
 import ModalHeader from '../../components/native/ModalHeader';
-import ProjectForm from '../../components/native/ProjectForm';
+import ProjectForm, { projectFormOptions } from '../../components/native/ProjectForm';
+import { useAppForm } from '../../components/native/form';
 import {
-  EMPTY_PROJECT_DRAFT,
   newProjectInputFrom,
   PROJECT_PHOTO_FAILED,
   PROJECT_SAVE_FAILED,
-  projectDraftValid,
   projectRoute,
 } from '../../lib/screens/projects';
 import { color, space } from '../../theme/tokens';
@@ -30,19 +30,24 @@ export default function CreateProjectScreen() {
   const { addToast } = useApp();
   const { profileId, authUserId } = useCurrentProfile();
   const createProject = useCreateProject(authUserId);
-  const [draft, setDraft] = useState(EMPTY_PROJECT_DRAFT);
+  const form = useAppForm({
+    ...projectFormOptions,
+    onSubmit: ({ value }) => {
+      if (!profileId) return;
+      createProject.mutate(newProjectInputFrom(value, profileId), {
+        onSuccess: (projectId) => {
+          addToast('Project created.', 'success');
+          router.replace(projectRoute(projectId));
+        },
+        onError: (error) => addToast(error instanceof MediaUploadError ? PROJECT_PHOTO_FAILED : PROJECT_SAVE_FAILED, 'error'),
+      });
+    },
+  });
+  const valid = useStore(form.store, (state) => state.canSubmit);
 
-  const canSave = projectDraftValid(draft) && Boolean(profileId) && !createProject.isPending;
-
+  const canSave = valid && Boolean(profileId) && !createProject.isPending;
   const handleSave = () => {
-    if (!canSave || !profileId) return;
-    createProject.mutate(newProjectInputFrom(draft, profileId), {
-      onSuccess: (projectId) => {
-        addToast('Project created.', 'success');
-        router.replace(projectRoute(projectId));
-      },
-      onError: (error) => addToast(error instanceof MediaUploadError ? PROJECT_PHOTO_FAILED : PROJECT_SAVE_FAILED, 'error'),
-    });
+    if (canSave) void form.handleSubmit();
   };
 
   return (
@@ -56,7 +61,7 @@ export default function CreateProjectScreen() {
       />
       <KeyboardAvoider style={styles.fill}>
         <FormScrollView style={styles.fill} contentContainerStyle={styles.scroll}>
-          <ProjectForm draft={draft} onChange={setDraft} />
+          <ProjectForm form={form} />
         </FormScrollView>
       </KeyboardAvoider>
     </SafeAreaView>

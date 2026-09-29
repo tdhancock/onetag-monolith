@@ -1,39 +1,27 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { View, Text, ActivityIndicator, Keyboard, StyleSheet } from 'react-native';
 import type { TextInput } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useStore } from '@tanstack/react-form';
 import { supabase } from '../../services/supabase.native';
 import { ensureCurrentUserProfile } from '../../services/profileBootstrap';
 import { checkUsernameExists } from '../../features/profiles';
-import { usernameError as usernameRuleError } from '../../lib/screens/profile';
-import {
-  USERNAME_CHECK_DEBOUNCE_MS,
-  signupFormValid,
-  signupPasswordErrors,
-  type UsernameAvailability,
-} from '../../lib/screens/auth';
-import { Button, EmptyState, MonoLabel, Pressable, TextField } from '../../components/native/ui';
-import AuthScaffold, { AuthFormError, AuthSwitch, PasswordField } from '../../components/native/AuthScaffold';
-import UsernameStatus from '../../components/native/UsernameStatus';
+import { draftValidator } from '../../lib/formErrors';
+import { EMPTY_SIGNUP_DRAFT, signupErrors } from '../../lib/screens/auth';
+import { Button, EmptyState, MonoLabel, Pressable } from '../../components/native/ui';
+import AuthScaffold, { AuthFormError, AuthSwitch } from '../../components/native/AuthScaffold';
+import { useAppForm, useUsernameCheck } from '../../components/native/form';
 import { EnvelopeIcon } from '../../components/native/Icons';
 import { color, radius, space, type } from '../../theme/tokens';
+
+const validateSignup = draftValidator(signupErrors);
 
 export default function SignupScreen() {
   const router = useRouter();
 
-  const [fullName, setFullName] = useState('');
-  const [username, setUsername] = useState('');
-  const [usernameError, setUsernameError] = useState('');
-  const [usernameStatus, setUsernameStatus] = useState<UsernameAvailability>('idle');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [touched, setTouched] = useState<{ password?: boolean; confirmPassword?: boolean }>({});
-  const [birthday, setBirthday] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
@@ -43,48 +31,61 @@ export default function SignupScreen() {
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
 
-  const handleUsernameChange = (value: string) => {
-    const lower = value.toLowerCase();
-    setUsername(lower);
-    // The rule Edit profile applies too (lib/screens/profile).
-    setUsernameError(usernameRuleError(lower) ?? '');
-  };
+  // "Taken" shows inside the field before the form is sent; sending checks
+  // again, so a handle claimed meanwhile never reaches the server.
+  const usernameCheck = useUsernameCheck(checkUsernameExists);
 
-  // Look the username up once typing pauses, so "Taken" shows inside the
-  // field before the form is sent. The submit still checks again.
-  useEffect(() => {
-    if (!username || usernameError) {
-      setUsernameStatus('idle');
-      return;
-    }
-    setUsernameStatus('checking');
-    let cancelled = false;
-    const timer = setTimeout(async () => {
+  const form = useAppForm({
+    defaultValues: EMPTY_SIGNUP_DRAFT,
+    validators: { onMount: validateSignup, onChange: validateSignup },
+    onSubmit: async ({ value }) => {
+      setError('');
       try {
-        const taken = await checkUsernameExists(username);
-        if (!cancelled) setUsernameStatus(taken ? 'taken' : 'available');
-      } catch {
-        if (!cancelled) setUsernameStatus('unknown');
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: value.email.trim(),
+          password: value.password,
+          options: {
+            data: {
+              full_name: value.fullName.trim(),
+              username: value.username,
+              birthday: value.birthday,
+              bio: 'Hello, I am using OneTag',
+            },
+          },
+        });
+
+        if (signUpError) throw signUpError;
+
+        if (data.user && data.user.identities && data.user.identities.length === 0) {
+          setError('This email is already registered. Please try logging in.');
+          return;
+        }
+
+        if (data.session) {
+          const profileReady = await ensureCurrentUserProfile();
+          if (!profileReady) {
+            throw new Error('Account created but profile initialization failed. Please try logging in again.');
+          }
+          // Auto-confirmed: session exists, _layout auth listener handles redirect.
+          setIsSuccess(true);
+          return;
+        }
+
+        if (data.user && !data.session) {
+          // Email confirmation required.
+          setNeedsConfirmation(true);
+        }
+      } catch (err: any) {
+        setError(err.message || 'An unexpected error occurred during sign up.');
       }
-    }, USERNAME_CHECK_DEBOUNCE_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [username, usernameError]);
-
-  const fieldErrors = signupPasswordErrors({ password, confirmPassword }, touched);
-
-  const isFormValid = signupFormValid({
-    fullName,
-    username,
-    usernameError: usernameError || null,
-    usernameStatus,
-    email,
-    password,
-    confirmPassword,
-    birthday,
+    },
   });
+
+  const birthday = useStore(form.store, (state) => state.values.birthday);
+  const email = useStore(form.store, (state) => state.values.email);
+  const canSubmit = useStore(form.store, (state) => state.canSubmit);
+  const submitting = useStore(form.store, (state) => state.isSubmitting);
+  const submit = () => void form.handleSubmit();
 
   const formattedDate = useMemo(() => {
     if (!birthday) return '';
@@ -114,78 +115,7 @@ export default function SignupScreen() {
       return;
     }
     if (selectedDate) {
-      const iso = selectedDate.toISOString().slice(0, 10); // YYYY-MM-DD
-      setBirthday(iso);
-    }
-  };
-
-  const handleSignUp = async () => {
-    if (loading || usernameError) return;
-
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long.');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
-
-    if (!isFormValid) {
-      setError('Please fill out all fields correctly.');
-      return;
-    }
-
-    setError('');
-    setLoading(true);
-
-    try {
-      const isTaken = await checkUsernameExists(username);
-      if (isTaken) {
-        setUsernameStatus('taken');
-        throw new Error('This username is already taken.');
-      }
-
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password,
-        options: {
-          data: {
-            full_name: fullName.trim(),
-            username: username,
-            birthday: birthday,
-            bio: 'Hello, I am using OneTag',
-          },
-        },
-      });
-
-      if (signUpError) throw signUpError;
-
-      if (data.user && data.user.identities && data.user.identities.length === 0) {
-        setError('This email is already registered. Please try logging in.');
-        return;
-      }
-
-      if (data.session) {
-        const profileReady = await ensureCurrentUserProfile();
-        if (!profileReady) {
-          throw new Error('Account created but profile initialization failed. Please try logging in again.');
-        }
-        // Auto-confirmed: session exists, _layout auth listener handles redirect.
-        setIsSuccess(true);
-        return;
-      }
-
-      if (data.user && !data.session) {
-        // Email confirmation required.
-        setNeedsConfirmation(true);
-        return;
-      }
-    } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred during sign up.');
-    } finally {
-      setLoading(false);
+      form.setFieldValue('birthday', selectedDate.toISOString().slice(0, 10)); // YYYY-MM-DD
     }
   };
 
@@ -221,87 +151,91 @@ export default function SignupScreen() {
         <AuthSwitch prompt="Have an account?" action="Sign in" onPress={() => router.replace('/(auth)/login')} />
       }
     >
-      <TextField
-        label="Full name"
-        placeholder="Your name"
-        value={fullName}
-        onChangeText={setFullName}
-        textContentType="name"
-        autoComplete="name"
-        autoCapitalize="words"
-        returnKeyType="next"
-        submitBehavior="submit"
-        onSubmitEditing={() => usernameRef.current?.focus()}
-        accessibilityLabel="Full name"
-      />
+      <form.AppField name="fullName">
+        {(field) => (
+          <field.TextField
+            label="Full name"
+            placeholder="Your name"
+            textContentType="name"
+            autoComplete="name"
+            autoCapitalize="words"
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => usernameRef.current?.focus()}
+            accessibilityLabel="Full name"
+          />
+        )}
+      </form.AppField>
 
-      <TextField
-        ref={usernameRef}
-        label="Username"
-        placeholder="Pick a username"
-        value={username}
-        onChangeText={handleUsernameChange}
-        error={usernameError || null}
-        trailing={<UsernameStatus status={usernameStatus} />}
-        textContentType="username"
-        autoComplete="username-new"
-        autoCapitalize="none"
-        autoCorrect={false}
-        returnKeyType="next"
-        submitBehavior="submit"
-        onSubmitEditing={() => emailRef.current?.focus()}
-        accessibilityLabel="Username"
-      />
+      <form.AppField name="username" validators={usernameCheck.validators}>
+        {(field) => (
+          <field.UsernameField
+            ref={usernameRef}
+            check={usernameCheck}
+            label="Username"
+            placeholder="Pick a username"
+            textContentType="username"
+            autoComplete="username-new"
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => emailRef.current?.focus()}
+            accessibilityLabel="Username"
+          />
+        )}
+      </form.AppField>
 
-      <TextField
-        ref={emailRef}
-        label="Email"
-        placeholder="you@example.com"
-        value={email}
-        onChangeText={setEmail}
-        textContentType="emailAddress"
-        autoComplete="email"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-        returnKeyType="next"
-        submitBehavior="submit"
-        onSubmitEditing={() => passwordRef.current?.focus()}
-        accessibilityLabel="Email"
-      />
+      <form.AppField name="email">
+        {(field) => (
+          <field.TextField
+            ref={emailRef}
+            label="Email"
+            placeholder="you@example.com"
+            textContentType="emailAddress"
+            autoComplete="email"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => passwordRef.current?.focus()}
+            accessibilityLabel="Email"
+          />
+        )}
+      </form.AppField>
 
-      <PasswordField
-        ref={passwordRef}
-        label="Password"
-        placeholder="At least 6 characters"
-        value={password}
-        onChangeText={setPassword}
-        onBlur={() => setTouched(t => ({ ...t, password: true }))}
-        error={fieldErrors.password}
-        textContentType="newPassword"
-        autoComplete="new-password"
-        returnKeyType="next"
-        submitBehavior="submit"
-        onSubmitEditing={() => confirmRef.current?.focus()}
-        accessibilityLabel="Password"
-      />
+      <form.AppField name="password">
+        {(field) => (
+          <field.PasswordField
+            ref={passwordRef}
+            label="Password"
+            placeholder="At least 6 characters"
+            textContentType="newPassword"
+            autoComplete="new-password"
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => confirmRef.current?.focus()}
+            accessibilityLabel="Password"
+          />
+        )}
+      </form.AppField>
 
-      <PasswordField
-        ref={confirmRef}
-        label="Confirm password"
-        placeholder="Type it again"
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-        onBlur={() => setTouched(t => ({ ...t, confirmPassword: true }))}
-        error={fieldErrors.confirmPassword}
-        textContentType="newPassword"
-        autoComplete="new-password"
-        // The birthday is a picker, not a keyboard field: the last text field
-        // opens it while it is empty, and submits once it is set.
-        returnKeyType={birthday ? 'go' : 'next'}
-        onSubmitEditing={birthday ? handleSignUp : openBirthday}
-        accessibilityLabel="Confirm password"
-      />
+      {/* Checked against the password whenever either changes. */}
+      <form.AppField name="confirmPassword">
+        {(field) => (
+          <field.PasswordField
+            ref={confirmRef}
+            label="Confirm password"
+            placeholder="Type it again"
+            textContentType="newPassword"
+            autoComplete="new-password"
+            // The birthday is a picker, not a keyboard field: the last text field
+            // opens it while it is empty, and submits once it is set.
+            returnKeyType={birthday ? 'go' : 'next'}
+            onSubmitEditing={birthday ? submit : openBirthday}
+            accessibilityLabel="Confirm password"
+          />
+        )}
+      </form.AppField>
 
       <View>
         <MonoLabel color="textMid" style={styles.fieldLabel}>
@@ -341,7 +275,7 @@ export default function SignupScreen() {
         By creating an account you agree to the terms of service and privacy policy.
       </Text>
 
-      <Button fullWidth onPress={handleSignUp} loading={loading} disabled={!isFormValid}>
+      <Button fullWidth onPress={submit} loading={submitting} disabled={!canSubmit}>
         Create account
       </Button>
     </AuthScaffold>

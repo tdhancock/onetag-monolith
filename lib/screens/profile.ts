@@ -482,6 +482,26 @@ export interface EditableProfileFields {
  * Whether Edit profile has anything to save: a new photo, or a field that
  * differs from what the profile holds. Save stays disabled until it does.
  */
+/**
+ * What is wrong with an edit, field by field. A new handle follows the rule,
+ * and can't be empty; an unchanged one is left alone, so an account older
+ * than the rule can still edit its bio. A business's website must read as
+ * one.
+ */
+export const editProfileErrors = (
+  originalUsername: string,
+  edited: { username: string; website: string },
+  isBusiness: boolean,
+) => ({
+  username:
+    edited.username === originalUsername
+      ? null
+      : edited.username === ''
+        ? 'Choose a username.'
+        : usernameError(edited.username),
+  website: isBusiness ? websiteError(edited.website) : null,
+});
+
 export const hasProfileChanges = (
   original: Partial<EditableProfileFields> | null | undefined,
   edited: EditableProfileFields,
@@ -659,26 +679,23 @@ export const profileNameLabel = (kind: ProfileKind): string => (kind === 'busine
 export const createProfileTitle = (kind: ProfileKind): string =>
   kind === 'business' ? 'New business profile' : 'New individual profile';
 
-export interface CreateProfileFields {
+export interface CreateProfileDraft {
   username: string;
-  /** The username rule's message, from `usernameError`. */
-  usernameError: string | null;
-  /** Where the live availability check stands (lib/screens/auth). */
-  usernameStatus: 'idle' | 'checking' | 'available' | 'taken' | 'unknown';
   name: string;
+  bio: string;
 }
 
+export const EMPTY_CREATE_PROFILE_DRAFT: CreateProfileDraft = { username: '', name: '', bio: '' };
+
 /**
- * Whether Create can be pressed: a handle the database would accept and that
- * is not known to be taken (nor still being checked), and a name. The bio is
- * optional.
+ * What is wrong with a new profile, field by field: a handle the database
+ * would accept, and a name. The bio is optional. Whether the handle is free
+ * is the live check's to say.
  */
-export const createProfileFormValid = (fields: CreateProfileFields): boolean =>
-  fields.username.length > 0 &&
-  !fields.usernameError &&
-  fields.usernameStatus !== 'taken' &&
-  fields.usernameStatus !== 'checking' &&
-  fields.name.trim().length > 0;
+export const createProfileErrors = (d: CreateProfileDraft) => ({
+  username: d.username === '' ? 'Choose a username.' : usernameError(d.username),
+  name: d.name.trim() === '' ? 'Give the profile a name.' : null,
+});
 
 /** What the handle field says when the database refused the handle after all. */
 export const HANDLE_TAKEN_MESSAGE = 'That handle is taken.';

@@ -76,6 +76,9 @@ export const projectDraftFrom = (project: Project): ProjectDraft => ({
 export const projectNameError = (draft: Pick<ProjectDraft, 'name'>): string | null =>
   draft.name.trim() === '' ? 'Give the project a name.' : null;
 
+/** What is wrong with a draft, field by field: only a name is required. */
+export const projectDraftErrors = (draft: ProjectDraft): { name: string | null } => ({ name: projectNameError(draft) });
+
 export const projectDraftValid = (draft: ProjectDraft): boolean => projectNameError(draft) === null;
 
 const textOrNull = (value: string): string | null => value.trim() || null;

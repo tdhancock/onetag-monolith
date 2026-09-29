@@ -1,150 +1,176 @@
 import React from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { Button, MonoLabel, Pressable, SettingsRow, TextField } from './ui';
+import { formOptions, useStore } from '@tanstack/react-form';
+import { Button, MonoLabel, Pressable, SettingsRow } from './ui';
 import InterestFilter from './InterestFilter';
 import { ImageIcon } from './Icons';
+import { withForm } from './form';
 import { pickImageFromLibrary } from '../../services/mediaPicker';
+import { draftValidator } from '../../lib/formErrors';
 import {
+  EMPTY_PROJECT_DRAFT,
   PROJECT_DESCRIPTION_MAX_LENGTH,
   PROJECT_NAME_MAX_LENGTH,
   PROJECT_TYPE_MAX_LENGTH,
   PROJECT_YEAR_MAX_LENGTH,
-  projectNameError,
+  projectDraftErrors,
   projectVisibilityDescription,
   type ProjectDraft,
 } from '../../lib/screens/projects';
 import { color, space, type } from '../../theme/tokens';
 
-export interface ProjectFormProps {
-  draft: ProjectDraft;
-  onChange: (draft: ProjectDraft) => void;
-}
+const validateProject = draftValidator(projectDraftErrors);
+
+/**
+ * What Add and Edit build their project form from: the draft's shape, and its
+ * rules checked from the start and on every change. Each screen adds its own
+ * starting draft and what saving does.
+ */
+export const projectFormOptions = formOptions({
+  defaultValues: EMPTY_PROJECT_DRAFT as ProjectDraft,
+  validators: { onMount: validateProject, onChange: validateProject },
+});
 
 /**
  * The fields a project is created and edited with (ONE-41): a cover, its name,
  * type and year, a description, and whether it is public. The screen around
  * it owns saving.
  */
-const ProjectForm: React.FC<ProjectFormProps> = ({ draft, onChange }) => {
-  const [nameTouched, setNameTouched] = React.useState(false);
-  const set = <K extends keyof ProjectDraft>(key: K, value: ProjectDraft[K]) => onChange({ ...draft, [key]: value });
+const ProjectForm = withForm({
+  ...projectFormOptions,
+  render: function ProjectFields({ form }) {
+    const coverUri = useStore(form.store, (state) => state.values.coverUri);
+    const interestSlug = useStore(form.store, (state) => state.values.interestSlug);
+    const isPublic = useStore(form.store, (state) => state.values.isPublic);
 
-  const pickCover = async () => {
-    const result = await pickImageFromLibrary({ aspect: [4, 3] });
-    if (result.status === 'selected') set('coverUri', result.media.uri);
-  };
+    const pickCover = async () => {
+      const result = await pickImageFromLibrary({ aspect: [4, 3] });
+      if (result.status === 'selected') form.setFieldValue('coverUri', result.media.uri);
+    };
 
-  return (
-    <>
-      <View style={styles.section}>
-        <MonoLabel color="textMid" style={styles.label}>
-          Cover
-        </MonoLabel>
-        {draft.coverUri ? (
-          <>
-            <Image
-              source={{ uri: draft.coverUri }}
-              style={styles.cover}
-              contentFit="cover"
-              accessibilityLabel="Cover photo"
-            />
-            <View style={styles.coverActions}>
-              <Button variant="outline" size="sm" onPress={() => void pickCover()} style={styles.coverAction}>
-                Change cover
-              </Button>
-              <Button variant="outline" size="sm" onPress={() => set('coverUri', null)} style={styles.coverAction}>
-                Remove cover
-              </Button>
-            </View>
-          </>
-        ) : (
-          <Pressable
-            onPress={() => void pickCover()}
-            accessibilityRole="button"
-            accessibilityLabel="Add a cover photo"
-            style={[styles.cover, styles.addCover]}
-          >
-            <ImageIcon color={color.textMid} size={28} />
-            <MonoLabel color="textMid" style={styles.addCoverLabel}>
-              Add a cover photo
-            </MonoLabel>
-          </Pressable>
-        )}
-      </View>
+    return (
+      <>
+        <View style={styles.section}>
+          <MonoLabel color="textMid" style={styles.label}>
+            Cover
+          </MonoLabel>
+          {coverUri ? (
+            <>
+              <Image
+                source={{ uri: coverUri }}
+                style={styles.cover}
+                contentFit="cover"
+                accessibilityLabel="Cover photo"
+              />
+              <View style={styles.coverActions}>
+                <Button variant="outline" size="sm" onPress={() => void pickCover()} style={styles.coverAction}>
+                  Change cover
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onPress={() => form.setFieldValue('coverUri', null)}
+                  style={styles.coverAction}
+                >
+                  Remove cover
+                </Button>
+              </View>
+            </>
+          ) : (
+            <Pressable
+              onPress={() => void pickCover()}
+              accessibilityRole="button"
+              accessibilityLabel="Add a cover photo"
+              style={[styles.cover, styles.addCover]}
+            >
+              <ImageIcon color={color.textMid} size={28} />
+              <MonoLabel color="textMid" style={styles.addCoverLabel}>
+                Add a cover photo
+              </MonoLabel>
+            </Pressable>
+          )}
+        </View>
 
-      <View style={[styles.section, styles.fields]}>
-        <TextField
-          label="Name"
-          value={draft.name}
-          onChangeText={(value) => set('name', value)}
-          onBlur={() => setNameTouched(true)}
-          placeholder="What it's called"
-          maxLength={PROJECT_NAME_MAX_LENGTH}
-          error={nameTouched ? projectNameError(draft) : null}
-          accessibilityLabel="Name"
-        />
-        <View style={styles.row}>
-          <TextField
-            label="Type"
-            value={draft.projectType}
-            onChangeText={(value) => set('projectType', value)}
-            placeholder="e.g. Renovation"
-            maxLength={PROJECT_TYPE_MAX_LENGTH}
-            containerStyle={styles.type}
-            accessibilityLabel="Type"
-          />
-          <TextField
-            label="Year"
-            value={draft.year}
-            onChangeText={(value) => set('year', value)}
-            placeholder="e.g. 2025"
-            maxLength={PROJECT_YEAR_MAX_LENGTH}
-            containerStyle={styles.year}
-            accessibilityLabel="Year"
+        <View style={[styles.section, styles.fields]}>
+          <form.AppField name="name">
+            {(field) => (
+              <field.TextField
+                label="Name"
+                placeholder="What it's called"
+                maxLength={PROJECT_NAME_MAX_LENGTH}
+                accessibilityLabel="Name"
+              />
+            )}
+          </form.AppField>
+          <View style={styles.row}>
+            <form.AppField name="projectType">
+              {(field) => (
+                <field.TextField
+                  label="Type"
+                  placeholder="e.g. Renovation"
+                  maxLength={PROJECT_TYPE_MAX_LENGTH}
+                  containerStyle={styles.type}
+                  accessibilityLabel="Type"
+                />
+              )}
+            </form.AppField>
+            <form.AppField name="year">
+              {(field) => (
+                <field.TextField
+                  label="Year"
+                  placeholder="e.g. 2025"
+                  maxLength={PROJECT_YEAR_MAX_LENGTH}
+                  containerStyle={styles.year}
+                  accessibilityLabel="Year"
+                />
+              )}
+            </form.AppField>
+          </View>
+          <form.AppField name="description">
+            {(field) => (
+              <field.TextField
+                label="Description"
+                placeholder="Optional. What was built, and how."
+                multiline
+                maxLength={PROJECT_DESCRIPTION_MAX_LENGTH}
+                inputStyle={styles.description}
+                accessibilityLabel="Description"
+              />
+            )}
+          </form.AppField>
+        </View>
+
+        {/* Optional, like the composer's (ONE-49): no forced choice. */}
+        <View style={styles.interest}>
+          <MonoLabel color="textMid" style={styles.interestLabel}>Interest (optional)</MonoLabel>
+          <InterestFilter
+            selected={interestSlug}
+            onSelect={(slug) => form.setFieldValue('interestSlug', slug)}
+            leadingLabel="None"
+            label="Interest"
           />
         </View>
-        <TextField
-          label="Description"
-          value={draft.description}
-          onChangeText={(value) => set('description', value)}
-          placeholder="Optional. What was built, and how."
-          multiline
-          maxLength={PROJECT_DESCRIPTION_MAX_LENGTH}
-          inputStyle={styles.description}
-          accessibilityLabel="Description"
-        />
-      </View>
 
-      {/* Optional, like the composer's (ONE-49): no forced choice. */}
-      <View style={styles.interest}>
-        <MonoLabel color="textMid" style={styles.interestLabel}>Interest (optional)</MonoLabel>
-        <InterestFilter
-          selected={draft.interestSlug}
-          onSelect={(slug) => set('interestSlug', slug)}
-          leadingLabel="None"
-          label="Interest"
+        <SettingsRow
+          title="Public"
+          subtitle={projectVisibilityDescription(isPublic)}
+          control={
+            <Switch
+              value={isPublic}
+              onValueChange={(value) => form.setFieldValue('isPublic', value)}
+              accessibilityLabel="Public"
+              trackColor={{ true: color.text, false: color.borderStrong }}
+              ios_backgroundColor={color.borderStrong}
+              thumbColor={color.inverse}
+            />
+          }
         />
-      </View>
-
-      <SettingsRow
-        title="Public"
-        subtitle={projectVisibilityDescription(draft.isPublic)}
-        control={
-          <Switch
-            value={draft.isPublic}
-            onValueChange={(value) => set('isPublic', value)}
-            accessibilityLabel="Public"
-            trackColor={{ true: color.text, false: color.borderStrong }}
-            ios_backgroundColor={color.borderStrong}
-            thumbColor={color.inverse}
-          />
-        }
-      />
-      <Text style={styles.footnote}>Contributors and products are added from the project's page.</Text>
-    </>
-  );
-};
+        <Text style={styles.footnote}>Contributors and products are added from the project's page.</Text>
+      </>
+    );
+  },
+});
 
 const styles = StyleSheet.create({
   interest: {

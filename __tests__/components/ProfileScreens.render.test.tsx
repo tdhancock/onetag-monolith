@@ -169,6 +169,7 @@ jest.mock('../../features/profiles', () => ({
   useUpdateProfile: () => ({ mutateAsync: mockUpdateProfile }),
   useUpdateBusinessProfile: () => ({ mutateAsync: mockUpdateBusiness }),
   useUploadAvatar: () => ({ mutateAsync: jest.fn() }),
+  checkUsernameExists: (u: string) => Promise.resolve(u === 'someone_else'),
 }));
 jest.mock('../../lib/realtimeBridge', () => ({ useRealtimeSync: jest.fn() }));
 const mockScanHistoryAsked = jest.fn();
@@ -221,6 +222,7 @@ import OwnProfileScreen from '../../app/(tabs)/profile';
 import UserProfileScreen from '../../app/user/[username]';
 import UserListScreen from '../../app/user-list';
 import EditProfileScreen from '../../app/edit-profile';
+import { USERNAME_CHECK_DEBOUNCE_MS } from '../../lib/screens/auth';
 import { REPORT_REASONS } from '../../services/reportReasons';
 
 // ─── 3. Helpers ─────────────────────────────────────────────────────────
@@ -766,7 +768,8 @@ describe('Edit profile', () => {
     expect(save().disabled).toBe(false);
     expect(el.textContent).toContain(String('Builds better things.'.length));
 
-    await act(async () => { save().click(); });
+    // Saving checks the handle again, on a timer, before it writes.
+    await act(async () => { save().click(); await new Promise(r => setTimeout(r, 20)); });
     expect(mockUpdateProfile).toHaveBeenCalledWith(expect.objectContaining({ bio: 'Builds better things.' }));
     expect(mockBack).toHaveBeenCalled();
   });
@@ -788,6 +791,18 @@ describe('Edit profile', () => {
     // Lowercased as typed, as sign-up does, which makes it valid.
     expect(username.value).toBe('me_too');
     expect(button(el, 'Save')!.disabled).toBe(false);
+  });
+
+  it('looks a new handle up as sign-up does, and will not save a taken one', async () => {
+    const el = await mount(<EditProfileScreen />);
+    const username = field(el, 'Username');
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(username, 'someone_else');
+      username.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => { await new Promise(r => setTimeout(r, USERNAME_CHECK_DEBOUNCE_MS + 50)); });
+    expect(el.textContent).toContain('That handle is taken.');
+    expect(button(el, 'Save')!.disabled).toBe(true);
   });
 
   it('labels its fields', async () => {
@@ -818,7 +833,7 @@ describe('Edit profile', () => {
     typeInto(field(el, 'Location'), 'Austin, TX');
     expect(button(el, 'Save')!.disabled).toBe(false);
 
-    await act(async () => { button(el, 'Save')!.click(); });
+    await act(async () => { button(el, 'Save')!.click(); await new Promise(r => setTimeout(r, 20)); });
     expect(mockUpdateBusiness).toHaveBeenCalledWith({ category: 'Cafe', website: 'https://shop.example', location: 'Austin, TX' });
     // Nothing on the profile row itself changed, so it is not rewritten.
     expect(mockUpdateProfile).not.toHaveBeenCalled();

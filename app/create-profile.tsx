@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useStore } from '@tanstack/react-form';
 import { useApp } from '../store/AppContext.native';
 import {
   checkUsernameExists,
@@ -11,22 +12,24 @@ import {
   useMyProfilesQuery,
 } from '../features/profiles';
 import { cleanHtml } from '../lib/cleanHtml';
-import { USERNAME_CHECK_DEBOUNCE_MS, type UsernameAvailability } from '../lib/screens/auth';
+import { draftValidator } from '../lib/formErrors';
 import {
-  createProfileFormValid,
+  createProfileErrors,
   createProfileTitle,
+  EMPTY_CREATE_PROFILE_DRAFT,
   HANDLE_TAKEN_MESSAGE,
   missingProfileKinds,
   profileKindLabel,
   profileNameLabel,
-  usernameError as usernameRuleError,
   type ProfileKind,
 } from '../lib/screens/profile';
-import { Button, EmptyState, MonoLabel, TextField } from '../components/native/ui';
+import { Button, EmptyState, MonoLabel } from '../components/native/ui';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
 import FormScrollView from '../components/native/FormScrollView';
-import UsernameStatus from '../components/native/UsernameStatus';
+import { useAppForm, useUsernameCheck } from '../components/native/form';
 import { color, space, type } from '../theme/tokens';
+
+const validateProfile = draftValidator(createProfileErrors);
 
 /**
  * Add a second profile to the account (ONE-26) — in practice a Business
@@ -49,79 +52,46 @@ export default function CreateProfileScreen() {
   const [chosenKind, setChosenKind] = useState<ProfileKind | null>(null);
   const kind: ProfileKind | undefined = chosenKind && missing.includes(chosenKind) ? chosenKind : missing[0];
 
-  const [username, setUsername] = useState('');
-  const [usernameStatus, setUsernameStatus] = useState<UsernameAvailability>('idle');
-  // The database's word on the handle, after the live check said it was free.
-  const [takenOnSubmit, setTakenOnSubmit] = useState(false);
-  const [name, setName] = useState('');
-  const [bio, setBio] = useState('');
+  // Sign-up's live check, against the same global index. The account's own
+  // other profile counts: handles are unique across both kinds.
+  const usernameCheck = useUsernameCheck(checkUsernameExists);
 
-  const ruleError = usernameRuleError(username);
-
-  const handleUsernameChange = (value: string) => {
-    // Handles are lowercase, as sign-up makes them.
-    setUsername(value.toLowerCase());
-    setTakenOnSubmit(false);
-  };
-
-  // Look the handle up once typing pauses, so "Taken" shows before the form
-  // is sent — sign-up's check, against the same global index. The account's
-  // own other profile counts: handles are unique across both kinds.
-  useEffect(() => {
-    if (!username || ruleError) {
-      setUsernameStatus('idle');
-      return;
-    }
-    setUsernameStatus('checking');
-    let cancelled = false;
-    const timer = setTimeout(async () => {
+  const form = useAppForm({
+    defaultValues: EMPTY_CREATE_PROFILE_DRAFT,
+    validators: { onMount: validateProfile, onChange: validateProfile },
+    onSubmit: async ({ value, formApi }) => {
+      if (!kind) return;
       try {
-        const taken = await checkUsernameExists(username);
-        if (!cancelled) setUsernameStatus(taken ? 'taken' : 'available');
-      } catch {
-        if (!cancelled) setUsernameStatus('unknown');
+        const created = await createProfile.mutateAsync({
+          profileType: kind,
+          username: value.username,
+          fullName: value.name.trim(),
+          bio: value.bio.trim() ? cleanHtml(value.bio.trim()) : null,
+        });
+        addToast(`You're now acting as @${created.username}.`, 'success');
+        // Back to the Profile tab, which now shows the new profile.
+        router.dismissTo('/(tabs)/profile');
+      } catch (error) {
+        if (error instanceof CreateProfileError && error.reason === 'handle-taken') {
+          // Claimed between the check and the insert: said on the field, as
+          // the live check would have, until the handle changes.
+          formApi.setFieldMeta('username', (meta) => ({
+            ...meta,
+            errorMap: { ...meta.errorMap, onSubmit: HANDLE_TAKEN_MESSAGE },
+          }));
+          return;
+        }
+        addToast(
+          error instanceof CreateProfileError && error.reason === 'kind-taken'
+            ? `You already have a ${kind} profile.`
+            : 'Could not create the profile. Please try again.',
+          'error',
+        );
       }
-    }, USERNAME_CHECK_DEBOUNCE_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [username, ruleError]);
-
-  const handleError = ruleError ?? (takenOnSubmit || usernameStatus === 'taken' ? HANDLE_TAKEN_MESSAGE : null);
-  const canCreate =
-    Boolean(kind) &&
-    !takenOnSubmit &&
-    !createProfile.isPending &&
-    createProfileFormValid({ username, usernameError: ruleError, usernameStatus, name });
-
-  const handleCreate = async () => {
-    if (!kind || !canCreate) return;
-    try {
-      const created = await createProfile.mutateAsync({
-        profileType: kind,
-        username,
-        fullName: name.trim(),
-        bio: bio.trim() ? cleanHtml(bio.trim()) : null,
-      });
-      addToast(`You're now acting as @${created.username}.`, 'success');
-      // Back to the Profile tab, which now shows the new profile.
-      router.dismissTo('/(tabs)/profile');
-    } catch (error) {
-      if (error instanceof CreateProfileError && error.reason === 'handle-taken') {
-        // Claimed between the check and the insert: said on the field, as
-        // the live check would have.
-        setTakenOnSubmit(true);
-        return;
-      }
-      addToast(
-        error instanceof CreateProfileError && error.reason === 'kind-taken'
-          ? `You already have a ${kind} profile.`
-          : 'Could not create the profile. Please try again.',
-        'error',
-      );
-    }
-  };
+    },
+  });
+  const canSubmit = useStore(form.store, (state) => state.canSubmit);
+  const submitting = useStore(form.store, (state) => state.isSubmitting);
 
   const header = (title: string) => (
     <View style={styles.header}>
@@ -191,37 +161,46 @@ export default function CreateProfileScreen() {
           </Text>
 
           <View style={styles.fields}>
-            <TextField
-              label="Username"
-              value={username}
-              onChangeText={handleUsernameChange}
-              placeholder="Pick a handle"
-              autoCapitalize="none"
-              autoCorrect={false}
-              error={handleError}
-              trailing={<UsernameStatus status={takenOnSubmit ? 'taken' : usernameStatus} />}
-              accessibilityLabel="Username"
-            />
-            <TextField
-              label={profileNameLabel(kind)}
-              value={name}
-              onChangeText={setName}
-              placeholder={kind === 'business' ? 'Your business' : 'Your name'}
-              autoCapitalize="words"
-              accessibilityLabel={profileNameLabel(kind)}
-            />
-            <TextField
-              label="Bio"
-              value={bio}
-              onChangeText={setBio}
-              placeholder="Optional"
-              multiline
-              inputStyle={styles.bio}
-              accessibilityLabel="Bio"
-            />
+            <form.AppField name="username" validators={usernameCheck.validators}>
+              {(field) => (
+                <field.UsernameField
+                  check={usernameCheck}
+                  label="Username"
+                  placeholder="Pick a handle"
+                  accessibilityLabel="Username"
+                />
+              )}
+            </form.AppField>
+            <form.AppField name="name">
+              {(field) => (
+                <field.TextField
+                  label={profileNameLabel(kind)}
+                  placeholder={kind === 'business' ? 'Your business' : 'Your name'}
+                  autoCapitalize="words"
+                  accessibilityLabel={profileNameLabel(kind)}
+                />
+              )}
+            </form.AppField>
+            <form.AppField name="bio">
+              {(field) => (
+                <field.TextField
+                  label="Bio"
+                  placeholder="Optional"
+                  multiline
+                  inputStyle={styles.bio}
+                  accessibilityLabel="Bio"
+                />
+              )}
+            </form.AppField>
           </View>
 
-          <Button fullWidth onPress={handleCreate} loading={createProfile.isPending} disabled={!canCreate} style={styles.create}>
+          <Button
+            fullWidth
+            onPress={() => void form.handleSubmit()}
+            loading={submitting}
+            disabled={!canSubmit}
+            style={styles.create}
+          >
             Create profile
           </Button>
         </FormScrollView>
