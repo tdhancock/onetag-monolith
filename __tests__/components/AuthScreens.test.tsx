@@ -138,8 +138,9 @@ const rgb = (hex: string) => {
 describe('Sign in', () => {
   it('is white with the centred mono wordmark, labelled fields and a full-width Sign in', () => {
     const el = mount(<LoginScreen />);
-    const wordmark = span(el, 'OneTag')!;
-    expect(wordmark.style.fontFamily).toBe(type.mono);
+    const wordmark = el.querySelector('[aria-label="OneTag"]')!;
+    expect(wordmark).not.toBeNull();
+    expect(span(el, 'netag')!.style.fontFamily).toBe(type.mono);
     expect(el.textContent).toContain('Sign in to continue');
     expect(span(el, 'Email or username')).toBeDefined();
     expect(span(el, 'Password')).toBeDefined();

@@ -166,7 +166,7 @@ jest.mock('../../features/posts', () => ({
 jest.mock('../../services/supabase.native', () => ({ supabase: {} }));
 
 import HomeFeedScreen from '../../app/(tabs)/index';
-import { HOME_HEADER_BRAND } from '../../lib/screens/home';
+import { WORDMARK_LABEL } from '../../components/native/Wordmark';
 import { color } from '../../theme/tokens';
 
 // ─── 3. Helpers ─────────────────────────────────────────────────────────
@@ -255,8 +255,8 @@ describe('Home — New posts', () => {
 describe('Home — with posts', () => {
   it('shows the wordmark left and bell and messages right, on white', async () => {
     const el = await mount();
-    const wordmark = Array.from(el.querySelectorAll('span')).find(s => s.textContent === HOME_HEADER_BRAND)!;
-    expect(wordmark).toBeDefined();
+    const wordmark = el.querySelector(`[aria-label="${WORDMARK_LABEL}"]`)!;
+    expect(wordmark).not.toBeNull();
     const bell = button(el, 'Notifications')!;
     const messages = button(el, 'Messages')!;
     expect(precedes(wordmark, bell)).toBe(true);

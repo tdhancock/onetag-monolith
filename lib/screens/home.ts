@@ -1,6 +1,6 @@
 //
 // Pure logic extracted from app/(tabs)/index.tsx (the HomeFeedScreen
-// component) so the screen-shell decisions — header brand, the header's two
+// component) so the screen-shell decisions — the header's two
 // actions, and which empty or error state the feed shows — can be exercised
 // in tests without spinning up React Native, expo-router, or the AppContext
 // provider.
@@ -8,13 +8,6 @@
 // The unread badges on the header's two actions are drawn by IconButton,
 // whose `badgeLabel` owns the count rule (hidden at zero, "99+" past 99), the
 // same rule as the tab bar.
-
-/**
- * Brand word rendered in the screen header. The header sets its own font
- * from the type tokens, but the literal string is just `"OneTag"`.
- * Centralising the constant lets the test pin the brand to one place.
- */
-export const HOME_HEADER_BRAND = 'OneTag' as const;
 
 /**
  * The feed's empty state for someone who follows people who have not posted:

@@ -28,7 +28,6 @@ import {
     HOME_FEED_ERROR_BODY,
     HOME_FEED_ERROR_TITLE,
     HOME_HEADER_ACTIONS,
-    HOME_HEADER_BRAND,
     HOME_SUGGESTIONS_HEADING,
     getHomeEmptyState,
     getHomeHeaderLabel,
@@ -42,28 +41,6 @@ jest.mock('react-native', () => ({
     Text: () => null,
     StyleSheet: { create: (sheet: unknown) => sheet },
 }));
-
-// ---------------------------------------------------------------------------
-// 1. Header brand
-// ---------------------------------------------------------------------------
-
-describe('HomeScreen – header brand', () => {
-    it('renders the literal brand word "OneTag" in the header', () => {
-        // The component sets its own font from the type tokens but the
-        // displayed string is the same canonical brand word the rest
-        // of the app uses.
-        expect(HOME_HEADER_BRAND).toBe('OneTag');
-    });
-
-    it('the brand is a non-empty string with no surrounding whitespace', () => {
-        // A regression guard against accidental " OneTag" / "OneTag\n"
-        // typos in the constant that would push whitespace into the
-        // header.
-        expect(typeof HOME_HEADER_BRAND).toBe('string');
-        expect(HOME_HEADER_BRAND).toBe(HOME_HEADER_BRAND.trim());
-        expect(HOME_HEADER_BRAND.length).toBeGreaterThan(0);
-    });
-});
 
 // ---------------------------------------------------------------------------
 // 2. Empty and error states
