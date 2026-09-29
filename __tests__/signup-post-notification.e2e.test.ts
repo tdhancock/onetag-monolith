@@ -139,7 +139,7 @@ const testHooks = (require('../services/supabase.native') as any).__test__ as {
 import { buildPush, type PushEvent } from '../supabase/functions/send-push/handler';
 import { pushRoute } from '../lib/screens/notifications';
 
-const MESSAGE_ROUTE = '/messages?chatWith=sara_codes';
+const MESSAGE_ROUTE = '/messages/sara_codes';
 
 const receiver = { authUserId: 'auth-noor', username: 'noor', profileType: 'individual' as const };
 

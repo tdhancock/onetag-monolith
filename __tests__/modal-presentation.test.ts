@@ -55,9 +55,9 @@ describe('modal presentation lives in app/_layout.tsx', () => {
   // with no Back. Notifications and Messages open profiles and posts, so they
   // are pushed screens; a follow notification's profile once opened as a
   // second sheet and never loaded.
-  it('declares Notifications and Messages as pushed screens with their headers', () => {
+  it('declares Notifications, Messages and a conversation as pushed screens with their headers', () => {
     const declared = declaredScreens();
-    for (const name of ['notifications', 'messages']) {
+    for (const name of ['notifications', 'messages/index', 'messages/[username]']) {
       expect(declared.get(name)).toBeDefined();
       expect(declared.get(name)).not.toMatch(/presentation:/);
       expect(declared.get(name)).toMatch(/headerShown:\s*true/);

@@ -50,6 +50,9 @@ export const lastOwnMessageId = (
   return null;
 };
 
+/** A conversation's own screen, by the other person's handle. */
+export const messageThreadRoute = (username: string): string => `/messages/${encodeURIComponent(username)}`;
+
 /** The latest message of a conversation, as the Messages list reads it. */
 export interface PreviewMessage {
   text: string | null;

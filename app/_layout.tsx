@@ -164,7 +164,10 @@ function RootLayoutNav() {
           notification's profile arrived that way, and the way back was a
           swipe down nobody found. */}
       <Stack.Screen name="notifications" options={{ headerShown: true }} />
-      <Stack.Screen name="messages" options={{ headerShown: true }} />
+      <Stack.Screen name="messages/index" options={{ headerShown: true }} />
+      {/* A conversation is its own screen, so Back and the swipe both return
+          to the inbox. */}
+      <Stack.Screen name="messages/[username]" options={{ headerShown: true }} />
       {/* Every modal is declared here, with whether it shows a header, and
           never from inside the screen. A screen that sets `presentation` on
           itself is first pushed as a card and then asked to become a modal,

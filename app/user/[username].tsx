@@ -28,6 +28,7 @@ import { homeBackHeaderLeft } from '../../components/native/HomeBackButton';
 import { useBackOrHome } from '../../lib/useBackOrHome';
 import { BlockIcon, LockClosedIcon, DotsHorizontalIcon, ReportIcon, VerifiedIcon } from '../../components/native/Icons';
 import { followButton, isProfileLocked, lockedProfileBody, profileTabsFor, type ProfileTab } from '../../lib/screens/profile';
+import { messageThreadRoute } from '../../lib/screens/messages';
 import { color } from '../../theme/tokens';
 import type { UserProfile as UserProfileType } from '../../types';
 
@@ -275,7 +276,7 @@ export default function UserProfileScreen() {
       <Button
         variant="outline"
         size="sm"
-        onPress={() => router.push(`/messages?chatWith=${username}`)}
+        onPress={() => router.push(messageThreadRoute(username ?? '') as never)}
         style={styles.action}
       >
         Message

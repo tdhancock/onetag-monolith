@@ -20,7 +20,7 @@ describe('pushRoute', () => {
   });
 
   it('opens the thread with whoever messaged', () => {
-    expect(pushRoute(dataFor({ kind: 'message', senderUsername: 'bo', receiver }))).toBe('/messages?chatWith=bo');
+    expect(pushRoute(dataFor({ kind: 'message', senderUsername: 'bo', receiver }))).toBe('/messages/bo');
   });
 
   it('opens the comment a comment, reply or mention is about', () => {

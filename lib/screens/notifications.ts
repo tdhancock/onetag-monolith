@@ -5,6 +5,7 @@
 
 import { startOfDay, subDays } from 'date-fns';
 import type { Notification } from '../../types';
+import { messageThreadRoute } from './messages';
 
 /** The sentence after the sender's name, ending in a full stop. */
 export const notificationSentence = (type: Notification['type']): string => {
@@ -48,7 +49,7 @@ export const pushRoute = (data: Record<string, unknown> | null | undefined): str
   if (type === 'follow' && username) return `/user/${username}`;
   if (type === 'follow_request') return '/follow-requests';
   // send-push names the sender; the thread with them opens (ONE-103).
-  if (type === 'message') return username ? `/messages?chatWith=${username}` : '/messages';
+  if (type === 'message') return username ? messageThreadRoute(username) : '/messages';
   if (postId && commentId) return commentRoute(postId, commentId);
   if (postId) return `/post/${postId}`;
   return '/notifications';
