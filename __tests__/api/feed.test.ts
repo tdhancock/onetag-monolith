@@ -7,7 +7,7 @@
 import { actAs } from './support/liveSupabase';
 import { sql } from './support/localStack';
 import { createAccount, deleteAccounts, type Account } from './support/accounts';
-import { FEED_PAGE_SIZE, fetchFeedPage, nextFeedCursor, type FeedCursor } from '../../features/posts/api';
+import { FEED_PAGE_SIZE, fetchFeedPage, fetchNewestFeedPost, nextFeedCursor, type FeedCursor } from '../../features/posts/api';
 import type { Post } from '../../types';
 
 let reader: Account;
@@ -79,5 +79,17 @@ describe('a feed chosen from the follow list (ONE-116)', () => {
   it("returns nobody else's feed", async () => {
     actAs(loner.client);
     await expect(fetchFeedPage({ userId: reader.profileId, pageParam: null })).resolves.toEqual([]);
+  });
+
+  // What the home feed's "New posts" check asks, instead of listening to
+  // every post published anywhere.
+  it('names the post the feed would open on as its newest, and nothing for an empty feed', async () => {
+    actAs(reader.client);
+    const [first] = await fetchFeedPage({ userId: reader.profileId, pageParam: null });
+    await expect(fetchNewestFeedPost(reader.profileId)).resolves.toEqual({ id: first!.id, createdAt: expect.any(String) });
+
+    const stranger = await createAccount('feednone');
+    actAs(stranger.client);
+    await expect(fetchNewestFeedPost(stranger.profileId)).resolves.toBeNull();
   });
 });

@@ -23,7 +23,7 @@ export type { FeedCursor, FetchFeedPageArgs } from './api';
 
 export { postKeys } from './keys';
 
-export { useFeedQuery, usePostQuery } from './queries';
+export { useFeedQuery, useNewestFeedPostQuery, usePostQuery, NEW_POSTS_CHECK_MS } from './queries';
 
 export {
   useLikePost,

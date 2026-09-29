@@ -2,11 +2,32 @@
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type { InfiniteData, QueryKey } from '@tanstack/react-query';
-import { fetchFeedPage, fetchPostById, nextFeedCursor } from './api';
+import { fetchFeedPage, fetchNewestFeedPost, fetchPostById, nextFeedCursor } from './api';
 import type { FeedCursor } from './api';
 import { postKeys } from './keys';
 import type { Post } from './types';
 import type { ProfileId } from '../../types';
+
+/** How often the home feed looks for newer posts while it's on screen. */
+export const NEW_POSTS_CHECK_MS = 60_000;
+
+/**
+ * The newest post the feed holds now, checked every NEW_POSTS_CHECK_MS while
+ * `watching` (the home tab is on screen) and again whenever it comes back.
+ */
+export const useNewestFeedPostQuery = (
+  userId: ProfileId | undefined,
+  interest: string | null,
+  watching: boolean,
+) =>
+  useQuery<FeedCursor>({
+    queryKey: postKeys.newest(userId ?? '', interest),
+    queryFn: () => fetchNewestFeedPost(userId!, interest),
+    enabled: Boolean(userId) && watching,
+    // Always worth asking again when the tab comes back into view.
+    staleTime: 0,
+    refetchInterval: watching ? NEW_POSTS_CHECK_MS : false,
+  });
 
 /**
  * The signed-in user's feed, one page at a time.

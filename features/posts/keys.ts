@@ -16,4 +16,11 @@ export const postKeys = {
    * invalidating the feed reaches every filtered copy of it too.
    */
   feedForInterest: (userId: string, interest: string) => [...base.all, 'feed', userId, interest] as const,
+  /**
+   * The newest post a feed holds now, which the home feed compares its top
+   * with to offer "New posts". Beside the feed rather than beneath it, so
+   * refetching the feed doesn't refetch this, and under `all`, so publishing
+   * does.
+   */
+  newest: (userId: string, interest: string | null) => [...base.all, 'newest', userId, interest ?? ''] as const,
 };

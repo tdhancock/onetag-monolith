@@ -70,7 +70,11 @@ jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 const mockPush = jest.fn();
 const mockNavigate = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, navigate: mockNavigate }) }));
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockPush, navigate: mockNavigate }),
+  // The tab is on screen for as long as it's mounted.
+  useFocusEffect: (effect: () => void | (() => void)) => require('react').useEffect(effect, []),
+}));
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
@@ -106,6 +110,8 @@ const state = {
     fetchNextPage: jest.fn(),
   },
   reel: { data: [] as unknown[], isPending: false, refetch: jest.fn(() => Promise.resolve()) },
+  /** The newest post the feed holds, as the New posts check answers. */
+  newest: null as null | { id: string; createdAt: string },
   filteredFeed: { data: { pages: [[]] } as undefined | { pages: { id: string }[][] }, isPending: false },
 };
 const mockFeedInterests: (string | null)[] = [];
@@ -149,11 +155,8 @@ jest.mock('../../features/posts', () => ({
     mockFeedInterests.push(interest ?? null);
     return interest ? { ...state.feed, ...state.filteredFeed } : state.feed;
   },
-  fetchPostById: jest.fn(),
   feedPosts: (data?: { pages: { id: string }[][] }) => (data ? data.pages.flat() : []),
-  prependPost: jest.fn(),
-  replacePost: jest.fn(),
-  removePost: jest.fn(),
+  useNewestFeedPostQuery: () => ({ data: state.newest }),
   postKeys: { all: ['posts'], feed: () => ['posts', 'feed'] },
 }));
 jest.mock('../../services/supabase.native', () => ({ supabase: {} }));
@@ -187,6 +190,7 @@ beforeEach(() => {
   state.messages = 0;
   state.suggestions = [];
   state.feed.data = { pages: [[{ id: 'post-1' }, { id: 'post-2' }]] };
+  state.newest = null;
   state.feed.isPending = false;
   state.feed.isError = false;
   state.feed.refetch.mockClear();
@@ -216,6 +220,30 @@ const rgb = (hex: string) => {
   probe.style.color = hex;
   return probe.style.color;
 };
+
+// ─── New posts ──────────────────────────────────────────────────────────
+
+describe('Home — New posts', () => {
+  const at = (minutes: number) => new Date(Date.UTC(2026, 8, 28, 10, minutes)).toISOString();
+
+  it('offers newer posts over the feed, and loads them from the top', async () => {
+    state.feed.data = { pages: [[{ id: 'post-1', timestamp: at(0) } as never, { id: 'post-2', timestamp: at(-5) } as never]] };
+    state.newest = { id: 'post-9', createdAt: at(3) };
+    state.feed.refetch.mockClear();
+    const el = await mount();
+    const pill = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === 'New posts')!;
+    expect(pill).toBeDefined();
+    await act(async () => pill.click());
+    expect(state.feed.refetch).toHaveBeenCalled();
+  });
+
+  it('offers nothing while the top of the feed is its newest post', async () => {
+    state.feed.data = { pages: [[{ id: 'post-1', timestamp: at(0) } as never]] };
+    state.newest = { id: 'post-1', createdAt: at(0) };
+    const el = await mount();
+    expect(Array.from(el.querySelectorAll('button')).some((b) => b.textContent === 'New posts')).toBe(false);
+  });
+});
 
 // ─── 4. The loaded feed ─────────────────────────────────────────────────
 

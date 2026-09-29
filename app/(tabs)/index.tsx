@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
 import { useFollowState, useToggleFollow, profileKeys, getSmartUserSuggestions, useCurrentProfile, type ProfileId } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
@@ -21,14 +21,9 @@ import { useStoriesQuery, useStoriesRealtime, storyKeys } from '../../features/s
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useFeedQuery,
-  fetchPostById,
   feedPosts,
-  prependPost,
-  replacePost,
-  removePost,
-  postKeys,
+  useNewestFeedPostQuery,
 } from '../../features/posts';
-import type { FeedData } from '../../features/posts';
 import { supabase } from '../../services/supabase.native';
 import PostCard from '../../components/native/PostCard';
 import PostSkeleton from '../../components/native/PostSkeleton';
@@ -39,8 +34,9 @@ import InterestFilter, { useInterestName } from '../../components/native/Interes
 import { Avatar, Button, Card, EmptyState, MonoLabel } from '../../components/native/ui';
 import { VerifiedIcon } from '../../components/native/Icons';
 import {
-  belongsInHomeFeed,
+  hasNewerPosts,
   HOME_EXPLORE_TARGET,
+  HOME_NEW_POSTS_LABEL,
   HOME_SUGGESTIONS_HEADING,
   getHomeEmptyState,
   getHomeHeaderTarget,
@@ -90,8 +86,6 @@ export default function HomeFeedScreen() {
   const [interest, setInterest] = useState<string | null>(null);
   const interestName = useInterestName(interest);
   const feedQuery = useFeedQuery(profileId, interest);
-  // Realtime edits patch the unfiltered feed; a filtered one refetches.
-  const feedKey = postKeys.feed(profileId ?? '');
 
   // Blocked authors are filtered here rather than inside the query, so the
   // cache holds what the server returned and `getNextPageParam` measures a
@@ -196,56 +190,25 @@ export default function HomeFeedScreen() {
     }
   }, [following, isLoading, loadSuggestions, posts.length, suggestedUsers.length, profileId]);
 
-  // Realtime edits land in the query cache — the list is the query's data
-  // now, so there is no local array to fold them into. ONE-16 generalizes
-  // this bridge across domains.
-  const handlePostUpdates = useCallback(async (payload: any) => {
-    if (!profileId) return;
+  // "New posts" (ONE-16's stream replaced). The feed used to listen to every
+  // post published anywhere and read each one to see whether it belonged;
+  // every phone received every post. It now asks, while the tab is on screen,
+  // what the newest post in this feed is, and offers the rest on a tap.
+  const [onScreen, setOnScreen] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setOnScreen(true);
+      return () => setOnScreen(false);
+    }, []),
+  );
+  const newest = useNewestFeedPostQuery(profileId, interest, onScreen);
+  const showNewPosts = !feedQuery.isFetching && hasNewerPosts(newest.data, feedPosts(feedQuery.data)[0]);
 
-    try {
-      if (payload.eventType === 'DELETE') {
-        const deletedId = payload.old?.id;
-        if (!deletedId) return;
-        queryClient.setQueryData(feedKey, (data: FeedData | undefined) =>
-          removePost(data, deletedId),
-        );
-        return;
-      }
-
-      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-        const postId = payload.new?.id;
-        if (!postId) return;
-        const isInsert = payload.eventType === 'INSERT';
-        // The stream carries every post in the system. An edit matters only
-        // to a post already in the feed, and a new post only if its author
-        // follows (or is) you — a stranger has none to follow — so most
-        // events never cost a read.
-        if (!isInsert && !feedPosts(queryClient.getQueryData<FeedData>(feedKey)).some((post) => post.id === postId)) return;
-        if (isInsert && payload.new?.user_id !== profileId && following.length === 0) return;
-
-        const fullPost = await fetchPostById(postId);
-        if (!fullPost || isUserBlocked(fullPost.username)) return;
-        // The feed is your posts and your follows' (feed_candidates). Before,
-        // any stranger's new post landed at the top of it.
-        if (isInsert && !belongsInHomeFeed(fullPost.username, userProfile?.username, isUserFollowing)) return;
-
-        queryClient.setQueryData(feedKey, (data: FeedData | undefined) =>
-          isInsert ? prependPost(data, fullPost) : replacePost(data, fullPost),
-        );
-      }
-    } catch (error) {
-      console.error('Realtime post handling error:', error);
-    }
-  }, [isUserBlocked, isUserFollowing, following.length, userProfile?.username, queryClient, feedKey, profileId]);
-
-  useRealtimeSync({
-    table: 'posts',
-    filter: '',
-    queryKey: postKeys.all,
-    onInsert: (row) => { void handlePostUpdates({ eventType: 'INSERT', new: row }); return true; },
-    onUpdate: (row) => { void handlePostUpdates({ eventType: 'UPDATE', new: row }); return true; },
-    onDelete: (row) => { void handlePostUpdates({ eventType: 'DELETE', old: row }); return true; },
-  });
+  const listRef = useRef<FlatList<Post>>(null);
+  const openNewPosts = useCallback(() => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    void feedQuery.refetch();
+  }, [feedQuery]);
 
   // Refetching an infinite query refetches every loaded page from the first
   // cursor, so the list rebuilds from the top without duplicating.
@@ -454,7 +417,9 @@ export default function HomeFeedScreen() {
     <SafeAreaView edges={['top']} style={styles.screen}>
       {header}
 
+      <View style={styles.fill}>
       <FlatList
+        ref={listRef}
         data={posts}
         renderItem={renderPost}
         keyExtractor={keyExtractor}
@@ -480,6 +445,14 @@ export default function HomeFeedScreen() {
         maxToRenderPerBatch={8}
         windowSize={7}
       />
+      {showNewPosts ? (
+        <View style={styles.newPosts} pointerEvents="box-none">
+          <Button size="sm" onPress={openNewPosts} accessibilityLabel="New posts. Go to the top and load them">
+            {HOME_NEW_POSTS_LABEL}
+          </Button>
+        </View>
+      ) : null}
+      </View>
     </SafeAreaView>
   );
 }
@@ -488,6 +461,17 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: color.bg,
+  },
+  fill: {
+    flex: 1,
+  },
+  // Floats over the top of the feed, under the header.
+  newPosts: {
+    position: 'absolute',
+    top: space.md,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
   list: {
     flexGrow: 1,

@@ -42,17 +42,25 @@ export const HOME_FEED_ERROR_ACTION = 'Retry' as const;
 /** Where the Explore action goes: the Explore tab. */
 export const HOME_EXPLORE_TARGET = '/(tabs)/search' as const;
 
+/** The pill over the feed when there is something newer than its top. */
+export const HOME_NEW_POSTS_LABEL = 'New posts' as const;
+
 /**
- * Whether a post someone just published belongs at the top of the home feed:
- * the feed is your own posts and those of accounts you follow, and nothing
- * else. Handles compare as the follow list stores them, lowercased.
+ * Whether the feed holds a post newer than the one at the top of the list:
+ * then "New posts" shows, and tapping it goes to the top and reloads. An
+ * empty list with a newest post has something new too.
  */
-export const belongsInHomeFeed = (
-  authorUsername: string,
-  myUsername: string | null | undefined,
-  isFollowing: (username: string) => boolean,
-): boolean =>
-  authorUsername.trim().toLowerCase() === (myUsername ?? '').trim().toLowerCase() || isFollowing(authorUsername);
+export const hasNewerPosts = (
+  newest: { id: string; createdAt: string } | null | undefined,
+  top: { id: string; timestamp?: string } | undefined,
+): boolean => {
+  if (!newest) return false;
+  if (!top) return true;
+  if (newest.id === top.id) return false;
+  const newestAt = new Date(newest.createdAt).getTime();
+  const topAt = top.timestamp ? new Date(top.timestamp).getTime() : NaN;
+  return Number.isFinite(newestAt) && Number.isFinite(topAt) && newestAt > topAt;
+};
 
 /**
  * Description of the state the feed's empty area renders. `kind`

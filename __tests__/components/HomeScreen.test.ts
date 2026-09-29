@@ -17,7 +17,7 @@
 //   4. Header action targets (/notifications and /messages) and labels
 
 import {
-    belongsInHomeFeed,
+    hasNewerPosts,
     HOME_EMPTY_FOLLOWING_ACTION,
     HOME_EMPTY_FOLLOWING_BODY,
     HOME_EMPTY_FOLLOWING_TITLE,
@@ -203,15 +203,20 @@ describe('HomeScreen – header action labels', () => {
     });
 });
 
-describe('HomeScreen — live posts', () => {
-    const follows = (username: string) => ['ana'].includes(username.toLowerCase());
+describe('HomeScreen — New posts', () => {
+    const top = { id: 'p-1', timestamp: '2026-09-28T10:00:00Z' };
 
-    it('takes a new post from someone you follow, or from you', () => {
-        expect(belongsInHomeFeed('Ana', 'me', follows)).toBe(true);
-        expect(belongsInHomeFeed('me', 'Me', follows)).toBe(true);
+    it('offers them when the feed holds a post newer than the top of the list', () => {
+        expect(hasNewerPosts({ id: 'p-2', createdAt: '2026-09-28T10:05:00Z' }, top)).toBe(true);
     });
 
-    it("leaves out a stranger's, which the feed never holds", () => {
-        expect(belongsInHomeFeed('stranger', 'me', follows)).toBe(false);
+    it('offers nothing when the top is the newest, or when a post is merely older', () => {
+        expect(hasNewerPosts({ id: 'p-1', createdAt: '2026-09-28T10:00:00Z' }, top)).toBe(false);
+        expect(hasNewerPosts({ id: 'p-0', createdAt: '2026-09-28T09:00:00Z' }, top)).toBe(false);
+        expect(hasNewerPosts(null, top)).toBe(false);
+    });
+
+    it('offers them to an empty list once something arrives', () => {
+        expect(hasNewerPosts({ id: 'p-2', createdAt: '2026-09-28T10:05:00Z' }, undefined)).toBe(true);
     });
 });
