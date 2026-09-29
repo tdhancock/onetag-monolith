@@ -20,6 +20,8 @@
     "db:reset": "npx supabase db reset",
     "db:diff": "npx supabase db diff -f",
     "db:test": "npx supabase test db",
+    "db:seed": "node scripts/seed.cjs --local",
+    "db:seed:hosted": "node scripts/seed.cjs --hosted",
     "check:api": "jest -c jest.api.config.js",
     "publish:preview": "npx eas-cli@latest update --branch preview --environment preview"
   },

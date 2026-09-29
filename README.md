@@ -38,6 +38,10 @@ npx expo start
 Scan the QR code with Expo Go. Testers get published builds instead; see
 [docs/testing-with-expo-go.md](docs/testing-with-expo-go.md).
 
+An empty database shows an empty app. `npm run db:seed` loads made-up people, posts, products,
+projects and tags into the local stack, and `npm run db:seed:hosted` loads them into the hosted
+dev project; see [docs/seed-data.md](docs/seed-data.md).
+
 ## Checks
 
 ```bash
@@ -60,8 +64,8 @@ features/<domain>/   the data layer: api, keys, queries, mutations, one folder p
 lib/                 query client, realtime bridge, pure logic (lib/screens holds screen rules)
 services/            the Supabase client and what features share
 theme/tokens.ts      every colour and type size
-supabase/            migrations, pgTAP tests, edge functions
-docs/                tags, deep links, push notifications, testing with Expo Go
+supabase/            migrations, pgTAP tests, edge functions, the dev seed
+docs/                tags, deep links, push notifications, testing with Expo Go, seed data
 ```
 
 ## Working in the code

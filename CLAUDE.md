@@ -29,6 +29,7 @@ store/AppContext.native    global UI state — no server data
 services/                  supabase client and the shared ground features reach: postRows,
                            profileBootstrap, media/story upload, realtime
 supabase/migrations/       schema
+supabase/seeds/dev.sql     made-up people and content for the local stack and the hosted dev project
 supabase/functions/        edge functions: delete-user-account, tag-resolve (the tag host's web page),
                            and send-push (the database calls it to send push notifications)
 __tests__/                 Jest
@@ -40,6 +41,7 @@ docs/tags.md               the five Destination kinds, who may point a tag at wh
 docs/deep-links.md         how tag links reach the app, and how to verify universal links
 docs/push-notifications.md how a notification becomes a push, where each one opens, and turning it on
 docs/testing-with-expo-go.md how testers open OneTag in Expo Go, and how to publish for them
+docs/seed-data.md          what the seed holds, loading it, signing in as it, and removing it
 scripts/                   CI gates
 eslint.config.js           lint: the hooks rules, and the feature-folder rules enforced
 ```
@@ -65,6 +67,7 @@ npm run verify          # typecheck + lint + test + raw-hex gate — what CI run
 npm run db:start        # local Supabase; also db:stop, db:status, db:reset, db:diff
 npm run db:test         # the pgTAP suite in supabase/tests, against the local stack
 npm run check:api       # the API checks in __tests__/api, against the local stack
+npm run db:seed         # the seed into the local stack; db:seed:hosted for the dev project (docs/seed-data.md)
 npm run publish:preview # publish for testers in Expo Go (docs/testing-with-expo-go.md)
 ```
 

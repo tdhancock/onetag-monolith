@@ -117,3 +117,13 @@ jobs:
             -e 's/^ANON_KEY=/export SUPABASE_ANON_KEY=/p' \
             -e 's/^SERVICE_ROLE_KEY=/export SUPABASE_SERVICE_ROLE_KEY=/p')"
           npm run check:api -- --ci
+
+      # The development seed (supabase/seeds/dev.sql) has to keep up with the
+      # schema, or the next `npm run db:seed` fails for whoever runs it. It
+      # goes in last, so no check above sees its rows, and twice, because a
+      # second run must be a no-op.
+      - name: Apply the development seed, twice
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          supabase db query --local -f supabase/seeds/dev.sql
+          supabase db query --local -f supabase/seeds/dev.sql
