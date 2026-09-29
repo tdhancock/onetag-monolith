@@ -18,6 +18,33 @@ import type { Post } from './types';
 /** The cached shape of a feed: one array of posts per fetched page. */
 export type FeedData = InfiniteData<Post[], FeedCursor>;
 
+const isPost = (value: unknown): value is Post => {
+  const v = value as Partial<Post> | null;
+  return (
+    typeof v === 'object' && v !== null &&
+    typeof v.id === 'string' && typeof v.username === 'string' &&
+    (v.media_type === 'text' || v.media_type === 'image') && typeof v.likes === 'number'
+  );
+};
+
+/**
+ * A post already held by a cached list — a feed's pages, a profile's grid —
+ * so its own screen can show it at once while it loads in full. Undefined
+ * when no list holds it.
+ */
+export const findCachedPost = (cached: readonly unknown[], postId: string): Post | undefined => {
+  for (const data of cached) {
+    const pages = (data as { pages?: unknown } | null)?.pages;
+    const lists = Array.isArray(pages) ? pages : [data];
+    for (const list of lists) {
+      if (!Array.isArray(list)) continue;
+      const found = list.find((item) => isPost(item) && item.id === postId);
+      if (found) return found as Post;
+    }
+  }
+  return undefined;
+};
+
 /** Every post across every loaded page, in order. */
 export const feedPosts = (data: FeedData | undefined): Post[] =>
   data ? data.pages.flat() : [];

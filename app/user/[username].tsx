@@ -11,7 +11,7 @@ import {
   useProfilePostCountQuery,
   profileKeys,
   useCurrentProfile,
-  getUserProfile,
+  useProfileQuery,
 } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
 import { setUserVerified, useIsAdmin } from '../../features/admin';
@@ -55,8 +55,11 @@ export default function UserProfileScreen() {
   const { isFollowing: isUserFollowing, isRequested: isUserRequested } = useFollowState(profileId);
   const follow = useToggleFollow(profileId);
 
-  const [profile, setProfile] = useState<UserProfileType | null>(null);
-  const [loading, setLoading] = useState(true);
+  // The profile is a query, so coming back to it is instant and it
+  // refetches when the app returns.
+  const profileQuery = useProfileQuery(username);
+  const profile = profileQuery.data ?? null;
+  const loading = profileQuery.isPending;
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTab, setSelectedTab] = useState<ProfileTab | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -85,22 +88,9 @@ export default function UserProfileScreen() {
     isAdmin,
   });
 
-  // The profile itself. Each tab reads its own content once it is opened
-  // (ONE-43), so nothing here fetches posts.
-  const fetchData = useCallback(async () => {
-    if (!username) return;
-    try {
-      setProfile(await getUserProfile(username));
-    } catch (error) {
-      console.error('Failed to load user profile', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [username]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  // Each tab reads its own content once it is opened (ONE-43), so nothing
+  // here fetches posts.
+  const { refetch: refetchProfile } = profileQuery;
 
   // Following a private profile is what lets its posts through RLS, so its
   // posts — and their count, which sits beneath them — are read again when
@@ -138,13 +128,13 @@ export default function UserProfileScreen() {
   const refreshHeader = useCallback(
     () =>
       Promise.all([
-        fetchData(),
+        refetchProfile(),
         profileId ? queryClient.invalidateQueries({ queryKey: profileKeys.followingUsernames(profileId) }) : undefined,
         profileId ? queryClient.invalidateQueries({ queryKey: profileKeys.requestedUsernames(profileId) }) : undefined,
         profile ? queryClient.invalidateQueries({ queryKey: profileKeys.counts(profile.id) }) : undefined,
         profile ? queryClient.invalidateQueries({ queryKey: profileKeys.postCount(profile.id) }) : undefined,
       ]),
-    [fetchData, profile, profileId, queryClient],
+    [refetchProfile, profile, profileId, queryClient],
   );
 
   const onRefresh = useCallback(async () => {
@@ -201,12 +191,17 @@ export default function UserProfileScreen() {
   const handleToggleVerify = async () => {
     setMenuVisible(false);
     if (!profile) return;
+    // The badge flips in the cached profile at once, and back if refused.
+    const flipVerified = () =>
+      queryClient.setQueryData<UserProfileType | null>(profileKeys.byUsername(username!), prev =>
+        prev ? { ...prev, isVerified: !prev.isVerified } : prev,
+      );
     try {
-      setProfile(prev => prev ? { ...prev, isVerified: !prev.isVerified } : null);
+      flipVerified();
       await setUserVerified(profile.id, !profile.isVerified);
       addToast(`User ${profile.isVerified ? 'unverified' : 'verified'} successfully.`, 'success');
     } catch {
-      setProfile(prev => prev ? { ...prev, isVerified: !prev.isVerified } : null);
+      flipVerified();
       addToast('Error updating verification status.', 'error');
     }
   };

@@ -1,20 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, FlatList, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
-import { useCurrentProfile, searchUsers } from '../features/profiles';
-import { fetchPostById as getPostById } from '../features/posts';
+import {
+  useCurrentProfile,
+  useProfileSearchQuery,
+  PROFILE_SEARCH_MIN_LENGTH,
+  type ProfileSearchResult,
+} from '../features/profiles';
+import { usePostQuery } from '../features/posts';
 import { useSendMessage } from '../features/messages';
 import { Button, ListRow, Skeleton, TextField } from '../components/native/ui';
 import { SearchIcon } from '../components/native/Icons';
 import { firstLine } from '../lib/screens/profile';
+import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { color, space, type } from '../theme/tokens';
 import type { Post } from '../types';
 
-/** The fewest characters a search needs, as before. */
-const MIN_QUERY_LENGTH = 2;
 const PREVIEW_THUMBNAIL_SIZE = 48;
 
 /**
@@ -78,9 +82,7 @@ export default function SharePostScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { addToast } = useApp();
 
-  const [post, setPost] = useState<Post | null | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
-  const [results, setResults] = useState<any[]>([]);
   // Who this post has gone to on this visit, and who it is going to now. A
   // row stays in the list once sent, reading "Sent", so the picker can send
   // to several people.
@@ -91,27 +93,15 @@ export default function SharePostScreen() {
   const { profileId: currentUserId } = useCurrentProfile();
   const sendMessage = useSendMessage(currentUserId);
 
-  useEffect(() => {
-    if (!id) return;
-    getPostById(id).then((p) => setPost(p ?? null)).catch(() => setPost(null));
-  }, [id]);
+  // Undefined while it loads, null once it can't be found.
+  const postQuery = usePostQuery(id, currentUserId);
+  const post: Post | null | undefined = postQuery.isPending ? undefined : postQuery.data ?? null;
 
-  const handleSearch = async (text: string) => {
-    setSearchQuery(text);
-    if (text.trim().length < MIN_QUERY_LENGTH) {
-      setResults([]);
-      return;
-    }
-    try {
-      const users = await searchUsers(text.trim());
-      setResults(users || []);
-    } catch (error) {
-      console.error('User search error:', error);
-      setResults([]);
-    }
-  };
+  const term = useDebouncedValue(searchQuery).trim();
+  const search = useProfileSearchQuery(term);
+  const results = searchQuery.trim().length >= PROFILE_SEARCH_MIN_LENGTH ? search.data ?? [] : [];
 
-  const handleSendToUser = async (receiver: any) => {
+  const handleSendToUser = async (receiver: ProfileSearchResult) => {
     if (!post || !currentUserId || sendingTo || sentTo.has(receiver.id)) return;
     setSendingTo(receiver.id);
     try {
@@ -125,14 +115,14 @@ export default function SharePostScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: any }) => {
+  const renderItem = ({ item }: { item: ProfileSearchResult }) => {
     const sent = sentTo.has(item.id);
     return (
       <ListRow
-        title={item.full_name || item.username}
+        title={item.name}
         subtitle={`@${item.username}`}
-        avatarUri={item.avatar_url || item.avatar || null}
-        verified={item.is_verified}
+        avatarUri={item.avatarUrl}
+        verified={item.isVerified}
         trailing={
           <Button
             size="sm"
@@ -157,7 +147,7 @@ export default function SharePostScreen() {
       <View style={styles.searchBar}>
         <TextField
           value={searchQuery}
-          onChangeText={handleSearch}
+          onChangeText={setSearchQuery}
           placeholder="Search"
           leading={<SearchIcon color={color.textMuted} size={18} />}
           autoFocus
@@ -177,7 +167,7 @@ export default function SharePostScreen() {
         automaticallyAdjustKeyboardInsets
         ListEmptyComponent={
           <Text style={styles.hint}>
-            {searchQuery.trim().length < MIN_QUERY_LENGTH
+            {searchQuery.trim().length < PROFILE_SEARCH_MIN_LENGTH
               ? 'Type at least 2 characters to search'
               : `No results for "${searchQuery.trim()}"`}
           </Text>

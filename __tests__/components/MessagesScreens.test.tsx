@@ -100,8 +100,12 @@ const mockProfiles: Record<string, unknown> = {
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profile: { username: 'me', name: 'Me', profilePicture: null }, profileId: 'p-me' }),
   useProfileQuery: (username: string) => ({ data: mockProfiles[username] ?? null, isPending: false }),
-  searchUsers: (q: string) => mockSearchUsers(q),
+  // The search as its hook returns it; the debounce is out of the way below.
+  useProfileSearchQuery: (q: string) =>
+    require('../support/mockQuery').useMockQuery(`search:${q}`, () => mockSearchUsers(q), q.trim().length >= 2),
+  PROFILE_SEARCH_MIN_LENGTH: 2,
 }));
+jest.mock('../../lib/useDebouncedValue', () => ({ useDebouncedValue: <T,>(value: T) => value }));
 
 const ana = { id: 'p-ana', username: 'ana', name: 'Ana Silva', avatar: null };
 const bo = { id: 'p-bo', username: 'bo', name: 'Bo', avatar: null };
@@ -148,7 +152,8 @@ jest.mock('../../features/messages', () => ({
 const sharedPost = { id: 'post-9', username: 'ana', avatar: null, content: 'Kitchen install\nsecond line', media_type: 'text' };
 const mockFetchPost = jest.fn((_id: string) => Promise.resolve(sharedPost as unknown));
 jest.mock('../../features/posts', () => ({
-  fetchPostById: (id: string) => mockFetchPost(id),
+  usePostQuery: (id: string) =>
+    require('../support/mockQuery').useMockQuery(`post:${id}`, () => mockFetchPost(id), Boolean(id)),
 }));
 
 import MessagesScreen from '../../app/messages';
@@ -250,6 +255,30 @@ describe('Messages — inbox', () => {
     expect(anaRow.textContent).not.toContain('@ana');
     // Yours says so, and a shared post says what it was.
     expect(button(el, 'Conversation with bo. You: Sent a post. 2h')).not.toBeNull();
+  });
+
+  it('finds someone new to message, never yourself, once two characters are typed', async () => {
+    mockSearchUsers.mockImplementation(() =>
+      Promise.resolve([
+        { id: 'p-cy', username: 'cy', name: 'Cy', avatarUrl: null, isVerified: false, profileType: 'individual' },
+        { id: 'p-me', username: 'me', name: 'Me', avatarUrl: null, isVerified: false, profileType: 'individual' },
+      ]),
+    );
+    const el = mount(<MessagesScreen />);
+    const search = el.querySelector('input') as HTMLInputElement;
+
+    typeInto(search, 'c');
+    expect(el.textContent).toContain('Type at least 2 characters to search');
+    expect(mockSearchUsers).not.toHaveBeenCalled();
+
+    typeInto(search, 'cy');
+    await act(async () => { await Promise.resolve(); });
+    expect(mockSearchUsers).toHaveBeenCalledWith('cy');
+    expect(button(el, 'Message cy')).not.toBeNull();
+    expect(button(el, 'Message me')).toBeNull();
+
+    act(() => button(el, 'Message cy')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/messages/cy');
   });
 
   it('opens a conversation as its own screen', () => {
@@ -479,7 +508,7 @@ describe('Share picker', () => {
   it('marks a row "Sent" once the post has gone to that person', async () => {
     mockParams.current = { id: 'post-9' };
     mockSearchUsers.mockImplementation(() =>
-      Promise.resolve([{ id: 'p-ana', username: 'ana', full_name: 'Ana Silva', avatar_url: null }]),
+      Promise.resolve([{ id: 'p-ana', username: 'ana', name: 'Ana Silva', avatarUrl: null, isVerified: false, profileType: 'individual' }]),
     );
     const el = mount(<SharePostScreen />);
     await flush();

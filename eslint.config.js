@@ -32,6 +32,28 @@ const REACT_COMPILER_RULES = [
   'gating',
 ];
 
+// The feature-folder rules (features/README.md), enforced rather than
+// remembered. Six screens once fetched in an effect beside query hooks that
+// already existed: uncached, and never refetched.
+const BARREL_ONLY = {
+  regex: '(^|/)features/[^/]+/.+',
+  message: 'Import a feature from its barrel, features/<domain>, never a file inside it.',
+};
+const READS_THROUGH_HOOKS = {
+  regex: '(^|/)features/[^/]+$',
+  importNamePattern: '^(get|fetch|search)[A-Z]',
+  message: "Read the server through the feature's query hook, so it is cached and refetched. Add the hook if there isn't one.",
+};
+// From inside features/<domain>/, another feature is a sibling folder.
+const SIBLING_FEATURE_FILE = {
+  regex: '^\\.\\./(?!\\.\\.)[^/]+/.+',
+  message: 'Import another feature from its barrel, ../<domain>, never a file inside it.',
+};
+const SIBLING_FEATURE = {
+  regex: '^\\.\\./(?!\\.\\.)[^/]+',
+  message: "api.ts imports nothing from another feature. Move what they share to services/.",
+};
+
 module.exports = defineConfig([
   expoConfig,
   {
@@ -44,6 +66,36 @@ module.exports = defineConfig([
       ...Object.fromEntries(REACT_COMPILER_RULES.map((rule) => [`react-hooks/${rule}`, 'off'])),
       // Copy is written with apostrophes and quotes, as people read it.
       'react/no-unescaped-entities': 'off',
+    },
+  },
+  {
+    files: ['app/**', 'components/**'],
+    rules: { 'no-restricted-imports': ['error', { patterns: [BARREL_ONLY, READS_THROUGH_HOOKS] }] },
+  },
+  {
+    files: ['lib/**'],
+    rules: { 'no-restricted-imports': ['error', { patterns: [BARREL_ONLY] }] },
+  },
+  {
+    files: ['features/**'],
+    rules: { 'no-restricted-imports': ['error', { patterns: [SIBLING_FEATURE_FILE] }] },
+  },
+  {
+    files: ['features/*/api.ts'],
+    rules: { 'no-restricted-imports': ['error', { patterns: [SIBLING_FEATURE] }] },
+  },
+  {
+    // Query keys are built only in a feature's keys.ts, by its factory.
+    files: ['app/**', 'components/**', 'lib/**', 'features/**', 'store/**', 'services/**'],
+    ignores: ['features/*/keys.ts', 'lib/queryKeys.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "Property[key.name='queryKey'] > ArrayExpression",
+          message: "Build query keys in the feature's keys.ts, never as an array here.",
+        },
+      ],
     },
   },
   {

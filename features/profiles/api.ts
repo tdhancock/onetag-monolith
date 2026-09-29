@@ -527,7 +527,7 @@ export const searchUsers = async (query: string): Promise<any[]> => {
     return data || [];
 };
 
-export const getSmartUserSuggestions = async(userId: ProfileId): Promise<any[]> => {
+export const getSmartUserSuggestions = async(userId: ProfileId): Promise<SimpleUser[]> => {
     // The newest profiles the viewer doesn't follow and isn't, from
     // `suggested_profiles`. It used to send every followed id back as
     // `.not('id', 'in', …)`, which put them all in the URL and broke at about
@@ -544,16 +544,18 @@ export const getSmartUserSuggestions = async(userId: ProfileId): Promise<any[]> 
         return [];
     }
 
-    // The shape the suggestions row expects. There is no mutual-follower
-    // count, so it is 0.
-    return ((suggestionsData || []) as any[]).map(profile => ({
-        suggested_user_id: profile.id,
-        username: profile.username,
-        avatar_url: profile.avatar_url,
-        is_verified: profile.is_verified,
-        is_private: profile.is_private,
-        mutual_followers: 0,
-    }));
+    // As the Suggested for you cards show them: a handle, which is also
+    // the name, and whether following needs a request.
+    return ((suggestionsData || []) as any[])
+        .filter(profile => Boolean(profile.username))
+        .map(profile => ({
+            id: profile.id,
+            username: profile.username,
+            name: profile.username,
+            avatar: profile.avatar_url ?? null,
+            isVerified: profile.is_verified === true,
+            isPrivate: profile.is_private === true,
+        }));
 }
 
 // =========================================================

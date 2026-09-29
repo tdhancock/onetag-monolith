@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
-import { useFollowState, useToggleFollow, profileKeys, getSmartUserSuggestions, useCurrentProfile, type ProfileId } from '../../features/profiles';
+import { useFollowState, useToggleFollow, profileKeys, useUserSuggestionsQuery, useCurrentProfile } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
 import { useUnreadNotificationCount } from '../../features/notifications';
 import { useUnreadMessageCount } from '../../features/messages';
@@ -41,7 +41,7 @@ import {
   getHomeHeaderTarget,
 } from '../../lib/screens/home';
 import { followButton } from '../../lib/screens/profile';
-import type { Post, Story, SimpleUser } from '../../types';
+import type { Post, Story } from '../../types';
 import { color, space, type } from '../../theme/tokens';
 
 const dedupeStoriesById = (stories: Story[]): Story[] => {
@@ -71,7 +71,6 @@ export default function HomeFeedScreen() {
   const unreadMessageCount = useUnreadMessageCount(profileId);
 
   const queryClient = useQueryClient();
-  const [suggestedUsers, setSuggestedUsers] = useState<SimpleUser[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   // The header is sticky rather than collapsing (ONE-66): it draws a hairline
   // once the feed has scrolled beneath it.
@@ -130,25 +129,14 @@ export default function HomeFeedScreen() {
   }, [reelQuery.data, isUserBlocked, userProfile?.username]);
   const isLoading = isFeedLoading || isStoriesLoading;
 
-  const loadSuggestions = useCallback(async (userId: ProfileId) => {
-    try {
-      const suggestions = await getSmartUserSuggestions(userId);
-      const mappedSuggestions: SimpleUser[] = (suggestions || [])
-        .map((suggestion: any) => ({
-          id: suggestion.suggested_user_id || suggestion.id || suggestion.username,
-          username: suggestion.username || '',
-          name: suggestion.username || 'OneTag user',
-          avatar: suggestion.avatar_url || null,
-          isVerified: Boolean(suggestion.is_verified),
-          isPrivate: suggestion.is_private === true,
-        }))
-        .filter((user: SimpleUser) => Boolean(user.username) && !isUserBlocked(user.username));
-      setSuggestedUsers(mappedSuggestions);
-    } catch (error) {
-      console.error('Suggestion load error:', error);
-      setSuggestedUsers([]);
-    }
-  }, [isUserBlocked]);
+  // Suggested for you: only on an empty feed, for someone who follows
+  // nobody yet.
+  const wantsSuggestions = Boolean(profileId) && !isLoading && posts.length === 0 && following.length === 0;
+  const suggestionsQuery = useUserSuggestionsQuery(wantsSuggestions ? profileId : undefined);
+  const suggestedUsers = useMemo(
+    () => (wantsSuggestions ? (suggestionsQuery.data ?? []).filter(user => !isUserBlocked(user.username)) : []),
+    [wantsSuggestions, suggestionsQuery.data, isUserBlocked],
+  );
 
   // The feed used to toast from loadFeed's catch. The query owns retries now,
   // so the toast fires once the retries are exhausted rather than on the
@@ -178,16 +166,6 @@ export default function HomeFeedScreen() {
     onInsert: () => { void queryClient.invalidateQueries({ queryKey: storyKeys.lists() }); return true; },
     onDelete: () => { void queryClient.invalidateQueries({ queryKey: storyKeys.lists() }); return true; },
   });
-
-  useEffect(() => {
-    if (!profileId || isLoading) return;
-    const hasFollows = following.length > 0;
-    if (posts.length === 0 && !hasFollows) {
-      void loadSuggestions(profileId);
-    } else if (suggestedUsers.length > 0) {
-      setSuggestedUsers([]);
-    }
-  }, [following, isLoading, loadSuggestions, posts.length, suggestedUsers.length, profileId]);
 
   // "New posts" (ONE-16's stream replaced). The feed used to listen to every
   // post published anywhere and read each one to see whether it belonged;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Alert,
   View,
@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../store/AppContext.native';
 import { profileKeys, useCurrentProfile } from '../features/profiles';
-import { postKeys, useUpdatePost, fetchPostById as getPostById } from '../features/posts';
+import { postKeys, useUpdatePost, usePostQuery } from '../features/posts';
 import { embeddedTagWriter, tagKeys } from '../features/tags';
 import { Avatar, Button, EmptyState, Skeleton } from '../components/native/ui';
 import ComposeMedia from '../components/native/ComposeMedia';
@@ -50,10 +50,11 @@ export default function EditPostScreen() {
   const { profile: userProfile, profileId } = useCurrentProfile();
   const updatePost = useUpdatePost();
 
+  // The post as last saved: what the caption and tags are compared with.
+  // It starts as the post read from the cache.
   const [post, setPost] = useState<Post | null>(null);
   const [content, setContent] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
 
   // The photo's tags (ONE-92): what the post holds on the server, and the
   // drafts the placer edits. Saving writes the difference, and moves `saved`
@@ -64,26 +65,29 @@ export default function EditPostScreen() {
   /** The tag whose destination picker is open. */
   const [pickingFor, setPickingFor] = useState<string | null>(null);
 
+  // The form starts from the post as the server has it, never from a copy
+  // a list was holding: saving compares against it. Seeded once, so a
+  // refetch doesn't overwrite what is being typed.
+  const postQuery = usePostQuery(id, profileId);
+  const settled = postQuery.isError || (postQuery.isSuccess && !postQuery.isPlaceholderData);
+  const fetched = settled ? postQuery.data : undefined;
+  // Until the form is seeded from it, too, or it would flash as missing.
+  const loading = !settled || (Boolean(fetched) && !post);
+  const seeded = useRef(false);
   useEffect(() => {
-    if (!id) return;
-    const fetchPost = async () => {
-      try {
-        const data = await getPostById(id);
-        if (data) {
-          setPost(data);
-          setContent(data.content || '');
-          setSavedTags(data.embeddedTags ?? []);
-          setTags(seedDrafts(data.embeddedTags ?? []));
-        }
-      } catch (error) {
-        console.error('Failed to load post for editing', error);
-        addToast('Failed to load post.', 'error');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPost();
-  }, [id, addToast]);
+    if (seeded.current || !fetched) return;
+    seeded.current = true;
+    setPost(fetched);
+    setContent(fetched.content || '');
+    setSavedTags(fetched.embeddedTags ?? []);
+    setTags(seedDrafts(fetched.embeddedTags ?? []));
+  }, [fetched]);
+
+  useEffect(() => {
+    if (!postQuery.isError) return;
+    console.error('Failed to load post for editing', postQuery.error);
+    addToast('Failed to load post.', 'error');
+  }, [postQuery.isError, postQuery.error, addToast]);
 
   // Only your own photo post is tagged here: a text post has nothing to tag,
   // and a tag belongs to the post's author.

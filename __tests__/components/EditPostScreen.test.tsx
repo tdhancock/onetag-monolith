@@ -65,7 +65,8 @@ jest.mock('../../features/tags', () => ({
 }));
 jest.mock('../../features/posts', () => ({
   useUpdatePost: () => ({ mutateAsync: mockMutateAsync }),
-  fetchPostById: (id: string) => mockFetchPost(id),
+  usePostQuery: (id: string) =>
+    require('../support/mockQuery').useMockQuery(`post:${id}`, () => mockFetchPost(id), Boolean(id)),
   postKeys: { all: ['posts'] },
 }));
 

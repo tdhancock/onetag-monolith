@@ -116,6 +116,7 @@ const state = {
 const mockFeedInterests: (string | null)[] = [];
 
 const mockFollowToggle = jest.fn();
+const mockSuggestionsAsked = jest.fn();
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profile: { username: 'me' }, profileId: 'p-me', authUserId: 'a-me' }),
   useFollowState: () => ({
@@ -125,7 +126,11 @@ jest.mock('../../features/profiles', () => ({
   }),
   useToggleFollow: () => ({ toggle: mockFollowToggle }),
   profileKeys: { all: ['profiles'] },
-  getSmartUserSuggestions: () => Promise.resolve(state.suggestions),
+  // Asked for only while the feed is empty and nobody is followed.
+  useUserSuggestionsQuery: (profileId?: string) => {
+    if (profileId) mockSuggestionsAsked(profileId);
+    return { data: profileId ? state.suggestions : undefined };
+  },
 }));
 jest.mock('../../lib/realtimeBridge', () => ({ useRealtimeSync: jest.fn() }));
 jest.mock('../../features/notifications', () => ({
@@ -188,6 +193,7 @@ beforeEach(() => {
   state.notifications = 0;
   state.messages = 0;
   state.suggestions = [];
+  mockSuggestionsAsked.mockClear();
   state.feed.data = { pages: [[{ id: 'post-1' }, { id: 'post-2' }]] };
   state.newest = null;
   state.feed.isPending = false;
@@ -339,9 +345,18 @@ describe('Home — the feed fails', () => {
 // ─── 8. Empty ───────────────────────────────────────────────────────────
 
 describe('Home — empty', () => {
+  it('asks for suggestions only while the feed is empty and nobody is followed', async () => {
+    await mount();
+    expect(mockSuggestionsAsked).not.toHaveBeenCalled();
+
+    state.feed.data = { pages: [[]] };
+    await rerender();
+    expect(mockSuggestionsAsked).toHaveBeenCalledWith('p-me');
+  });
+
   it('welcomes someone who follows nobody, with Follow cards that flip in place', async () => {
     state.feed.data = { pages: [[]] };
-    state.suggestions = [{ suggested_user_id: 'u-ana', username: 'ana', avatar_url: null }];
+    state.suggestions = [{ id: 'u-ana', username: 'ana', name: 'ana', avatar: null, isVerified: false, isPrivate: false }];
     const el = await mount();
 
     expect(el.textContent).toContain('Your feed starts with who you follow');

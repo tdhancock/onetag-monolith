@@ -23,4 +23,8 @@ export const postKeys = {
    * does.
    */
   newest: (userId: string, interest: string | null) => [...base.all, 'newest', userId, interest ?? ''] as const,
+  /** Who liked a post, for its Likes list. */
+  likers: (postId: string) => [...base.all, 'likers', postId] as const,
+  /** Who reposted a post, for its Reposts list. */
+  reposters: (postId: string) => [...base.all, 'reposters', postId] as const,
 };

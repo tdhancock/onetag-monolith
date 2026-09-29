@@ -149,6 +149,7 @@ jest.mock('../../features/profiles', () => ({
     posts: () => ['p'],
     counts: () => ['c'],
     postCount: () => ['pc'],
+    byUsername: (u: string) => ['pu', u],
     followingUsernames: () => ['fu'],
     requestedUsernames: () => ['ru'],
   },
@@ -159,9 +160,12 @@ jest.mock('../../features/profiles', () => ({
       ? { data: undefined, isPending: true, isError: false, refetch: mockRefetch }
       : mockQuery(state.posts);
   },
-  getUserProfile: () => Promise.resolve(state.profile),
-  getFollowerUsers: () => Promise.resolve(state.users),
-  getFollowingUsers: () => Promise.resolve(state.users),
+  useProfileQuery: (username: string) =>
+    require('../support/mockQuery').useMockQuery(`profile:${username}`, () => state.profile, Boolean(username)),
+  useFollowersQuery: (id?: string) =>
+    require('../support/mockQuery').useMockQuery(`followers:${id}`, () => state.users, Boolean(id)),
+  useFollowingQuery: (id?: string) =>
+    require('../support/mockQuery').useMockQuery(`following:${id}`, () => state.users, Boolean(id)),
   useUpdateProfile: () => ({ mutateAsync: mockUpdateProfile }),
   useUpdateBusinessProfile: () => ({ mutateAsync: mockUpdateBusiness }),
   useUploadAvatar: () => ({ mutateAsync: jest.fn() }),
@@ -202,15 +206,15 @@ jest.mock('../../features/projects', () => ({
   },
 }));
 jest.mock('../../features/posts', () => ({
-  getPostLikers: () => Promise.resolve([]),
-  getPostReposters: () => Promise.resolve([]),
+  usePostLikersQuery: (id?: string) => require('../support/mockQuery').useMockQuery(`likers:${id}`, () => [], Boolean(id)),
+  usePostRepostersQuery: (id?: string) => require('../support/mockQuery').useMockQuery(`reposters:${id}`, () => [], Boolean(id)),
 }));
 jest.mock('../../features/admin', () => ({ setUserVerified: jest.fn(), useIsAdmin: () => state.isAdmin }));
 jest.mock('../../features/auth', () => ({ useAuthUserId: () => 'a-me', useAuthStatus: () => 'signed-in' }));
 jest.mock('../../features/moderation', () => ({ reportUser: jest.fn(() => Promise.resolve(true)) }));
 jest.mock('../../features/blocks', () => ({ useBlockedByQuery: () => ({ data: state.blockedBy }) }));
 jest.mock('@tanstack/react-query', () => ({
-  useQueryClient: () => ({ invalidateQueries: jest.fn(() => Promise.resolve()) }),
+  useQueryClient: () => ({ invalidateQueries: jest.fn(() => Promise.resolve()), setQueryData: jest.fn() }),
 }));
 
 import OwnProfileScreen from '../../app/(tabs)/profile';

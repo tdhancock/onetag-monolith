@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, Text, TextInput, FlatList, RefreshControl, StyleSheet } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
-import { searchUsers, useCurrentProfile } from '../../features/profiles';
+import { useCurrentProfile, useProfileSearchQuery, PROFILE_SEARCH_MIN_LENGTH } from '../../features/profiles';
 import {
   useConversationsQuery,
   useUnreadChats,
@@ -13,6 +13,7 @@ import {
 } from '../../features/messages';
 import { conversationPreview, messageThreadRoute } from '../../lib/screens/messages';
 import { getTimeAgo } from '../../lib/timeAgo';
+import { useDebouncedValue } from '../../lib/useDebouncedValue';
 import { Avatar, EmptyState, IconButton, ListRow, Sheet, SheetRow, Skeleton, TextField } from '../../components/native/ui';
 import { PencilAltIcon, SearchIcon, TrashIcon } from '../../components/native/Icons';
 import { color, space, type } from '../../theme/tokens';
@@ -58,9 +59,16 @@ export default function MessagesScreen() {
   const markAllRead = useMarkAllMessagesRead(userId);
   const deleteConversation = useDeleteConversation(userId);
 
-  // Search
-  const [userSearchResults, setUserSearchResults] = useState<SimpleUser[]>([]);
-  const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+  // Search, for someone to start a conversation with: anyone but you.
+  const search = useProfileSearchQuery(useDebouncedValue(searchTerm).trim());
+  const searchReady = searchTerm.trim().length >= PROFILE_SEARCH_MIN_LENGTH;
+  const userSearchResults = useMemo<SimpleUser[]>(
+    () =>
+      (searchReady ? search.data ?? [] : [])
+        .filter(u => u.id !== userId)
+        .map(u => ({ id: u.id, name: u.name, username: u.username, avatar: u.avatarUrl, isVerified: u.isVerified })),
+    [searchReady, search.data, userId],
+  );
 
   // The conversation a long press picked, for the delete sheet.
   const [userToDelete, setUserToDelete] = useState<SimpleUser | null>(null);
@@ -77,40 +85,8 @@ export default function MessagesScreen() {
 
   const openChat = (user: SimpleUser) => {
     setSearchTerm('');
-    setUserSearchResults([]);
     router.push(messageThreadRoute(user.username));
   };
-
-  // User search with debounce
-  useEffect(() => {
-    if (!searchTerm.trim()) {
-      setUserSearchResults([]);
-      setIsSearchingUsers(false);
-      return;
-    }
-
-    setIsSearchingUsers(true);
-    const timer = setTimeout(async () => {
-      try {
-        const usersFromApi = await searchUsers(searchTerm);
-        const mapped: SimpleUser[] = usersFromApi.map((u: any) => ({
-          id: u.id,
-          name: u.full_name,
-          username: u.username,
-          avatar: u.avatar_url,
-          isVerified: u.is_verified,
-          bio: u.bio || undefined,
-        }));
-        setUserSearchResults(mapped.filter(u => u.id !== userId));
-      } catch (error) {
-        console.error('Error searching users:', error);
-      } finally {
-        setIsSearchingUsers(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchTerm, userId]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -194,7 +170,10 @@ export default function MessagesScreen() {
 
   const renderInbox = () => {
     if (searchTerm.trim()) {
-      if (isSearchingUsers) return skeletonRows();
+      if (!searchReady) {
+        return <Text style={styles.noResults}>Type at least {PROFILE_SEARCH_MIN_LENGTH} characters to search</Text>;
+      }
+      if (search.isLoading) return skeletonRows();
       if (userSearchResults.length === 0) {
         return <Text style={styles.noResults}>No results for "{searchTerm.trim()}"</Text>;
       }

@@ -1,12 +1,13 @@
 // Read hooks for the posts domain.
 
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { InfiniteData, QueryKey } from '@tanstack/react-query';
-import { fetchFeedPage, fetchNewestFeedPost, fetchPostById, nextFeedCursor } from './api';
+import { fetchFeedPage, fetchNewestFeedPost, fetchPostById, getPostLikers, getPostReposters, nextFeedCursor } from './api';
+import { findCachedPost } from './cache';
 import type { FeedCursor } from './api';
 import { postKeys } from './keys';
 import type { Post } from './types';
-import type { ProfileId } from '../../types';
+import type { ProfileId, SimpleUser } from '../../types';
 
 /** How often the home feed looks for newer posts while it's on screen. */
 export const NEW_POSTS_CHECK_MS = 60_000;
@@ -63,10 +64,33 @@ export const useFeedQuery = (userId: ProfileId | undefined, interest: string | n
  * leave it patching an entry nothing is reading. Signing out therefore has
  * to clear the cache rather than out-key it — `QueryProvider` is where that
  * belongs, and it is worth its own ticket.
+ *
+ * A post opened from a list that already holds it — the feed, a profile's
+ * grid — shows at once from there while it loads in full.
  */
-export const usePostQuery = (postId: string | undefined, viewerId?: ProfileId) =>
-  useQuery<Post | undefined>({
+export const usePostQuery = (postId: string | undefined, viewerId?: ProfileId) => {
+  const queryClient = useQueryClient();
+  return useQuery<Post | undefined>({
     queryKey: postKeys.detail(postId ?? ''),
     queryFn: () => fetchPostById(postId!, viewerId),
+    enabled: Boolean(postId),
+    placeholderData: () =>
+      postId ? findCachedPost(queryClient.getQueriesData({}).map(([, data]) => data), postId) : undefined,
+  });
+};
+
+/** Who liked a post. */
+export const usePostLikersQuery = (postId: string | undefined) =>
+  useQuery<SimpleUser[]>({
+    queryKey: postKeys.likers(postId ?? ''),
+    queryFn: () => getPostLikers(postId!),
+    enabled: Boolean(postId),
+  });
+
+/** Who reposted a post. */
+export const usePostRepostersQuery = (postId: string | undefined) =>
+  useQuery<SimpleUser[]>({
+    queryKey: postKeys.reposters(postId ?? ''),
+    queryFn: () => getPostReposters(postId!),
     enabled: Boolean(postId),
   });
