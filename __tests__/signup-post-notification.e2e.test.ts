@@ -14,10 +14,11 @@
 //      notification: the database notifies anyone the body @mentions, from
 //      the post itself (ONE-107).
 //
-//   3. Notification tap navigation — the routing helper wired up in
-//      app/_layout.tsx maps a tapped push notification's `data` payload
-//      to the correct expo-router destination (follow → user profile,
-//      post → post detail, message → messages, fallback → notifications).
+//   3. Notification tap navigation — a push as send-push builds it
+//      (supabase/functions/send-push/handler.ts) opens where the app's own
+//      pushRoute sends it, the function app/_layout.tsx routes taps by.
+//      Both are the real code: this suite used to test a copy of the
+//      router kept here, which had drifted from the app.
 //
 // The mock object mirrors the real Supabase v2 chain the app uses. Every `from(table)` call returns a fresh
 // thenable query builder that resolves to a per-table canned result
@@ -130,33 +131,20 @@ const testHooks = (require('../services/supabase.native') as any).__test__ as {
   insertCalls: InsertCall[];
 };
 
-// ─── 2. Notification tap routing helper ─────────────────────────────────
+// ─── 2. Notification tap routing ────────────────────────────────────────
 //
-// Re-implementation of the tap→route decision wired up in app/_layout.tsx
-// (lines 104–118). Kept here as a pure function so it can be exercised
-// under the ts-jest node preset without spinning up expo-router.
+// What the server puts on a push, and where the app opens it: the real
+// buildPush and pushRoute, so the two can't drift apart unseen.
 
-type NotificationRoute =
-  | { route: string; params: Record<string, string> }
-  | { route: null; reason: string };
+import { buildPush, type PushEvent } from '../supabase/functions/send-push/handler';
+import { pushRoute } from '../lib/screens/notifications';
 
-const routeForNotificationData = (
-  data: Record<string, string> | undefined,
-): NotificationRoute => {
-  if (!data) {
-    return { route: null, reason: 'no-data' };
-  }
-  if (data.type === 'follow' && data.username) {
-    return { route: '/user/[username]', params: { username: data.username } };
-  }
-  if (data.type === 'message' && data.conversationId) {
-    return { route: '/messages', params: { conversationId: data.conversationId } };
-  }
-  if (data.postId) {
-    return { route: '/post/[id]', params: { id: data.postId } };
-  }
-  return { route: '/notifications', params: {} };
-};
+const MESSAGE_ROUTE = '/messages?chatWith=sara_codes';
+
+const receiver = { authUserId: 'auth-noor', username: 'noor', profileType: 'individual' as const };
+
+/** Where tapping the push for this event opens. */
+const tapOpens = (event: PushEvent): string => pushRoute(buildPush(event)?.data);
 
 // ─── 3. Test fixtures ───────────────────────────────────────────────────
 
@@ -488,83 +476,43 @@ describe('E2E — post create flow', () => {
 // 3. NOTIFICATION TAP → NAVIGATION
 // =========================================================================
 //
-// The wiring in app/_layout.tsx (lines 104–118) maps a tapped push
-// notification's `data` payload to an expo-router destination:
-//
-//     type === 'follow'  + username       → /user/<username>
-//     type === 'message' + conversationId → /messages
-//     postId                              → /post/<id>
-//     fallback                            → /notifications
-//
-// These tests pin that contract.
+// From the push send-push builds to the screen app/_layout.tsx opens for
+// it, through the real buildPush and pushRoute. The full table of where each
+// notification opens is in docs/push-notifications.md.
 
 describe('E2E — notification tap routes to the correct screen', () => {
-  it('routes a follow-notification tap to /user/<username>', () => {
-    const result = routeForNotificationData({
-      type: 'follow',
-      username: 'sara_codes',
-    });
-    expect(result).toEqual({
-      route: '/user/[username]',
-      params: { username: 'sara_codes' },
-    });
+  it("opens a new follower's profile", () => {
+    expect(tapOpens({ kind: 'notification', type: 'follow', senderUsername: 'sara_codes', receiver, postId: null })).toBe(
+      '/user/sara_codes',
+    );
   });
 
-  it('routes a post-notification tap to /post/<id>', () => {
-    const result = routeForNotificationData({ postId: 'post-42' });
-    expect(result).toEqual({
-      route: '/post/[id]',
-      params: { id: 'post-42' },
-    });
+  it('opens the requests for a follow request', () => {
+    expect(tapOpens({ kind: 'notification', type: 'follow_request', senderUsername: 'sara_codes', receiver, postId: null })).toBe(
+      '/follow-requests',
+    );
   });
 
-  it('routes a message-notification tap to /messages with the conversationId', () => {
-    const result = routeForNotificationData({
-      type: 'message',
-      conversationId: 'conv-7',
-    });
-    expect(result).toEqual({
-      route: '/messages',
-      params: { conversationId: 'conv-7' },
-    });
-  });
-
-  it('falls back to /notifications when the payload has no recognized fields', () => {
-    const result = routeForNotificationData({ kind: 'unknown' });
-    expect(result).toEqual({ route: '/notifications', params: {} });
-  });
-
-  it('returns no route when the notification has no data payload', () => {
-    const result = routeForNotificationData(undefined);
-    expect(result).toEqual({ route: null, reason: 'no-data' });
-  });
-
-  it('integrates with the full receive → tap → navigate chain', () => {
-    // Simulates the runtime sequence:
-    //   1) push arrives while app is in foreground / background
-    //   2) user taps the notification
-    //   3) addNotificationResponseListener callback fires with the response
-    //   4) the tap handler reads data and routes via expo-router
-    const tapResponse = {
-      notification: {
-        request: {
-          content: {
-            title: 'New follower',
-            body: 'sara started following you',
-            data: { type: 'follow', username: 'sara_codes' },
-          },
-        },
-      },
-    };
-
-    const data = tapResponse.notification.request.content.data as
-      | Record<string, string>
-      | undefined;
-    const navigation = routeForNotificationData(data);
-
-    expect(navigation.route).toBe('/user/[username]');
-    if (navigation.route !== null) {
-      expect(navigation.params.username).toBe('sara_codes');
+  it('opens a comment, or a reply, on the comment itself', () => {
+    for (const type of ['comment', 'reply']) {
+      expect(
+        tapOpens({ kind: 'notification', type, senderUsername: 'sara_codes', receiver, postId: 'post-42', commentId: 'c-7' }),
+      ).toBe('/comments/post-42?commentId=c-7');
     }
+  });
+
+  it('opens the post a mention in a post is in', () => {
+    expect(tapOpens({ kind: 'notification', type: 'mention', senderUsername: 'sara_codes', receiver, postId: 'post-42' })).toBe(
+      '/post/post-42',
+    );
+  });
+
+  it('opens the conversation with whoever sent a message', () => {
+    expect(tapOpens({ kind: 'message', senderUsername: 'sara_codes', receiver })).toBe(MESSAGE_ROUTE);
+  });
+
+  it('opens Notifications for a payload it does not recognise, or none', () => {
+    expect(pushRoute({ kind: 'unknown' })).toBe('/notifications');
+    expect(pushRoute(undefined)).toBe('/notifications');
   });
 });
