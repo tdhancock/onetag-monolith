@@ -10,6 +10,7 @@ import {
   TAG_LIMIT_MESSAGE,
   TAG_REFUSED_MESSAGE,
   destinationRef,
+  pickerPosts,
   diffTags,
   hasTagEdits,
   isTagRefusal,
@@ -126,6 +127,10 @@ describe('the picker', () => {
   it('never a private project, nor the post the photo is on', () => {
     expect(options.map((o) => o.destination.name)).not.toContain('Vault');
     expect(options.map((o) => o.key)).not.toContain('post-po-host');
+  });
+
+  it('lists posts that matched by text first, then the newest by matching profiles, each once', () => {
+    expect(pickerPosts([{ id: 'a' }, { id: 'b' }], [{ id: 'b' }, { id: 'c' }]).map((p) => p.id)).toEqual(['a', 'b', 'c']);
   });
 
   it('writes a post tag to its post', () => {

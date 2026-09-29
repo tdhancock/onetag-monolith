@@ -45,6 +45,40 @@ export const searchPosts = async (query: string): Promise<SearchPost[]> =>
     authorAvatarUrl: r.author_avatar_url ?? null,
   }));
 
+/** What `postsByAuthors` reads: enough of each post, and its author, to list it. */
+export const POSTS_BY_AUTHORS_SELECT =
+  'id, content, image_url, media_type, author:profiles!user_id(username, avatar_url)';
+
+/** How many posts `postsByAuthors` returns, across every author asked for. */
+export const POSTS_BY_AUTHORS_LIMIT = 12;
+
+/**
+ * The newest posts by a few profiles — those a search matched — so a photo
+ * with no caption, which full-text search can't find, is found by its
+ * author's name. RLS reads only what the searcher may see, blocks included.
+ */
+export const postsByAuthors = async (profileIds: readonly string[]): Promise<SearchPost[]> => {
+  if (profileIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('posts')
+    .select(POSTS_BY_AUTHORS_SELECT)
+    .in('user_id', [...profileIds])
+    .order('created_at', { ascending: false })
+    .limit(POSTS_BY_AUTHORS_LIMIT);
+  if (error) throw error;
+  return ((data ?? []) as any[]).map((r) => {
+    const author = Array.isArray(r.author) ? r.author[0] : r.author;
+    return {
+      id: r.id,
+      content: r.content ?? '',
+      imageUrl: r.image_url || null,
+      mediaType: r.media_type === 'image' && r.image_url ? 'image' : 'text',
+      authorUsername: author?.username ?? '',
+      authorAvatarUrl: author?.avatar_url ?? null,
+    };
+  });
+};
+
 export const searchProducts = async (query: string, category: string | null = null): Promise<SearchProduct[]> =>
   (await rows<any>('search_products', { p_query: query, p_category: category, p_limit: SEARCH_RESULT_LIMIT })).map(
     (r) => ({

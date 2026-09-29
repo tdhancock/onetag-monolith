@@ -169,6 +169,19 @@ export const pickerOptions = (
     })),
 ];
 
+/** How many matching profiles' posts the tag picker lists beside the text matches. */
+export const PICKER_AUTHORS_SEARCHED = 3;
+
+/**
+ * The posts the tag picker offers: those whose text matched, then the newest
+ * by the profiles that matched, which is how a photo with no caption is
+ * found. Each post once.
+ */
+export const pickerPosts = <T extends { id: string }>(textMatches: readonly T[], byAuthors: readonly T[]): T[] => {
+  const seen = new Set<string>();
+  return [...textMatches, ...byAuthors].filter((post) => !seen.has(post.id) && Boolean(seen.add(post.id)));
+};
+
 /** What the author is told when the post went out and its tags did not. */
 export const TAGS_FAILED_TITLE = 'Your post is up, but its tags didn’t save';
 export const TAGS_FAILED_MESSAGE = 'Try again to add them, or leave the post without tags.';

@@ -4,12 +4,13 @@ import { ListRow, Sheet, TextField } from './ui';
 import { SearchIcon } from './Icons';
 import {
   usePostResultsQuery,
+  usePostsByAuthorsQuery,
   useProfileResultsQuery,
   useProductResultsQuery,
   useProjectResultsQuery,
 } from '../../features/search';
 import { useDebouncedValue } from '../../lib/useDebouncedValue';
-import { pickerOptions } from '../../lib/screens/composeTags';
+import { PICKER_AUTHORS_SEARCHED, pickerOptions, pickerPosts } from '../../lib/screens/composeTags';
 import { color, space, type } from '../../theme/tokens';
 import type { EmbeddedTagDestination } from '../../types';
 
@@ -47,12 +48,20 @@ const PickerBody: React.FC<{ onPick: (destination: EmbeddedTagDestination) => vo
   const products = useProductResultsQuery(term, null);
   const projects = useProjectResultsQuery(term, null, true);
   const posts = usePostResultsQuery(term);
+  // A photo with no caption has no text to match: it's found by who posted it.
+  const authorIds = (profiles.data ?? []).slice(0, PICKER_AUTHORS_SEARCHED).map((p) => p.id);
+  const byAuthors = usePostsByAuthorsQuery(authorIds);
 
   const options = pickerOptions(
     profiles.data ?? [],
     products.data ?? [],
     (projects.data ?? []).map((p) => ({ id: p.id, name: p.name, coverUrl: p.coverUrl, isPublic: true })),
-    (posts.data ?? []).map((p) => ({ id: p.id, content: p.content, imageUrl: p.imageUrl, authorUsername: p.authorUsername })),
+    pickerPosts(posts.data ?? [], byAuthors.data ?? []).map((p) => ({
+      id: p.id,
+      content: p.content,
+      imageUrl: p.imageUrl,
+      authorUsername: p.authorUsername,
+    })),
     hostPostId,
   );
   const failed = profiles.isError && products.isError && projects.isError && posts.isError;

@@ -11,6 +11,7 @@ import { anonClient, sql } from './support/localStack';
 import { createAccount, deleteAccounts, type Account } from './support/accounts';
 import { createEmbeddedTags, createTag, fetchMyTags, resolveTag } from '../../features/tags/api';
 import { fetchPostById } from '../../features/posts/api';
+import { postsByAuthors } from '../../features/search/api';
 
 let author: Account;
 let fan: Account;
@@ -61,6 +62,22 @@ describe('tags pointing at posts', () => {
     actAs(anonClient());
     const resolution = await resolveTag(shortCode);
     expect(resolution).toEqual({ status: 'active', tagId: expect.any(String), destination: { kind: 'post', postId } });
+  });
+
+  it("finds a photo with no caption by its author's name, for the tag picker", async () => {
+    const bare = sql(`
+      INSERT INTO public.posts (user_id, content, image_url, media_type)
+      VALUES ('${author.profileId}', '', 'https://example.test/bare.jpg', 'image') RETURNING id;
+    `);
+    actAs(fan.client);
+    const found = await postsByAuthors([author.profileId]);
+    expect(found.map((p) => p.id)).toContain(bare);
+    expect(found.every((p) => p.authorUsername === author.username)).toBe(true);
+
+    // Not a private account's, to someone who doesn't follow it.
+    sql(`UPDATE public.profiles SET is_private = true WHERE id = '${author.profileId}';`);
+    expect(await postsByAuthors([author.profileId])).toEqual([]);
+    sql(`UPDATE public.profiles SET is_private = false WHERE id = '${author.profileId}';`);
   });
 
   it("lets a photo carry a tag pointing at someone else's post, read with the photo", async () => {

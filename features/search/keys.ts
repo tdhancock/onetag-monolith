@@ -8,6 +8,7 @@ export const searchKeys = {
   ...base,
   profiles: (term: string) => base.list({ type: 'profiles', term }),
   posts: (term: string) => base.list({ type: 'posts', term }),
+  postsByAuthors: (profileIds: readonly string[]) => base.list({ type: 'posts-by-authors', profileIds: [...profileIds] }),
   products: (term: string, category: string | null) => base.list({ type: 'products', term, category }),
   projects: (term: string, category: string | null, publicOnly = false) =>
     base.list({ type: 'projects', term, category, publicOnly }),
