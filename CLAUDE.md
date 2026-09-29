@@ -79,7 +79,8 @@ permission gets a check beside the others. The harness refuses any host but the 
 
 **Never run `supabase db push`.** Migrations apply against a local stack (`npm run db:start`,
 `npm run db:reset`) and reach production only via the `deploy-migrations` workflow on merge,
-behind a required review.
+behind a required review. Edge functions go the same way, through `deploy-functions`, which
+deploys every function whenever one changes on `main`; their secrets are set once by hand.
 
 **A function only signed-in callers run revokes `FROM PUBLIC, anon`**, then grants
 `authenticated`. Supabase's default privileges grant every new `public` function to `anon`

@@ -138,11 +138,14 @@ need rewriting either way, since the function doesn't sit at the host's root.
 
 ### Deploying
 
-Edge functions don't ride the `deploy-migrations` workflow; merging deploys nothing here.
+Merging a change under `supabase/functions` deploys every function, through the
+`deploy-functions` workflow behind the production review. Its secret is set once, by hand:
 
 ```bash
 supabase secrets set TAG_BASE_URL=https://onetag.app
 ```
+
+To deploy it before anything has merged, or again without a change:
 
 ```bash
 supabase functions deploy tag-resolve

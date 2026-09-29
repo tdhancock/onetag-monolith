@@ -47,9 +47,10 @@ first, for example with `openssl rand -hex 32`.
    supabase functions deploy send-push
    ```
 
-   Edge functions don't ride the `deploy-migrations` workflow. `verify_jwt =
-   false` comes from `supabase/config.toml`: the database calls it with the
-   shared secret, not a JWT.
+   After this first time, a merge that changes the function deploys it
+   through the `deploy-functions` workflow. `verify_jwt = false` comes from
+   `supabase/config.toml`: the database calls it with the shared secret, not
+   a JWT.
 
    If the Expo project has *Enhanced push security* on, also run
    `supabase secrets set EXPO_ACCESS_TOKEN=<token from expo.dev>`.
