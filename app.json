@@ -16,7 +16,7 @@
     "scheme": "onetag",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.onetag.app",
       "infoPlist": {
         "NSCameraUsageDescription": "OneTag needs camera access to take photos and stories.",
@@ -38,7 +38,7 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ],
-      "softwareKeyboardLayoutMode": "pan",
+      "softwareKeyboardLayoutMode": "resize",
       "allowBackup": true,
       "googleServicesFile": "./google-services.json",
       "blockedPermissions": []
