@@ -9,6 +9,9 @@
 //
 // The provider is invoked as a plain function and the props it builds are
 // inspected, so no renderer and no real AsyncStorage are needed.
+//
+// It also pins what tells TanStack the app has come back to the front or
+// gone offline, which React Native doesn't report to it by itself.
 
 import React from 'react';
 
@@ -17,6 +20,32 @@ const mockPersisterConfig: Record<string, unknown> = {};
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
   default: { getItem: jest.fn(), setItem: jest.fn(), removeItem: jest.fn() },
+}));
+
+const mockAppStateListeners: ((state: string) => void)[] = [];
+jest.mock('react-native', () => ({
+  AppState: {
+    currentState: 'active',
+    addEventListener: (_event: string, listener: (state: string) => void) => {
+      mockAppStateListeners.push(listener);
+      return { remove: () => mockAppStateListeners.splice(mockAppStateListeners.indexOf(listener), 1) };
+    },
+  },
+}));
+
+const mockNetworkListeners: ((state: Record<string, unknown>) => void)[] = [];
+const mockNetworkState = { current: { isConnected: true, isInternetReachable: true } as Record<string, unknown> };
+jest.mock('expo-network', () => ({
+  getNetworkStateAsync: () => Promise.resolve(mockNetworkState.current),
+  addNetworkStateListener: (listener: (state: Record<string, unknown>) => void) => {
+    mockNetworkListeners.push(listener);
+    return { remove: () => mockNetworkListeners.splice(mockNetworkListeners.indexOf(listener), 1) };
+  },
+}));
+
+const mockDevTools = jest.fn();
+jest.mock('@dev-plugins/react-query', () => ({
+  useReactQueryDevTools: (client: unknown) => mockDevTools(client),
 }));
 
 jest.mock('expo-constants', () => ({
@@ -40,7 +69,8 @@ jest.mock('@tanstack/react-query-persist-client', () => {
   return { __esModule: true, PersistQueryClientProvider };
 });
 
-import QueryProvider, { CACHE_KEY, CACHE_BUSTER } from '../../lib/QueryProvider';
+import { focusManager, onlineManager } from '@tanstack/react-query';
+import QueryProvider, { CACHE_KEY, CACHE_BUSTER, listenForAppFocus, listenForNetwork } from '../../lib/QueryProvider';
 import { busterFor, CACHE_TIME_MS, queryClient, shouldDehydrateQuery } from '../../lib/queryClient';
 
 type PersistOptions = {
@@ -76,6 +106,12 @@ describe('QueryProvider — rendering', () => {
 
   it('hands over the shared client, not a fresh one', () => {
     expect(render().props.client).toBe(queryClient);
+  });
+
+  it('shows that client in the dev tools', () => {
+    mockDevTools.mockClear();
+    render();
+    expect(mockDevTools).toHaveBeenCalledWith(queryClient);
   });
 });
 
@@ -125,5 +161,64 @@ describe('QueryProvider — dehydration', () => {
     // Exporting the predicate but forgetting to hand it over would persist
     // auth and messages while every unit test still passed.
     expect(persistOptions().dehydrateOptions.shouldDehydrateQuery).toBe(shouldDehydrateQuery);
+  });
+});
+
+// ─── 6. Focus and network ───────────────────────────────────────────────
+
+describe('QueryProvider — coming back to the app', () => {
+  const emit = (state: string) => mockAppStateListeners.slice().forEach((l) => l(state));
+
+  it('is the listener TanStack uses for focus', () => {
+    // Registered on import; the module's listener is subscribed.
+    expect(mockAppStateListeners.length).toBeGreaterThan(0);
+  });
+
+  it('reports away on going to the background, and back on returning', () => {
+    const setFocused = jest.fn();
+    const stop = listenForAppFocus(setFocused);
+    emit('background');
+    emit('active');
+    expect(setFocused.mock.calls).toEqual([[false], [true]]);
+    stop();
+  });
+
+  it('ignores inactive and back, as iOS does around a permission prompt', () => {
+    const setFocused = jest.fn();
+    const stop = listenForAppFocus(setFocused);
+    emit('inactive');
+    emit('active');
+    expect(setFocused).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('refetches through TanStack once the app returns', () => {
+    emit('background');
+    expect(focusManager.isFocused()).toBe(false);
+    emit('active');
+    expect(focusManager.isFocused()).toBe(true);
+  });
+});
+
+describe('QueryProvider — the network', () => {
+  const emit = (state: Record<string, unknown>) => mockNetworkListeners.slice().forEach((l) => l(state));
+
+  it('reads the network once on start, then follows its changes', async () => {
+    const setOnline = jest.fn();
+    mockNetworkState.current = { isConnected: false };
+    const stop = listenForNetwork(setOnline);
+    await Promise.resolve();
+    expect(setOnline).toHaveBeenLastCalledWith(false);
+    emit({ isConnected: true, isInternetReachable: true });
+    expect(setOnline).toHaveBeenLastCalledWith(true);
+    stop();
+    mockNetworkState.current = { isConnected: true, isInternetReachable: true };
+  });
+
+  it('pauses TanStack while offline', () => {
+    emit({ isConnected: false });
+    expect(onlineManager.isOnline()).toBe(false);
+    emit({ isConnected: true, isInternetReachable: true });
+    expect(onlineManager.isOnline()).toBe(true);
   });
 });

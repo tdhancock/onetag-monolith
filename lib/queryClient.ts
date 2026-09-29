@@ -83,6 +83,13 @@ export const shouldDehydrateQuery = (query: Query): boolean =>
 export const busterFor = (version: string | null | undefined): string =>
   `onetag-v${version ?? 'dev'}`;
 
+/**
+ * Whether a network state reads as online. Reachability the OS hasn't
+ * worked out yet counts as online: only a definite no pauses the queries.
+ */
+export const isOnline = (state: { isConnected?: boolean | null; isInternetReachable?: boolean | null }): boolean =>
+  state.isConnected !== false && state.isInternetReachable !== false;
+
 /** Exponential backoff, capped so a long outage does not stall a retry forever. */
 export const retryDelay = (attemptIndex: number): number =>
   Math.min(1000 * 2 ** attemptIndex, 30_000);
@@ -102,11 +109,15 @@ export const queryClient = new QueryClient({
       retry: 2,
       retryDelay,
 
-      // Misfires on React Native — there is no window to focus, and the
-      // shim fires on transitions that are not a real return to the app.
-      refetchOnWindowFocus: false,
+      // Coming back to the app from the background refetches what has gone
+      // stale. React Native has no window, so ./QueryProvider tells TanStack
+      // when the app returns; an `active` that isn't a return, like iOS
+      // around a permission prompt, doesn't count.
+      refetchOnWindowFocus: true,
 
       // Coming back online is a genuine signal that data may have moved on.
+      // ./QueryProvider reports the network, which React Native doesn't do
+      // for TanStack by itself; offline, queries and mutations wait.
       refetchOnReconnect: true,
     },
   },
