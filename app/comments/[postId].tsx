@@ -56,7 +56,7 @@ export default function CommentsScreen() {
   // One query, keyed by post. Two mounts in quick succession share a single
   // request because TanStack dedupes by key — which is what made the 209-line
   // fetch guard, its abort plumbing and its cooldown unnecessary (ONE-14).
-  const commentsQuery = useCommentsQuery(postId);
+  const commentsQuery = useCommentsQuery(postId, profileId);
   const { data: comments, isPending: loading } = commentsQuery;
   const addCommentMutation = useAddComment();
   const deleteCommentMutation = useDeleteComment();

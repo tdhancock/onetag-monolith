@@ -14,9 +14,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
 import { addComment, deleteComment, toggleCommentLike } from './api';
 import { commentKeys } from './keys';
-import { addToThreads, removeFromThreads } from './thread';
+import { addToThreads, findInThreads, patchInThreads, removeFromThreads } from './thread';
 import type { Comment } from './types';
-import type { CommentLikes } from './queries';
 import { postKeys, type Post } from '../posts';
 import { patchLists, useOptimisticToggle } from '../../lib/optimisticToggle';
 import type { ProfileId } from '../../types';
@@ -171,27 +170,34 @@ export interface CommentLikeToggle {
 /**
  * Like or unlike a comment.
  *
- * A configuration of the shared helper: the entity is the comment's own
- * likes entry, `isOn` is the boolean on it and `count` the number beside it.
- * The helper also replaces the hand-rolled double-tap guard the comments
- * screen used to keep: a second tap while the first is in flight is gated by
- * the mutation's own pending state.
+ * A configuration of the shared helper. The comment lives in its post's
+ * comment list, as threads, which is where its like and count are read from
+ * and flipped: `isLiked` and `likes` on the comment. The list is refetched
+ * once the server answers, one request, where each row used to read and
+ * refetch its own likes. The helper also replaces the hand-rolled
+ * double-tap guard the comments screen used to keep: a second tap while the
+ * first is in flight is gated by the mutation's own pending state.
  */
 export const useToggleCommentLike = (
   viewerId: ProfileId | undefined,
   onHaptic?: () => void,
 ): CommentLikeToggle => {
-  const mutation = useOptimisticToggle<CommentLikes>({
+  const mutation = useOptimisticToggle<Comment>({
     mutationFn: (commentId) => {
       if (!viewerId) return Promise.reject(new Error('You must be signed in to like a comment.'));
       return toggleCommentLike(commentId, viewerId);
     },
+    // A comment has no entry of its own; it's patched in the lists.
     entityKey: (commentId) => commentKeys.likes(commentId),
-    listKey: commentKeys.all,
-    entityId: () => '',
-    isOn: (likes) => likes.isLiked,
-    count: (likes) => likes.count,
-    apply: (likes, next) => ({ isLiked: next.isOn, count: next.count }),
+    listKey: commentKeys.posts(),
+    entityId: (comment) => comment.id,
+    isOn: (comment) => comment.isLiked,
+    count: (comment) => comment.likes,
+    apply: (comment, next) => ({ ...comment, isLiked: next.isOn, likes: next.count }),
+    otherLists: {
+      find: (data, id) => (Array.isArray(data) ? findInThreads(data as Comment[], id) : undefined),
+      patch: (data, id, transform) => (Array.isArray(data) ? patchInThreads(data as Comment[], id, transform) : data),
+    },
     onToggle: () => onHaptic?.(),
   });
 

@@ -11,14 +11,33 @@ import type { Comment } from './types';
 import type { ProfileId } from '../../types';
 
 /**
- * A post's comments as threads: newest first, each with its replies beneath
- * it, oldest first (see ./thread).
+ * What a post's comments are read with: each comment's author, its like
+ * count, and whether the viewer is among the likes (`viewer_like`, narrowed
+ * to them). One request for the whole list: each row used to ask for its own
+ * likes, two requests a comment.
  */
-export const getCommentsForPost = async (postId: string): Promise<Comment[]> => {
+export const COMMENT_SELECT =
+    '*, profiles!user_id(username, avatar_url), like_count:comment_likes(count), viewer_like:comment_likes(user_id)';
+
+/** Narrows `viewer_like` to nobody, when nobody is viewing. */
+const NO_VIEWER = '00000000-0000-0000-0000-000000000000';
+
+const likeCount = (embed: unknown): number => {
+    const first = Array.isArray(embed) ? (embed[0] as { count?: unknown } | undefined) : undefined;
+    return Number(first?.count) || 0;
+};
+
+/**
+ * A post's comments as threads: newest first, each with its replies beneath
+ * it, oldest first (see ./thread), each with its likes as the viewer sees
+ * them.
+ */
+export const getCommentsForPost = async (postId: string, viewerId?: ProfileId): Promise<Comment[]> => {
     const { data, error } = await supabase
         .from('comments')
-        .select('*, profiles!user_id(username, avatar_url)')
+        .select(COMMENT_SELECT)
         .eq('post_id', postId)
+        .eq('viewer_like.user_id', viewerId ?? NO_VIEWER)
         .order('created_at', { ascending: false });
 
     if (error) return [];
@@ -29,8 +48,8 @@ export const getCommentsForPost = async (postId: string): Promise<Comment[]> => 
         avatar: c.profiles.avatar_url,
         text: c.content,
         timestamp: new Date(c.created_at),
-        likes: 0, // Simplified for now
-        isLiked: false, // Simplified for now
+        likes: likeCount(c.like_count),
+        isLiked: Array.isArray(c.viewer_like) && c.viewer_like.length > 0,
         parentId: c.parent_id ?? null,
         replies: [],
     })));

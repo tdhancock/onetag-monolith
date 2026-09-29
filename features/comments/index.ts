@@ -13,10 +13,9 @@ export {
 } from './api';
 
 export { commentKeys } from './keys';
-export { threadComments, addToThreads, removeFromThreads, threadIdFor } from './thread';
+export { threadComments, addToThreads, removeFromThreads, threadIdFor, findInThreads, patchInThreads } from './thread';
 
-export { useCommentsQuery, useCommentLikesQuery } from './queries';
-export type { CommentLikes } from './queries';
+export { useCommentsQuery } from './queries';
 
 export { useAddComment, useDeleteComment, useToggleCommentLike } from './mutations';
 export type { AddCommentVariables, DeleteCommentVariables, CommentLikeToggle } from './mutations';

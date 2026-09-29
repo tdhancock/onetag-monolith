@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
-import { useCommentLikesQuery, useToggleCommentLike } from '../../features/comments';
+import { useToggleCommentLike } from '../../features/comments';
 import { Avatar, IconButton, Skeleton } from './ui';
 import { HeartIcon } from './Icons';
 import RenderUserContent from './RenderUserContent';
@@ -53,14 +53,14 @@ const CommentRow: React.FC<CommentRowProps> = ({
   const { triggerHapticFeedback } = useApp();
   const { profileId } = useCurrentProfile();
 
-  // Likes are a query and an optimistic toggle (ONE-14): the count moves at
-  // once and reverts if the write fails.
-  const { data: likes } = useCommentLikesQuery(comment.id, profileId);
+  // Likes come with the comment, read with its post's comments, and flip
+  // through an optimistic toggle (ONE-14): the count moves at once and
+  // reverts if the write fails.
   const likeHaptic = useCallback(() => triggerHapticFeedback(), [triggerHapticFeedback]);
   const like = useToggleCommentLike(profileId, likeHaptic);
 
-  const isLiked = Boolean(likes?.isLiked);
-  const likesCount = likes?.count ?? 0;
+  const isLiked = Boolean(comment.isLiked);
+  const likesCount = comment.likes ?? 0;
 
   const row = (
     <View

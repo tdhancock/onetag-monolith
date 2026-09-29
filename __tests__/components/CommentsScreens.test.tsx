@@ -102,7 +102,6 @@ const state = {
     isError: false,
     refetch: jest.fn(() => Promise.resolve()),
   },
-  likes: {} as Record<string, { count: number; isLiked: boolean }>,
   post: {
     data: null as unknown,
     isPending: false,
@@ -114,7 +113,6 @@ const mockDelete = jest.fn();
 const mockToggleLike = jest.fn();
 jest.mock('../../features/comments', () => ({
   useCommentsQuery: () => state.comments,
-  useCommentLikesQuery: (id: string) => ({ data: state.likes[id] ?? { count: 0, isLiked: false } }),
   useAddComment: () => ({ mutate: mockAdd, isPending: false }),
   useDeleteComment: () => ({ mutate: mockDelete }),
   useToggleCommentLike: () => ({ toggle: mockToggleLike }),
@@ -150,7 +148,6 @@ beforeEach(() => {
   state.comments.data = [comment('c1', 'ana', 'first!'), comment('c2', 'me', 'mine', 'p-me')];
   state.comments.isPending = false;
   state.comments.isError = false;
-  state.likes = {};
   state.post.data = { id: 'post-1', username: 'ana', replies: 5, content: 'x', media_type: 'text' };
   state.post.isPending = false;
   [mockPush, mockBack, mockReplace, mockAdd, mockDelete, mockToggleLike].forEach(m => m.mockClear());
@@ -237,7 +234,8 @@ describe('Post detail', () => {
 
 describe('Comments — rows', () => {
   it('reads "username text", then "2h · N likes", then Reply', () => {
-    state.likes = { c1: { count: 3, isLiked: false } };
+    // Likes come with the comment, read with the post's comments.
+    state.comments.data = [{ ...comment('c1', 'ana', 'first!'), likes: 3 }, comment('c2', 'me', 'mine', 'p-me')];
     const el = mount(<CommentsScreen />);
     expect(el.textContent).toContain('ana first!');
     expect(el.textContent).toContain('2h · 3 likes');
@@ -250,7 +248,7 @@ describe('Comments — rows', () => {
   });
 
   it('fills the heart red when liked, and toggles on tap', () => {
-    state.likes = { c1: { count: 1, isLiked: true } };
+    state.comments.data = [{ ...comment('c1', 'ana', 'first!'), likes: 1, isLiked: true }];
     const el = mount(<CommentsScreen />);
     const liked = button(el, 'Like comment, liked')!;
     expect(liked.querySelector('svg')!.getAttribute('data-fill')).toBe(color.heart);

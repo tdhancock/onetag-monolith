@@ -37,7 +37,7 @@ export default function PostDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   // The same query the comments screen reads, so opening it is instant.
-  const commentsQuery = useCommentsQuery(post ? post.id : undefined);
+  const commentsQuery = useCommentsQuery(post ? post.id : undefined, profileId);
   const firstComments = useMemo(
     () => (commentsQuery.data ?? []).filter(c => !isUserBlocked(c.username)).slice(0, INLINE_COMMENT_COUNT),
     [commentsQuery.data, isUserBlocked],

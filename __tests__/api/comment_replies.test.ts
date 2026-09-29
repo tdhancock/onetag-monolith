@@ -9,7 +9,7 @@
 import { actAs } from './support/liveSupabase';
 import { sql } from './support/localStack';
 import { createAccount, deleteAccounts, type Account } from './support/accounts';
-import { addComment, deleteComment, getCommentsForPost } from '../../features/comments/api';
+import { addComment, deleteComment, getCommentsForPost, toggleCommentLike } from '../../features/comments/api';
 import { fetchNotifications } from '../../features/notifications/api';
 
 let author: Account;
@@ -44,6 +44,19 @@ describe('comment replies', () => {
     actAs(commenter.client);
     const told = (await fetchNotifications(commenter.profileId)).filter((n) => n.sender.id === replier.profileId);
     expect(told.map((n) => n.type)).toEqual(['reply', 'reply']);
+  });
+
+  it("reads each comment's likes with the comments, as each viewer sees them", async () => {
+    actAs(replier.client);
+    await toggleCommentLike(commentId, replier.profileId);
+
+    const asLiker = await getCommentsForPost(postId, replier.profileId);
+    expect(asLiker[0]).toMatchObject({ id: commentId, likes: 1, isLiked: true });
+
+    actAs(author.client);
+    const asAuthor = await getCommentsForPost(postId, author.profileId);
+    expect(asAuthor[0]).toMatchObject({ id: commentId, likes: 1, isLiked: false });
+    expect(asAuthor[0]!.replies.every((reply) => reply.likes === 0 && !reply.isLiked)).toBe(true);
   });
 
   it('deleting the comment deletes its replies', async () => {

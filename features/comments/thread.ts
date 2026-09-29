@@ -61,5 +61,29 @@ export const removeFromThreads = (
   return { threads: next, removed };
 };
 
+/** A comment wherever it sits in the threads, or undefined. */
+export const findInThreads = (threads: readonly Comment[], commentId: string): Comment | undefined => {
+  for (const thread of threads) {
+    if (thread.id === commentId) return thread;
+    const reply = thread.replies?.find((r) => r.id === commentId);
+    if (reply) return reply;
+  }
+  return undefined;
+};
+
+/** Change one comment wherever it sits; the same reference when it isn't there. */
+export const patchInThreads = (
+  threads: readonly Comment[],
+  commentId: string,
+  transform: (comment: Comment) => Comment,
+): Comment[] => {
+  if (!findInThreads(threads, commentId)) return threads as Comment[];
+  return threads.map((thread) => {
+    if (thread.id === commentId) return transform(thread);
+    if (!thread.replies?.some((r) => r.id === commentId)) return thread;
+    return { ...thread, replies: thread.replies.map((r) => (r.id === commentId ? transform(r) : r)) };
+  });
+};
+
 /** The comment a reply attaches to: a thread's opening comment, never a reply. */
 export const threadIdFor = (comment: Pick<Comment, 'id' | 'parentId'>): string => comment.parentId ?? comment.id;

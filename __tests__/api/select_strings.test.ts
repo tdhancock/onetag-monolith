@@ -21,6 +21,7 @@ import { TAG_SELECT } from '../../features/tags/api';
 import { PROFILE_SELECT } from '../../features/profiles/api';
 import { SAVE_SELECT } from '../../features/saves/api';
 import { POSTS_BY_AUTHORS_SELECT } from '../../features/search/api';
+import { COMMENT_SELECT } from '../../features/comments/api';
 
 let reader: Account;
 
@@ -43,6 +44,7 @@ const SELECTS: [name: string, table: string, select: string][] = [
   ['PROFILE_SELECT', 'profiles', PROFILE_SELECT],
   ['SAVE_SELECT', 'saves', SAVE_SELECT],
   ['POSTS_BY_AUTHORS_SELECT', 'posts', POSTS_BY_AUTHORS_SELECT],
+  ['COMMENT_SELECT', 'comments', COMMENT_SELECT],
 ];
 
 describe("the app's select strings", () => {
