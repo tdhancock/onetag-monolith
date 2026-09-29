@@ -36,3 +36,26 @@ export const deleteCommentConfirm = (replies: number) =>
         body: `Its ${replies === 1 ? 'reply' : `${replies} replies`} will be deleted too.`,
         confirm: 'Delete',
       };
+
+/** How long a comment opened from a notification stays marked. */
+export const FOCUS_HIGHLIGHT_MS = 2500;
+
+/**
+ * Where a comment sits among a post's threads: the index of its thread, and
+ * whether it is a reply the thread folds away. Null when it isn't there —
+ * deleted since, or hidden by a block.
+ */
+export const locateComment = (
+  threads: readonly { id: string; replies?: readonly { id: string }[] }[],
+  commentId: string,
+): { index: number; threadId: string; folded: boolean } | null => {
+  for (let index = 0; index < threads.length; index += 1) {
+    const thread = threads[index]!;
+    if (thread.id === commentId) return { index, threadId: thread.id, folded: false };
+    const replies = thread.replies ?? [];
+    if (replies.some((reply) => reply.id === commentId)) {
+      return { index, threadId: thread.id, folded: visibleReplies(replies, false).length === 0 };
+    }
+  }
+  return null;
+};

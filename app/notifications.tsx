@@ -9,7 +9,7 @@ import { Avatar, Button, EmptyState, ListRow, MonoLabel, Pressable, Skeleton } f
 import { ChevronRightIcon, UserIcon } from '../components/native/Icons';
 import { getTimeAgo } from '../lib/timeAgo';
 import { firstLine, followButton } from '../lib/screens/profile';
-import { followRequestsSummary, groupNotifications, notificationSentence } from '../lib/screens/notifications';
+import { followRequestsSummary, groupNotifications, notificationRoute, notificationSentence } from '../lib/screens/notifications';
 import { color, space, type } from '../theme/tokens';
 import type { Notification } from '../types';
 
@@ -96,14 +96,11 @@ export default function NotificationsScreen() {
     }
   }, [query, followRequests, markAll]);
 
+  // A comment, reply or mention opens on the comment itself, and a liked
+  // OneSnap in the viewer; before, both opened the post or nothing.
   const handlePress = useCallback((n: Notification) => {
-    if (n.type === 'follow') {
-      router.push(`/user/${n.sender.username}`);
-    } else if (n.type === 'follow_request') {
-      router.push('/follow-requests');
-    } else if (n.post) {
-      router.push(`/post/${n.post.id}`);
-    }
+    const route = notificationRoute(n);
+    if (route) router.push(route as never);
   }, [router]);
 
   const sections = useMemo(() => groupNotifications(notifications ?? []), [notifications]);

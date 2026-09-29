@@ -23,10 +23,17 @@ describe('pushRoute', () => {
     expect(pushRoute(dataFor({ kind: 'message', senderUsername: 'bo', receiver }))).toBe('/messages?chatWith=bo');
   });
 
-  it('opens the post a comment, reply or mention is on', () => {
+  it('opens the comment a comment, reply or mention is about', () => {
     for (const type of ['comment', 'reply', 'mention']) {
-      expect(pushRoute(dataFor({ kind: 'notification', type, senderUsername: 'bo', receiver, postId: 'post-1' }))).toBe('/post/post-1');
+      const data = dataFor({ kind: 'notification', type, senderUsername: 'bo', receiver, postId: 'post-1', commentId: 'c-1' });
+      expect(pushRoute(data)).toBe('/comments/post-1?commentId=c-1');
     }
+  });
+
+  it('opens the post a mention in a post is in', () => {
+    expect(pushRoute(dataFor({ kind: 'notification', type: 'mention', senderUsername: 'bo', receiver, postId: 'post-1' }))).toBe(
+      '/post/post-1',
+    );
   });
 
   it('opens Notifications for anything else', () => {

@@ -375,6 +375,18 @@ describe('Comments — replies', () => {
     expect(mockDelete).toHaveBeenCalledWith({ postId: 'post-1', commentId: 'c2' }, expect.anything());
   });
 
+  it('opens a folded thread on the reply a notification is about, and marks it', () => {
+    mockParams.current = { postId: 'post-1', commentId: 'r2' };
+    state.comments.data = [withReplies(3)];
+    const el = mount(<CommentsScreen />);
+    // The thread of three would fold; it opens because a notification points into it.
+    expect(el.textContent).toContain('reply 2');
+    const row = Array.from(el.querySelectorAll('div')).find(
+      (d) => d.textContent?.startsWith('Bbo reply 2') && d.style.backgroundColor === rgb(color.bgPanel),
+    );
+    expect(row).toBeDefined();
+  });
+
   it('can be called off, leaving an ordinary comment', () => {
     const el = mount(<CommentsScreen />);
     act(() => button(el, 'Reply to ana')!.click());

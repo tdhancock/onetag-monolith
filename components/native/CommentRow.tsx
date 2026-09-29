@@ -20,6 +20,8 @@ interface CommentRowProps {
   onReply?: (comment: Comment) => void;
   /** A reply, drawn smaller and indented under the comment it answers. */
   isReply?: boolean;
+  /** The comment a notification opened on, marked for a moment. */
+  highlighted?: boolean;
 }
 
 /** The commenter's avatar diameter. */
@@ -40,7 +42,14 @@ export const commentMeta = (timeAgo: string, likes: number): string =>
  * line of time and likes, and a heart on the right. Your own comments swipe
  * to reveal Delete.
  */
-const CommentRow: React.FC<CommentRowProps> = ({ comment, onViewProfile, onDelete, onReply, isReply = false }) => {
+const CommentRow: React.FC<CommentRowProps> = ({
+  comment,
+  onViewProfile,
+  onDelete,
+  onReply,
+  isReply = false,
+  highlighted = false,
+}) => {
   const { triggerHapticFeedback } = useApp();
   const { profileId } = useCurrentProfile();
 
@@ -55,7 +64,7 @@ const CommentRow: React.FC<CommentRowProps> = ({ comment, onViewProfile, onDelet
 
   const row = (
     <View
-      style={[styles.row, isReply && styles.replyRow]}
+      style={[styles.row, isReply && styles.replyRow, highlighted && styles.highlighted]}
       // Swiping is invisible to a screen reader; the same Delete is offered as
       // an accessibility action instead.
       accessibilityActions={onDelete ? [{ name: 'delete', label: 'Delete comment' }] : undefined}
@@ -163,6 +172,9 @@ const styles = StyleSheet.create({
   replyRow: {
     minHeight: 44,
     paddingLeft: space.lg + REPLY_INDENT,
+  },
+  highlighted: {
+    backgroundColor: color.bgPanel,
   },
   metaRow: {
     flexDirection: 'row',

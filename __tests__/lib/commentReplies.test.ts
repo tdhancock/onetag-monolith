@@ -4,7 +4,14 @@
 // How the comments screen shows a thread's replies, and how a reply starts
 // (lib/screens/comments).
 
-import { deleteCommentConfirm, hiddenRepliesLabel, replyPrefill, REPLIES_SHOWN, visibleReplies } from '../../lib/screens/comments';
+import {
+  deleteCommentConfirm,
+  hiddenRepliesLabel,
+  locateComment,
+  replyPrefill,
+  REPLIES_SHOWN,
+  visibleReplies,
+} from '../../lib/screens/comments';
 
 describe('visibleReplies', () => {
   it('shows a short thread whole', () => {
@@ -44,5 +51,22 @@ describe('deleteCommentConfirm', () => {
 
   it('asks nothing of a comment nobody replied to', () => {
     expect(deleteCommentConfirm(0)).toBeNull();
+  });
+});
+
+describe('locateComment', () => {
+  const threads = [
+    { id: 'a', replies: [{ id: 'a1' }] },
+    { id: 'b', replies: [{ id: 'b1' }, { id: 'b2' }, { id: 'b3' }] },
+  ];
+
+  it('finds a comment, or the thread a reply is in, and says whether that reply is folded away', () => {
+    expect(locateComment(threads, 'a')).toEqual({ index: 0, threadId: 'a', folded: false });
+    expect(locateComment(threads, 'a1')).toEqual({ index: 0, threadId: 'a', folded: false });
+    expect(locateComment(threads, 'b2')).toEqual({ index: 1, threadId: 'b', folded: true });
+  });
+
+  it("is nothing for a comment that isn't there any more", () => {
+    expect(locateComment(threads, 'gone')).toBeNull();
   });
 });

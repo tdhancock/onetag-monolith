@@ -47,6 +47,8 @@ export type PushEvent =
       senderUsername: string;
       receiver: PushReceiver;
       postId: string | null;
+      /** The comment it's about, which a tap opens on. */
+      commentId?: string | null;
     }
   | {
       kind: 'message';
@@ -108,8 +110,12 @@ export const buildPush = (event: PushEvent): Omit<ExpoMessage, 'to'> | null => {
       return { title, body, data: { type }, sound: 'default' };
     case 'comment':
     case 'reply':
-    case 'mention':
-      return { title, body, data: event.postId ? { type, postId: event.postId } : { type }, sound: 'default' };
+    case 'mention': {
+      const data: Record<string, string> = { type };
+      if (event.postId) data.postId = event.postId;
+      if (event.postId && event.commentId) data.commentId = event.commentId;
+      return { title, body, data, sound: 'default' };
+    }
   }
 };
 

@@ -68,6 +68,12 @@ describe('what each push says', () => {
     });
     expect(buildPush({ ...follow, type: 'follow_request' })!.data).toEqual({ type: 'follow_request' });
     expect(buildPush({ ...follow, type: 'comment', postId: 'post-1' })!.data).toEqual({ type: 'comment', postId: 'post-1' });
+    // With the comment it's about, so a tap opens on it.
+    expect(buildPush({ ...follow, type: 'reply', postId: 'post-1', commentId: 'c-1' })!.data).toEqual({
+      type: 'reply',
+      postId: 'post-1',
+      commentId: 'c-1',
+    });
     expect(buildPush({ ...follow, type: 'mention', postId: 'post-1' })!.body).toBe('ana mentioned you.');
   });
 

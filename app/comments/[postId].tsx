@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,14 @@ import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
 import { useCommentsQuery, useAddComment, useDeleteComment, threadIdFor } from '../../features/comments';
 import { cleanHtml } from '../../lib/cleanHtml';
-import { deleteCommentConfirm, hiddenRepliesLabel, replyPrefill, visibleReplies } from '../../lib/screens/comments';
+import {
+  deleteCommentConfirm,
+  FOCUS_HIGHLIGHT_MS,
+  hiddenRepliesLabel,
+  locateComment,
+  replyPrefill,
+  visibleReplies,
+} from '../../lib/screens/comments';
 import CommentRow, { CommentRowSkeleton, COMMENT_AVATAR_SIZE, REPLY_INDENT } from '../../components/native/CommentRow';
 import { Avatar, EmptyState, IconButton, TextField } from '../../components/native/ui';
 import { XIcon } from '../../components/native/Icons';
@@ -32,11 +39,12 @@ const SKELETON_ROWS = 6;
 const COMPOSER_MAX_HEIGHT = 4 * 21 + 2 * space.md;
 
 export default function CommentsScreen() {
-  const { postId } = useLocalSearchParams<{ postId: string }>();
+  const { postId, commentId: focusId } = useLocalSearchParams<{ postId: string; commentId?: string }>();
   const router = useRouter();
   const { isUserBlocked, addToast } = useApp();
   const { profile: userProfile, profileId } = useCurrentProfile();
   const inputRef = useRef<TextInput>(null);
+  const listRef = useRef<FlatList<Comment>>(null);
 
   const [newCommentText, setNewCommentText] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -142,6 +150,39 @@ export default function CommentsScreen() {
     }
   }, [commentsQuery]);
 
+  // Opened from a notification: go to the comment it's about, open its
+  // thread if a reply is folded away, and mark it for a moment. Once, when
+  // the comments first arrive.
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+  const focused = useRef(false);
+  useEffect(() => {
+    if (focused.current || !focusId || !comments) return;
+    focused.current = true;
+    const place = locateComment(localComments, focusId);
+    if (!place) return;
+    if (place.folded) setExpanded((open) => new Set(open).add(place.threadId));
+    setHighlighted(focusId);
+    // After the list has laid out the rows up to it.
+    requestAnimationFrame(() =>
+      listRef.current?.scrollToIndex({ index: place.index, viewPosition: 0.2, animated: true }),
+    );
+  }, [focusId, comments, localComments]);
+
+  useEffect(() => {
+    if (!highlighted) return undefined;
+    const timer = setTimeout(() => setHighlighted(null), FOCUS_HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [highlighted]);
+
+  // A row further down than the list has drawn: jump near it, then try again.
+  const handleScrollToIndexFailed = useCallback(
+    (info: { index: number; averageItemLength: number }) => {
+      listRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+      setTimeout(() => listRef.current?.scrollToIndex({ index: info.index, viewPosition: 0.2, animated: true }), 100);
+    },
+    [],
+  );
+
   const renderItem = useCallback(
     ({ item }: { item: Comment }) => {
       // Only your own comments delete, by the account's author id where the
@@ -158,6 +199,7 @@ export default function CommentsScreen() {
             onViewProfile={handleViewProfile}
             onDelete={isMine(item) ? handleDeleteComment : undefined}
             onReply={handleReply}
+            highlighted={highlighted === item.id}
           />
           {shown.map((reply) => (
             <CommentRow
@@ -167,6 +209,7 @@ export default function CommentsScreen() {
               onViewProfile={handleViewProfile}
               onDelete={isMine(reply) ? handleDeleteComment : undefined}
               onReply={handleReply}
+              highlighted={highlighted === reply.id}
             />
           ))}
           {hidden ? (
@@ -182,7 +225,7 @@ export default function CommentsScreen() {
         </View>
       );
     },
-    [expanded, handleDeleteComment, handleReply, handleViewProfile, profileId, userProfile?.username],
+    [expanded, highlighted, handleDeleteComment, handleReply, handleViewProfile, profileId, userProfile?.username],
   );
 
   const renderBody = () => {
@@ -206,10 +249,12 @@ export default function CommentsScreen() {
 
     return (
       <FlatList
+        ref={listRef}
         data={localComments}
         keyExtractor={item => item.id}
         renderItem={renderItem}
-        extraData={expanded}
+        extraData={[expanded, highlighted]}
+        onScrollToIndexFailed={handleScrollToIndexFailed}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
