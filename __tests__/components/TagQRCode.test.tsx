@@ -35,14 +35,9 @@ jest.mock('react-native-qrcode-svg', () => {
   };
 });
 
-import TagQRCode, {
-  QR_GROUND,
-  QR_INK,
-  TAG_QR_ERROR_CORRECTION,
-  TAG_QR_QUIET_ZONE_MODULES,
-  tagQrQuietZone,
-} from '../../components/native/TagQRCode';
+import TagQRCode, { QR_GROUND, QR_INK, tagQrQuietZone } from '../../components/native/TagQRCode';
 import { buildTagUrl, resolveTagBaseUrl } from '../../lib/tagLinks';
+import { TAG_QR_ERROR_CORRECTION, TAG_QR_QUIET_ZONE_MODULES } from '../../lib/tagQr';
 import { type } from '../../theme/tokens';
 
 const CODE = 'ABC23XYZ';
@@ -148,11 +143,5 @@ describe('how it is drawn', () => {
   it('can leave the short code out', () => {
     const el = mount(<TagQRCode shortCode={CODE} size={240} showCode={false} />);
     expect(el.textContent).not.toContain(CODE);
-  });
-
-  it('hands the rendered Svg to getRef, for export', () => {
-    const getRef = jest.fn();
-    mount(<TagQRCode shortCode={CODE} size={240} getRef={getRef} />);
-    expect(mockEncoded[0]!.getRef).toBe(getRef);
   });
 });

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,13 +7,7 @@ import { useCurrentProfile } from '../../../features/profiles';
 import { useMyTagQuery } from '../../../features/tags';
 import { Button, EmptyState, MonoLabel } from '../../../components/native/ui';
 import TagQRCode from '../../../components/native/TagQRCode';
-import {
-  copyTagLink,
-  qrPngBase64,
-  saveTagQrToPhotos,
-  shareTagQrImage,
-  type QrSvgHandle,
-} from '../../../services/tagSharing';
+import { copyTagLink, saveTagQrToPhotos, shareTagQrImage } from '../../../services/tagSharing';
 import { buildTagUrl } from '../../../lib/tagLinks';
 import { destinationLabel, PHOTOS_DENIED_MESSAGE, TAGS_DASHBOARD_ROUTE, tagTitle } from '../../../lib/screens/tags';
 import { color, space, type } from '../../../theme/tokens';
@@ -26,10 +20,10 @@ const MAX_PREVIEW = 320;
  * destination, and the ways to get it off the phone — saved to Photos, shared
  * as an image, or the link copied.
  *
- * The image is drawn from the vector at print resolution, independent of the
- * preview's size on screen: a code captured at screen size prints blurry, and
- * a printed code that won't scan is found out only after the stickers are
- * paid for.
+ * The image is drawn from the code's own modules at print resolution
+ * (lib/tagQr.ts), independent of the preview's size on screen: a code
+ * captured at screen size prints blurry, and a printed code that won't scan
+ * is found out only after the stickers are paid for.
  */
 export default function ExportTagScreen() {
   const router = useRouter();
@@ -40,7 +34,6 @@ export default function ExportTagScreen() {
   const { profileId } = useCurrentProfile();
   const { data: tag, isPending, isError, refetch } = useMyTagQuery(profileId, tagId);
 
-  const svg = useRef<QrSvgHandle | null>(null);
   const [busy, setBusy] = useState<'save' | 'share' | null>(null);
   const [photosDenied, setPhotosDenied] = useState(false);
 
@@ -72,16 +65,11 @@ export default function ExportTagScreen() {
     );
   }
 
-  const exportPng = async (): Promise<string> => {
-    if (!svg.current) throw new Error('The QR code has not rendered yet.');
-    return qrPngBase64(svg.current);
-  };
-
   const handleSave = async () => {
     setBusy('save');
     try {
       // Permission is asked for here, on the tap, never on mount.
-      const result = await saveTagQrToPhotos(await exportPng(), tag.shortCode);
+      const result = await saveTagQrToPhotos(tag.shortCode);
       setPhotosDenied(result === 'denied');
       if (result === 'saved') addToast('Saved to Photos.', 'success');
     } catch {
@@ -94,7 +82,7 @@ export default function ExportTagScreen() {
   const handleShare = async () => {
     setBusy('share');
     try {
-      await shareTagQrImage(await exportPng(), tag.shortCode);
+      await shareTagQrImage(tag.shortCode);
     } catch {
       addToast("Couldn't share the QR code.", 'error');
     } finally {
@@ -126,13 +114,7 @@ export default function ExportTagScreen() {
         )}
 
         <View style={styles.qr}>
-          <TagQRCode
-            shortCode={tag.shortCode}
-            size={previewSize}
-            getRef={(ref) => {
-              svg.current = ref as QrSvgHandle | null;
-            }}
-          />
+          <TagQRCode shortCode={tag.shortCode} size={previewSize} />
         </View>
 
         <View style={styles.actions}>

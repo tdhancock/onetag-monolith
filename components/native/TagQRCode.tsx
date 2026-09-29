@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { buildTagUrl, isValidShortCode } from '../../lib/tagLinks';
+import { TAG_QR_ERROR_CORRECTION, TAG_QR_QUIET_ZONE_MODULES } from '../../lib/tagQr';
 import { space, type } from '../../theme/tokens';
 
 // A QR code is pure black on pure white whatever the theme. Scanners read
@@ -10,16 +11,6 @@ import { space, type } from '../../theme/tokens';
 // must not "fix" them. The one sanctioned raw colour outside theme/ (ONE-33).
 export const QR_INK = '#000000'; // allow-hex: QR scan reliability, see above
 export const QR_GROUND = '#ffffff'; // allow-hex: QR scan reliability, see above
-
-/**
- * Error correction level H recovers 30% of the code. Physical tags get
- * scuffed, rained on and partly covered, and the payload — a short URL — is
- * small enough that H costs almost nothing in density.
- */
-export const TAG_QR_ERROR_CORRECTION = 'H' as const;
-
-/** The quiet zone every reader expects around a code, in modules (ISO/IEC 18004). */
-export const TAG_QR_QUIET_ZONE_MODULES = 4;
 
 /** The fewest modules a QR code has on a side: version 1. */
 const SMALLEST_QR_MODULES = 21;
@@ -46,8 +37,6 @@ export interface TagQRCodeProps {
   size: number;
   /** The short code in DM Mono beneath the code — the fallback when it won't scan. */
   showCode?: boolean;
-  /** The underlying Svg, for exporting it as a PNG (`toDataURL`). */
-  getRef?: (svg: unknown) => void;
 }
 
 /**
@@ -55,7 +44,7 @@ export interface TagQRCodeProps {
  * with a quiet zone of at least four modules, black on white on a white card
  * — so it scans on any theme — and the short code printed beneath.
  */
-const TagQRCode: React.FC<TagQRCodeProps> = ({ shortCode, size, showCode = true, getRef }) => {
+const TagQRCode: React.FC<TagQRCodeProps> = ({ shortCode, size, showCode = true }) => {
   if (!isValidShortCode(shortCode)) return null;
 
   return (
@@ -72,7 +61,6 @@ const TagQRCode: React.FC<TagQRCodeProps> = ({ shortCode, size, showCode = true,
         quietZone={tagQrQuietZone(size)}
         color={QR_INK}
         backgroundColor={QR_GROUND}
-        getRef={getRef}
       />
       {showCode ? (
         <Text style={[styles.code, { fontSize: Math.max(13, Math.round(size / 14)) }]} selectable>
