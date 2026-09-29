@@ -17,9 +17,8 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const mockOpenSettings = jest.fn(() => Promise.resolve());
@@ -56,6 +55,8 @@ jest.mock('react-native-qrcode-svg', () => {
   return {
     __esModule: true,
     default: (props: { value: string; size: number; getRef?: (svg: unknown) => void }) => {
+      // The real component hands its Svg ref over once, on mount.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       React.useEffect(() => props.getRef?.(mockSvg), []);
       return React.createElement('div', { 'data-qr': props.value, 'data-size': props.size });
     },

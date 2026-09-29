@@ -14,7 +14,7 @@ jest.mock('expo-image-picker', () => ({
   MediaTypeOptions: { Images: 'images', Videos: 'videos' },
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+ 
 const ImagePicker = require('expo-image-picker');
 
 // ---------------------------------------------------------------------------

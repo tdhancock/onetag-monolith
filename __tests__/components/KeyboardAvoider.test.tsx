@@ -24,9 +24,8 @@ jest.mock('react-native-safe-area-context', () => ({
   initialWindowMetrics: { insets: { top: 47, bottom: 34, left: 0, right: 0 }, frame: { x: 0, y: 0, width: 390, height: 844 } },
 }));
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 import { Keyboard } from 'react-native';
 import KeyboardAvoider, { keyboardCover, keyboardOverlap } from '../../components/native/KeyboardAvoider';
 import { keyboardHeightOnScreen } from '../../lib/useKeyboardHeight';

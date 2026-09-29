@@ -7,7 +7,7 @@
 // `act` comes from `react` itself (React 19), not `react-dom/test-utils`.
 
 declare module 'react-dom/client' {
-  import type { ReactNode, ReactElement } from 'react';
+  import type { ReactNode } from 'react';
 
   export interface Root {
     render(children: ReactNode): void;

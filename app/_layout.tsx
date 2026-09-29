@@ -15,7 +15,7 @@ import {
 import { DMMono_500Medium } from '@expo-google-fonts/dm-mono';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
-import { AppProvider, useApp } from '../store/AppContext.native';
+import { AppProvider } from '../store/AppContext.native';
 import { useCurrentProfile } from '../features/profiles';
 import { supabase } from '../services/supabase.native';
 import {
@@ -33,7 +33,6 @@ import { pushRoute } from '../lib/screens/notifications';
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
-  const { theme } = useApp();
   const { authUserId, status: profileStatus } = useCurrentProfile();
   const segments = useSegments();
   const router = useRouter();
@@ -60,12 +59,12 @@ function RootLayoutNav() {
 
     // Initial session check + redirect
     supabase.auth.getSession().then(({ data: { session } }) => {
-      const inAuthGroup = segments[0] === '(auth)';
+      const inAuthGroup = currentSegments.current[0] === '(auth)';
       // Tag Resolution never needs an account (ONE-30): a stranger who
       // opens a scanned sticker's link must land on its Destination, not on
       // the sign-in screen. Nor does a product or project page opened from a
       // shared link (ONE-40, ONE-41).
-      const publicRoute = opensWithoutSession(segments[0]);
+      const publicRoute = opensWithoutSession(currentSegments.current[0]);
       if (!session && !inAuthGroup && !publicRoute) {
         router.replace('/(auth)/login');
       } else if (session && inAuthGroup) {
@@ -88,7 +87,7 @@ function RootLayoutNav() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [fontsLoaded]); // segments removed — listener is stable across navigations
+  }, [fontsLoaded, router]); // not segments: the listener is stable across navigations
 
   // Push notifications registration
   // Account-scoped: a device registers for the account, never for one of its

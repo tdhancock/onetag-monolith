@@ -29,9 +29,8 @@ jest.mock('expo-image', () => {
   };
 });
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 import { GridTile } from '../../components/native/ProfileGrid';
 import { profileGridTileSize } from '../../lib/screens/profile';
 import type { Post } from '../../types';

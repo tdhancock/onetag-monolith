@@ -1,5 +1,4 @@
 // OneTag — test configuration for pure logic tests (no React Native)
-const path = require('path');
 
 /** @type {import('jest').Config} */
 module.exports = {

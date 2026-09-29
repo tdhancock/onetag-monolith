@@ -12,9 +12,8 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 
 // ─── 1. Mock the native runtime ─────────────────────────────────────────
 
@@ -323,7 +322,7 @@ describe('Messages — thread', () => {
 
   it('marks a message read when it arrives in the open thread', () => {
     state.thread.data = [msg('m1', 'p-ana', 'hey', { seen: true })];
-    const el = mountThread();
+    mountThread();
     mockMarkChatRead.mockClear();
 
     state.thread.data = [msg('m1', 'p-ana', 'hey', { seen: true }), msg('m2', 'p-ana', 'you there?', { seen: false })];

@@ -17,6 +17,8 @@ export default {
     "./store/**/*.{ts,tsx}",
     "./theme/**/*.{ts,tsx}",
   ],
+  // NativeWind documents its preset as a require() in the Tailwind config.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   presets: [require("nativewind/preset")],
   darkMode: "class",
   theme: {

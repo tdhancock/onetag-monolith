@@ -7,7 +7,6 @@ import {
   Post,
   SimpleUser,
   UserProfile,
-  Notification,
   Comment,
   Story,
   Message,
@@ -330,6 +329,10 @@ describe('normalizeNotifications — mixed valid/invalid data', () => {
     ] as any[];
 
     const result = normalizeNotifications(mixed);
+    expect(result).toHaveLength(2);
+    expect(result[0].sender.username).toBe('alice');
+    // An empty join array becomes the placeholder sender, not undefined.
+    expect(result[1].sender).toEqual({ id: '', username: '', avatar_url: null });
   });
 
   it('handles empty array input', () => {

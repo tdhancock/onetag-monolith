@@ -26,8 +26,6 @@ export interface AnalyticsTransport {
 export interface AnalyticsOptions {
   /** Max events buffered before auto-flush. Default 10. */
   batchSize?: number;
-  /** Generates a unique id for the batch (defaults to crypto-free counter). */
-  generateBatchId?: () => string;
   /** Returns the current epoch ms. */
   now?: () => number;
   /** Transport used to deliver flushed batches. */
@@ -46,8 +44,6 @@ export interface Analytics {
 export function createAnalytics(options: AnalyticsOptions): Analytics {
   const batchSize = options.batchSize ?? 10;
   const now = options.now ?? (() => Date.now());
-  let idCounter = 0;
-  const generateBatchId = options.generateBatchId ?? (() => `batch-${(idCounter += 1)}`);
 
   const queue: AnalyticsEvent[] = [];
   const flushed: AnalyticsEvent[] = [];
@@ -69,13 +65,9 @@ export function createAnalytics(options: AnalyticsOptions): Analytics {
     if (queue.length === 0) return [];
     const batch = queue.splice(0, queue.length);
     flushed.push(...batch);
-    // Tag the batch via a side-channel record before sending.
-    lastBatchId = generateBatchId();
     await options.transport.send(batch);
     return batch;
   };
-
-  let lastBatchId: string | null = null;
 
   return {
     trackScreenView(name, params) {
@@ -113,7 +105,6 @@ export function createAnalytics(options: AnalyticsOptions): Analytics {
     reset() {
       queue.length = 0;
       flushed.length = 0;
-      lastBatchId = null;
     },
   };
 }

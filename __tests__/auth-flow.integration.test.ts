@@ -25,12 +25,11 @@
 import type { Post, UserProfile } from '../types';
 import { ensureCurrentUserProfile } from '../services/profileBootstrap';
 import { getUserProfile } from '../features/profiles';
-import { FEED_PAGE_SIZE } from '../features/posts';
 // ONE-12 moved the feed read into features/posts and made the user id an
 // explicit argument instead of something the function reads from auth. The
 // "no user id → no request at all" guarantee now belongs to the hook, and is
 // asserted in __tests__/features/posts/queries.test.ts.
-import { fetchFeedPage } from '../features/posts';
+import { FEED_PAGE_SIZE, fetchFeedPage } from '../features/posts';
 
 // ─── 1. Supabase mock ───────────────────────────────────────────────────
 //
@@ -39,8 +38,7 @@ import { fetchFeedPage } from '../features/posts';
 //   * `supabase.from(table).<chain>()` → query builder that always resolves
 //
 // The query builder is a thenable, so any `await` on the result of any
-// chain node resolves to the per-call canned result. Tests populate
-// `fromHandlers` to drive different responses per `from(table)` call.
+// chain node resolves to the per-call canned result.
 
 type ChainResult = { data: any; error: any };
 
@@ -65,10 +63,6 @@ function makeQueryBuilder(result: ChainResult): any {
   };
   return self;
 }
-
-// Per-table canned response. Each test populates this map.
-// Default handler returns `{ data: [], error: null }`.
-let fromHandlers: Record<string, () => ChainResult> = {};
 
 jest.mock('../services/supabase.native', () => {
   // Fresh state inside the factory — jest calls the factory on every

@@ -13,9 +13,8 @@ jest.mock('react-native', () => ({
 }));
 jest.mock('react-native-svg', () => require('../../support/reactNativeSvgStub'));
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 import { Keyboard } from 'react-native';
 import Sheet, { SheetRow, SHEET_ROW_HEIGHT } from '../../../components/native/ui/Sheet';
 import { color } from '../../../theme/tokens';

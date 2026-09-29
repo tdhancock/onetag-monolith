@@ -11,9 +11,9 @@ import {
   useProfilePostCountQuery,
   profileKeys,
   useCurrentProfile,
+  getUserProfile,
 } from '../../features/profiles';
 import { useRealtimeSync } from '../../lib/realtimeBridge';
-import { getUserProfile } from '../../features/profiles';
 import { setUserVerified, useIsAdmin } from '../../features/admin';
 import { useAuthUserId } from '../../features/auth';
 import { reportUser } from '../../features/moderation';
@@ -205,7 +205,7 @@ export default function UserProfileScreen() {
       setProfile(prev => prev ? { ...prev, isVerified: !prev.isVerified } : null);
       await setUserVerified(profile.id, !profile.isVerified);
       addToast(`User ${profile.isVerified ? 'unverified' : 'verified'} successfully.`, 'success');
-    } catch (error) {
+    } catch {
       setProfile(prev => prev ? { ...prev, isVerified: !prev.isVerified } : null);
       addToast('Error updating verification status.', 'error');
     }

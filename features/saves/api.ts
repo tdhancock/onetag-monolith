@@ -8,7 +8,6 @@ import { supabase } from '../../services/supabase.native';
 import { POST_SELECT_QUERY, mapPostData, scopePostsToViewer } from '../../services/postRows';
 import { mapProductSummaryRow, PRODUCT_SUMMARY_SELECT, type ProductSummaryRow } from '../../services/productRows';
 import { mapProjectSummaryRow, PROJECT_SUMMARY_SELECT, type ProjectSummaryRow } from '../../services/projectRows';
-import type { Post } from '../../types';
 import type { Save, SavedItem, SavedProfile, SaveKind, SaveRow, SaveTarget } from './types';
 
 /** The column each kind of target is saved in. */

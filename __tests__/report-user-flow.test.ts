@@ -55,7 +55,7 @@ jest.mock('../services/supabase.native', () => ({
 
 // Load the mocked supabase handle so features/moderation resolves against
 // the same mock instance.
-const { supabase } = require('../services/supabase.native');
+require('../services/supabase.native');
 
 // We require these AFTER the mock is installed so they bind to it.
 const {

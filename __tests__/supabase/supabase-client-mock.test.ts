@@ -121,7 +121,7 @@ jest.mock('../../services/supabase.native', () => {
   });
 
   // onAuthStateChange(listener) → { data: { subscription } }
-  const authListeners: Array<(event: string, session: any) => void> = [];
+  const authListeners: ((event: string, session: any) => void)[] = [];
   mockOnAuthStateChange.mockImplementation((cb: (event: string, session: any) => void) => {
     authListeners.push(cb);
     return { data: { subscription: { unsubscribe: jest.fn() } } };

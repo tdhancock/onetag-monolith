@@ -197,6 +197,7 @@ const PostHeader: React.FC<{
     </View>
   );
 });
+PostHeader.displayName = 'PostHeader';
 
 // ─── PostCard ──────────────────────────────────────
 
@@ -257,7 +258,6 @@ const PostCard: React.FC<PostCardProps> = ({
   const media = useImageContentRect();
 
   const isTextOnly = post.media_type === 'text';
-  const isImage = post.media_type === 'image';
   const timeAgo = getTimeAgo(post.timestamp);
 
   // The reply count comes off the post itself. It used to prefer the length
@@ -298,7 +298,7 @@ const PostCard: React.FC<PostCardProps> = ({
       Animated.spring(heartScale, { toValue: 1.2, useNativeDriver: true, speed: 50 }),
       Animated.timing(heartScale, { toValue: 0, duration: 400, useNativeDriver: true }),
     ]).start(() => setShowHeart(false));
-  }, [isStoryVersion, liked]);
+  }, [isStoryVersion, liked, handleLike, triggerHapticFeedback, heartScale]);
 
   const handleDelete = useCallback(() => {
     Alert.alert('Delete Post', 'Are you sure you want to delete this post?', [
@@ -320,7 +320,7 @@ const PostCard: React.FC<PostCardProps> = ({
     } else {
       router.push(`/user/${post.username}`);
     }
-  }, [post.username, post.avatar]);
+  }, [post.username, post.avatar, onViewProfile, router]);
 
   // Last tap tracking for double tap
   const lastTap = useRef(0);

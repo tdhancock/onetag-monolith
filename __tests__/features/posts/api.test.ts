@@ -23,7 +23,7 @@ let pageResult: { data: { id: string }[] | null; error: unknown } = { data: [], 
 /** The posts read by those ids. */
 let postsResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+ 
 const { supabase } = require('../../../services/supabase.native');
 
 supabase.rpc.mockImplementation((fn: string, args: Record<string, unknown>) => {

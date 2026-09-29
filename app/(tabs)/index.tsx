@@ -24,7 +24,6 @@ import {
   feedPosts,
   useNewestFeedPostQuery,
 } from '../../features/posts';
-import { supabase } from '../../services/supabase.native';
 import PostCard from '../../components/native/PostCard';
 import PostSkeleton from '../../components/native/PostSkeleton';
 import HomeHeader from '../../components/native/HomeHeader';

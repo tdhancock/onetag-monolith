@@ -12,8 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../store/AppContext.native';
 import { profileKeys, useCurrentProfile } from '../features/profiles';
-import { postKeys, useUpdatePost } from '../features/posts';
-import { fetchPostById as getPostById } from '../features/posts';
+import { postKeys, useUpdatePost, fetchPostById as getPostById } from '../features/posts';
 import { embeddedTagWriter, tagKeys } from '../features/tags';
 import { Avatar, Button, EmptyState, Skeleton } from '../components/native/ui';
 import ComposeMedia from '../components/native/ComposeMedia';
@@ -84,7 +83,7 @@ export default function EditPostScreen() {
       }
     };
     fetchPost();
-  }, [id]);
+  }, [id, addToast]);
 
   // Only your own photo post is tagged here: a text post has nothing to tag,
   // and a tag belongs to the post's author.

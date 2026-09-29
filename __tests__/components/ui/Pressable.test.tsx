@@ -18,9 +18,8 @@ jest.mock('react-native', () => require('../../support/reactNativeDom'));
 
 import fs from 'fs';
 import path from 'path';
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 import Pressable from '../../../components/native/ui/Pressable';
 
 let root: Root | null = null;

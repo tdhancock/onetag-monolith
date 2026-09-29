@@ -61,7 +61,7 @@ describe('queryClient — query defaults', () => {
   });
 
   it('is a singleton — the same instance on every import', () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const again = require('../../lib/queryClient').queryClient;
     expect(again).toBe(queryClient);
     expect(queryClient).toBeInstanceOf(QueryClient);

@@ -65,6 +65,7 @@ export const GridTile: React.FC<GridTileProps> = React.memo(({ post, index, onPr
     </Pressable>
   );
 });
+GridTile.displayName = 'GridTile';
 
 interface ProductTileProps {
   product: ProductSummary;
@@ -101,6 +102,7 @@ export const ProductTile: React.FC<ProductTileProps> = React.memo(({ product, in
     </Pressable>
   );
 });
+ProductTile.displayName = 'ProductTile';
 
 /** How many placeholder tiles the loading grid draws: two rows. */
 const SKELETON_TILES = PROFILE_GRID_COLUMNS * 2;

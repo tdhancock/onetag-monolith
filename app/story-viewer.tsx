@@ -145,7 +145,7 @@ export default function StoryViewerScreen() {
     if (!currentStory) return;
     markStoryAsViewed(currentStory.timestamp);
     if (!isOwnStory) recordView(currentStory.id);
-  }, [currentIndex, currentStory?.id]);
+  }, [currentStory, isOwnStory, markStoryAsViewed, recordView]);
 
   // Navigation
   const goNext = useCallback(() => {

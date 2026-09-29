@@ -25,7 +25,7 @@
 // the test controls via `testHooks.setHandler(table, fn)`. The builder
 // records every `insert()` call so tests can assert what was written.
 
-import type { Post, UserProfile } from '../types';
+import type { Post } from '../types';
 import { checkUsernameExists } from '../features/profiles';
 import { ensureCurrentUserProfile } from '../services/profileBootstrap';
 import { publishPost } from '../features/posts';

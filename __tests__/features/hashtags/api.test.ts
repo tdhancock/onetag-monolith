@@ -14,7 +14,7 @@ const mockOrder = jest.fn(() => ({ limit: mockLimit }));
 const mockNot = jest.fn(() => ({ order: mockOrder }));
 const mockSelect = jest.fn(() => ({ not: mockNot }));
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+ 
 const { supabase } = require('../../../services/supabase.native');
 supabase.from.mockReturnValue({ select: mockSelect });
 

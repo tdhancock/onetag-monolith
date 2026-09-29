@@ -18,9 +18,8 @@
 //      without error — the fallback stays for legacy rows, which is why the
 //      ticket ruled out a backfill.
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 
 // ─── 1. Mock the native runtime and everything PostCard reaches for ─────
 

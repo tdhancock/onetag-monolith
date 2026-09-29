@@ -15,6 +15,9 @@
  * its `useApp()` context. The real `UserProfile` type contains many more
  * fields; this subset is what every helper here actually needs.
  */
+import { PRODUCT_CREATE_ROUTE } from './products';
+import { PROJECT_CREATE_ROUTE } from './projects';
+
 export interface ProfileScreenProfile {
     id?: string;
     username: string;
@@ -23,9 +26,6 @@ export interface ProfileScreenProfile {
     profilePicture?: string | null;
     isVerified?: boolean;
 }
-
-import { PRODUCT_CREATE_ROUTE } from './products';
-import { PROJECT_CREATE_ROUTE } from './projects';
 
 // ---------------------------------------------------------------------------
 // 1. Avatar rendering

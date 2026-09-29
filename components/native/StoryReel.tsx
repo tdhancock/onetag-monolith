@@ -125,6 +125,7 @@ export const OneSnapCard: React.FC<OneSnapCardProps> = React.memo(
     );
   },
 );
+OneSnapCard.displayName = 'OneSnapCard';
 
 // ─── The reel ──────────────────────────────────────
 

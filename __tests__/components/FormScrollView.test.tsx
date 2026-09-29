@@ -29,9 +29,8 @@ jest.mock('react-native', () => {
   };
 });
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 import { Keyboard } from 'react-native';
 import FormScrollView, { REVEAL_MARGIN, revealOffset } from '../../components/native/FormScrollView';
 
