@@ -12,7 +12,7 @@
 -- with a mixed-case handle, and has asked to follow private P.
 
 BEGIN;
-SELECT plan(24);
+SELECT plan(27);
 
 INSERT INTO auth.users (id, email, raw_user_meta_data) VALUES
   ('00000000-0000-0000-0000-0000000110a0', 'x@one110.test', '{"username":"one110_x"}'),
@@ -116,7 +116,9 @@ SELECT is(
 -- ─── The Messages list ────────────────────────────────────────────────
 
 SELECT is(
-  (SELECT array_agg(username ORDER BY ord) FROM public.chat_list((SELECT x FROM ids)) WITH ORDINALITY AS c(id, full_name, username, avatar_url, is_verified, last_message_at, ord)),
+  (SELECT array_agg(username ORDER BY ord) FROM public.chat_list((SELECT x FROM ids)) WITH ORDINALITY
+     AS c(id, full_name, username, avatar_url, is_verified, last_message_at,
+          last_message_text, last_message_type, last_message_sender_id, ord)),
   ARRAY['one110_z', 'one110_y', 'one110_w'],
   'everyone I have messaged, either way, latest conversation first');
 SELECT is(
@@ -127,6 +129,21 @@ SELECT is(
   (SELECT last_message_at FROM public.chat_list((SELECT x FROM ids)) WHERE username = 'one110_w'),
   now() - interval '30 days',
   'a conversation from a month ago, behind 250 newer messages, is still there');
+
+-- The preview under each name: the latest message, what kind, and whose.
+SELECT is(
+  (SELECT row(last_message_text, last_message_type, last_message_sender_id)::text
+   FROM public.chat_list((SELECT x FROM ids)) WHERE username = 'one110_y'),
+  (SELECT row('m250'::text, 'text'::text, x)::text FROM ids),
+  'a conversation previews its latest message, which I sent');
+SELECT is(
+  (SELECT row(last_message_text, last_message_sender_id)::text
+   FROM public.chat_list((SELECT x FROM ids)) WHERE username = 'one110_w'),
+  (SELECT row('from w'::text, w)::text FROM ids),
+  'and one they sent me, however old');
+SELECT is(
+  (SELECT count(*)::int FROM public.chat_list((SELECT x FROM ids)) WHERE last_message_text = 'not x'),
+  0, 'never a message between two other people');
 
 -- ─── Follow and request state ─────────────────────────────────────────
 

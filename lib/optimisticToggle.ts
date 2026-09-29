@@ -48,6 +48,15 @@ export interface OptimisticToggleConfig<TEntity> {
   /** How to recognise the entity inside a list page. */
   entityId: (entity: TEntity) => string;
   /**
+   * For lists under `listKey` that aren't infinite pages — a post's comments,
+   * held as threads — where the entity is, and how to change it there. Pages
+   * need neither. Return the same reference when the entity isn't in `data`.
+   */
+  otherLists?: {
+    find: (data: unknown, id: string) => TEntity | undefined;
+    patch: (data: unknown, id: string, transform: (entity: TEntity) => TEntity) => unknown;
+  };
+  /**
    * Fired the instant the optimistic value is written, before any network
    * call. Haptics hang here so the tap still feels immediate.
    */
@@ -164,9 +173,10 @@ export const toggleMutationOptions = <TEntity>(
     await queryClient.cancelQueries({ queryKey: config.listKey });
 
     const previousEntity = queryClient.getQueryData<TEntity>(entityKey);
+    const others = config.otherLists;
     const previousLists = queryClient
       .getQueriesData({ queryKey: config.listKey })
-      .filter(([, data]) => hasPages(data));
+      .filter(([, data]) => hasPages(data) || Boolean(others && others.find(data, id) !== undefined));
 
     const transform = (entity: TEntity) => toggled(entity, config, id);
 
@@ -174,7 +184,7 @@ export const toggleMutationOptions = <TEntity>(
 
     for (const [key] of previousLists) {
       queryClient.setQueryData(key, (data: unknown) =>
-        patchLists<TEntity>(data, id, config.entityId, transform),
+        hasPages(data) ? patchLists<TEntity>(data, id, config.entityId, transform) : others!.patch(data, id, transform),
       );
     }
 
@@ -182,7 +192,10 @@ export const toggleMutationOptions = <TEntity>(
     // before. A post liked from the feed usually has no detail entry, only a
     // copy inside the list pages — reading the detail alone reported every
     // such toggle as "on", so unsaving from the feed said "Saved".
-    const before = previousEntity ?? findInLists(previousLists, id, config.entityId);
+    const before =
+      previousEntity ??
+      findInLists(previousLists, id, config.entityId) ??
+      previousLists.map(([, data]) => others?.find(data, id)).find((entity) => entity !== undefined);
     config.onToggle?.({ isOn: before === undefined ? true : !config.isOn(before, id) });
 
     return {

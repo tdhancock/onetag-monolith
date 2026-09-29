@@ -1,27 +1,35 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
   Pressable,
-  ScrollView,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import { useStore } from '@tanstack/react-form';
 import { useApp } from '../store/AppContext.native';
-import { useUpdateProfile, useUpdateBusinessProfile, useUploadAvatar, useCurrentProfile } from '../features/profiles';
+import {
+  checkUsernameExists,
+  useUpdateProfile,
+  useUpdateBusinessProfile,
+  useUploadAvatar,
+  useCurrentProfile,
+} from '../features/profiles';
 import { cleanHtml } from '../lib/cleanHtml';
-import { Avatar, TextField } from '../components/native/ui';
+import { draftValidator } from '../lib/formErrors';
+import { Avatar } from '../components/native/ui';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
+import FormScrollView from '../components/native/FormScrollView';
+import { useAppForm, useUsernameCheck } from '../components/native/form';
 import {
   businessFormValues,
   businessUpdatesFrom,
+  editProfileErrors,
   hasBusinessChanges,
   hasProfileChanges,
-  usernameError,
-  websiteError,
 } from '../lib/screens/profile';
 import { color, space, type } from '../theme/tokens';
 
@@ -36,32 +44,74 @@ export default function EditProfileScreen() {
   // A business profile edits its category, website and location here too
   // (ONE-23). Decided by type, as the profile screen decides what to show.
   const isBusiness = userProfile?.profileType === 'business';
+  const originalUsername = userProfile?.username ?? '';
 
-  const [name, setName] = useState(userProfile?.name ?? '');
-  const [username, setUsername] = useState(userProfile?.username ?? '');
-  const [bio, setBio] = useState(userProfile?.bio ?? '');
-  const [business, setBusiness] = useState(() => businessFormValues(userProfile));
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
-  const setBusinessField = (field: keyof typeof business) => (value: string) =>
-    setBusiness(prev => ({ ...prev, [field]: value }));
+  // A new handle is looked up as sign-up's is; the one the profile has is its own.
+  const usernameCheck = useUsernameCheck(checkUsernameExists, originalUsername);
+  const validate = useMemo(
+    () => draftValidator((d: { username: string; website: string }) => editProfileErrors(originalUsername, d, isBusiness)),
+    [originalUsername, isBusiness],
+  );
+
+  const form = useAppForm({
+    defaultValues: {
+      name: userProfile?.name ?? '',
+      username: originalUsername,
+      bio: userProfile?.bio ?? '',
+      ...businessFormValues(userProfile),
+    },
+    validators: { onMount: validate, onChange: validate },
+    onSubmit: async ({ value }) => {
+      const { name, username, bio, ...business } = value;
+      // Stay on the screen until the save resolves. The previous version
+      // navigated back first, so a failure surfaced as a toast over whatever
+      // screen the user had already moved on to, with nothing left to retry on.
+      try {
+        // The avatar has to reach Storage before the profile row is written —
+        // `avatar_url` takes the returned public URL, never the local file:// URI.
+        let avatarUrl: string | null = null;
+        if (avatarUri) {
+          avatarUrl = await uploadAvatarMutation.mutateAsync(avatarUri);
+        }
+
+        // One call now: the mutation saves the row and updates every cached
+        // copy of this person — their own screen and anywhere else they appear.
+        if (hasProfileChanges(userProfile, { name, username, bio }, Boolean(avatarUri))) {
+          await updateProfile.mutateAsync({
+            name,
+            username,
+            bio: cleanHtml(bio),
+            ...(avatarUrl ? { profilePicture: avatarUrl } : {}),
+          });
+        }
+        // The business fields are their own row. The website is stored
+        // normalized, scheme included, so it opens when tapped.
+        if (isBusiness && hasBusinessChanges(userProfile, business)) {
+          await updateBusiness.mutateAsync(businessUpdatesFrom(business));
+        }
+        router.back();
+      } catch {
+        // Nothing was applied locally, so there is nothing to revert — the user
+        // keeps their edits on screen and can try again.
+        addToast('Failed to save profile. Please try again.', 'error');
+      }
+    },
+  });
 
   // Save waits for a change: a new photo, or a field that differs. A new
   // handle sign-up would refuse, or none at all, cannot be saved; an
   // unchanged one is left alone, so an account older than the rule can still
   // edit its bio.
-  const businessDirty = isBusiness && hasBusinessChanges(userProfile, business);
-  const profileDirty = hasProfileChanges(userProfile, { name, username, bio }, Boolean(avatarUri));
-  const dirty = profileDirty || businessDirty;
-  const handleProblem =
-    username === (userProfile?.username ?? '')
-      ? null
-      : username.length === 0
-        ? 'Choose a username.'
-        : usernameError(username);
-  const websiteProblem = isBusiness ? websiteError(business.website) : null;
-  const canSave = dirty && !saving && !handleProblem && !websiteProblem;
+  const values = useStore(form.store, (state) => state.values);
+  const valid = useStore(form.store, (state) => state.canSubmit);
+  const saving = useStore(form.store, (state) => state.isSubmitting);
+  const { name, username, bio, ...business } = values;
+  const dirty =
+    hasProfileChanges(userProfile, { name, username, bio }, Boolean(avatarUri)) ||
+    (isBusiness && hasBusinessChanges(userProfile, business));
+  const canSave = dirty && valid && !saving;
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -76,46 +126,8 @@ export default function EditProfileScreen() {
     }
   };
 
-  const handleSave = async () => {
-    if (!canSave) return;
-    setSaving(true);
-
-    const cleanedBio = cleanHtml(bio);
-
-    // Stay on the screen until the save resolves. The previous version
-    // navigated back first, so a failure surfaced as a toast over whatever
-    // screen the user had already moved on to, with nothing left to retry on.
-    try {
-      // The avatar has to reach Storage before the profile row is written —
-      // `avatar_url` takes the returned public URL, never the local file:// URI.
-      let avatarUrl: string | null = null;
-      if (avatarUri) {
-        avatarUrl = await uploadAvatarMutation.mutateAsync(avatarUri);
-      }
-
-      // One call now: the mutation saves the row and updates every cached
-      // copy of this person — their own screen and anywhere else they appear.
-      if (profileDirty) {
-        await updateProfile.mutateAsync({
-          name,
-          username,
-          bio: cleanedBio,
-          ...(avatarUrl ? { profilePicture: avatarUrl } : {}),
-        });
-      }
-      // The business fields are their own row. The website is stored
-      // normalized, scheme included, so it opens when tapped.
-      if (businessDirty) {
-        await updateBusiness.mutateAsync(businessUpdatesFrom(business));
-      }
-      router.back();
-    } catch {
-      // Nothing was applied locally, so there is nothing to revert — the user
-      // keeps their edits on screen and can try again.
-      addToast('Failed to save profile. Please try again.', 'error');
-    } finally {
-      setSaving(false);
-    }
+  const handleSave = () => {
+    if (canSave) void form.handleSubmit();
   };
 
   return (
@@ -155,7 +167,7 @@ export default function EditProfileScreen() {
       </View>
 
       <KeyboardAvoider style={styles.fill}>
-        <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <FormScrollView style={styles.fill} contentContainerStyle={styles.scroll}>
           <View style={styles.avatar}>
             <Avatar
               uri={avatarUri ?? userProfile?.profilePicture}
@@ -168,34 +180,31 @@ export default function EditProfileScreen() {
           </View>
 
           <View style={styles.fields}>
-            <TextField
-              label="Name"
-              value={name}
-              onChangeText={setName}
-              placeholder="Your name"
-              accessibilityLabel="Name"
-            />
-            <TextField
-              label="Username"
-              value={username}
-              // Handles are lowercase, as sign-up makes them.
-              onChangeText={(value) => setUsername(value.toLowerCase())}
-              placeholder="username"
-              autoCapitalize="none"
-              autoCorrect={false}
-              error={handleProblem}
-              accessibilityLabel="Username"
-            />
+            <form.AppField name="name">
+              {(field) => <field.TextField label="Name" placeholder="Your name" accessibilityLabel="Name" />}
+            </form.AppField>
+            <form.AppField name="username" validators={usernameCheck.validators}>
+              {(field) => (
+                <field.UsernameField
+                  check={usernameCheck}
+                  label="Username"
+                  placeholder="username"
+                  accessibilityLabel="Username"
+                />
+              )}
+            </form.AppField>
             <View>
-              <TextField
-                label="Bio"
-                value={bio}
-                onChangeText={setBio}
-                placeholder="Tell people about yourself"
-                multiline
-                inputStyle={styles.bio}
-                accessibilityLabel="Bio"
-              />
+              <form.AppField name="bio">
+                {(field) => (
+                  <field.TextField
+                    label="Bio"
+                    placeholder="Tell people about yourself"
+                    multiline
+                    inputStyle={styles.bio}
+                    accessibilityLabel="Bio"
+                  />
+                )}
+              </form.AppField>
               {/* A count, not a limit: bios have no maximum (ONE-68). */}
               <Text style={styles.count} accessibilityLabel={`${bio.length} characters`}>
                 {bio.length}
@@ -203,36 +212,38 @@ export default function EditProfileScreen() {
             </View>
             {isBusiness ? (
               <>
-                <TextField
-                  label="Category"
-                  value={business.category}
-                  onChangeText={setBusinessField('category')}
-                  placeholder="What kind of business, e.g. Cafe"
-                  accessibilityLabel="Category"
-                />
-                <TextField
-                  label="Website"
-                  value={business.website}
-                  onChangeText={setBusinessField('website')}
-                  placeholder="example.com"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="url"
-                  textContentType="URL"
-                  error={websiteProblem}
-                  accessibilityLabel="Website"
-                />
-                <TextField
-                  label="Location"
-                  value={business.location}
-                  onChangeText={setBusinessField('location')}
-                  placeholder="City, region"
-                  accessibilityLabel="Location"
-                />
+                <form.AppField name="category">
+                  {(field) => (
+                    <field.TextField
+                      label="Category"
+                      placeholder="What kind of business, e.g. Cafe"
+                      accessibilityLabel="Category"
+                    />
+                  )}
+                </form.AppField>
+                <form.AppField name="website">
+                  {(field) => (
+                    <field.TextField
+                      label="Website"
+                      placeholder="example.com"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="url"
+                      textContentType="URL"
+                      errorWhileTyping
+                      accessibilityLabel="Website"
+                    />
+                  )}
+                </form.AppField>
+                <form.AppField name="location">
+                  {(field) => (
+                    <field.TextField label="Location" placeholder="City, region" accessibilityLabel="Location" />
+                  )}
+                </form.AppField>
               </>
             ) : null}
           </View>
-        </ScrollView>
+        </FormScrollView>
       </KeyboardAvoider>
     </SafeAreaView>
   );

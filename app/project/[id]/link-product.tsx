@@ -92,6 +92,7 @@ export default function LinkProductScreen() {
         data={results}
         keyExtractor={(product) => product.id}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
         renderItem={({ item, index }) => (
           <ListRow
             title={item.name}

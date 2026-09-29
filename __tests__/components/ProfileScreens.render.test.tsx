@@ -12,9 +12,8 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 
 // ─── 1. Mock the native runtime ─────────────────────────────────────────
 
@@ -150,6 +149,7 @@ jest.mock('../../features/profiles', () => ({
     posts: () => ['p'],
     counts: () => ['c'],
     postCount: () => ['pc'],
+    byUsername: (u: string) => ['pu', u],
     followingUsernames: () => ['fu'],
     requestedUsernames: () => ['ru'],
   },
@@ -160,12 +160,16 @@ jest.mock('../../features/profiles', () => ({
       ? { data: undefined, isPending: true, isError: false, refetch: mockRefetch }
       : mockQuery(state.posts);
   },
-  getUserProfile: () => Promise.resolve(state.profile),
-  getFollowerUsers: () => Promise.resolve(state.users),
-  getFollowingUsers: () => Promise.resolve(state.users),
+  useProfileQuery: (username: string) =>
+    require('../support/mockQuery').useMockQuery(`profile:${username}`, () => state.profile, Boolean(username)),
+  useFollowersQuery: (id?: string) =>
+    require('../support/mockQuery').useMockQuery(`followers:${id}`, () => state.users, Boolean(id)),
+  useFollowingQuery: (id?: string) =>
+    require('../support/mockQuery').useMockQuery(`following:${id}`, () => state.users, Boolean(id)),
   useUpdateProfile: () => ({ mutateAsync: mockUpdateProfile }),
   useUpdateBusinessProfile: () => ({ mutateAsync: mockUpdateBusiness }),
   useUploadAvatar: () => ({ mutateAsync: jest.fn() }),
+  checkUsernameExists: (u: string) => Promise.resolve(u === 'someone_else'),
 }));
 jest.mock('../../lib/realtimeBridge', () => ({ useRealtimeSync: jest.fn() }));
 const mockScanHistoryAsked = jest.fn();
@@ -203,21 +207,22 @@ jest.mock('../../features/projects', () => ({
   },
 }));
 jest.mock('../../features/posts', () => ({
-  getPostLikers: () => Promise.resolve([]),
-  getPostReposters: () => Promise.resolve([]),
+  usePostLikersQuery: (id?: string) => require('../support/mockQuery').useMockQuery(`likers:${id}`, () => [], Boolean(id)),
+  usePostRepostersQuery: (id?: string) => require('../support/mockQuery').useMockQuery(`reposters:${id}`, () => [], Boolean(id)),
 }));
 jest.mock('../../features/admin', () => ({ setUserVerified: jest.fn(), useIsAdmin: () => state.isAdmin }));
 jest.mock('../../features/auth', () => ({ useAuthUserId: () => 'a-me', useAuthStatus: () => 'signed-in' }));
 jest.mock('../../features/moderation', () => ({ reportUser: jest.fn(() => Promise.resolve(true)) }));
 jest.mock('../../features/blocks', () => ({ useBlockedByQuery: () => ({ data: state.blockedBy }) }));
 jest.mock('@tanstack/react-query', () => ({
-  useQueryClient: () => ({ invalidateQueries: jest.fn(() => Promise.resolve()) }),
+  useQueryClient: () => ({ invalidateQueries: jest.fn(() => Promise.resolve()), setQueryData: jest.fn() }),
 }));
 
 import OwnProfileScreen from '../../app/(tabs)/profile';
 import UserProfileScreen from '../../app/user/[username]';
 import UserListScreen from '../../app/user-list';
 import EditProfileScreen from '../../app/edit-profile';
+import { USERNAME_CHECK_DEBOUNCE_MS } from '../../lib/screens/auth';
 import { REPORT_REASONS } from '../../services/reportReasons';
 
 // ─── 3. Helpers ─────────────────────────────────────────────────────────
@@ -763,7 +768,8 @@ describe('Edit profile', () => {
     expect(save().disabled).toBe(false);
     expect(el.textContent).toContain(String('Builds better things.'.length));
 
-    await act(async () => { save().click(); });
+    // Saving checks the handle again, on a timer, before it writes.
+    await act(async () => { save().click(); await new Promise(r => setTimeout(r, 20)); });
     expect(mockUpdateProfile).toHaveBeenCalledWith(expect.objectContaining({ bio: 'Builds better things.' }));
     expect(mockBack).toHaveBeenCalled();
   });
@@ -785,6 +791,18 @@ describe('Edit profile', () => {
     // Lowercased as typed, as sign-up does, which makes it valid.
     expect(username.value).toBe('me_too');
     expect(button(el, 'Save')!.disabled).toBe(false);
+  });
+
+  it('looks a new handle up as sign-up does, and will not save a taken one', async () => {
+    const el = await mount(<EditProfileScreen />);
+    const username = field(el, 'Username');
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(username, 'someone_else');
+      username.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => { await new Promise(r => setTimeout(r, USERNAME_CHECK_DEBOUNCE_MS + 50)); });
+    expect(el.textContent).toContain('That handle is taken.');
+    expect(button(el, 'Save')!.disabled).toBe(true);
   });
 
   it('labels its fields', async () => {
@@ -815,7 +833,7 @@ describe('Edit profile', () => {
     typeInto(field(el, 'Location'), 'Austin, TX');
     expect(button(el, 'Save')!.disabled).toBe(false);
 
-    await act(async () => { button(el, 'Save')!.click(); });
+    await act(async () => { button(el, 'Save')!.click(); await new Promise(r => setTimeout(r, 20)); });
     expect(mockUpdateBusiness).toHaveBeenCalledWith({ category: 'Cafe', website: 'https://shop.example', location: 'Austin, TX' });
     // Nothing on the profile row itself changed, so it is not rewritten.
     expect(mockUpdateProfile).not.toHaveBeenCalled();

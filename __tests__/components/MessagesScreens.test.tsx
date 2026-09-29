@@ -12,9 +12,8 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 
 // ─── 1. Mock the native runtime ─────────────────────────────────────────
 
@@ -94,11 +93,19 @@ const mockApp = { addToast: jest.fn(), triggerHapticFeedback: jest.fn() };
 jest.mock('../../store/AppContext.native', () => ({ useApp: () => mockApp }));
 
 const mockSearchUsers = jest.fn((_q: string) => Promise.resolve([] as unknown[]));
+// Who a thread is with, by the handle in its route.
+const mockProfiles: Record<string, unknown> = {
+  ana: { id: 'p-ana', username: 'ana', name: 'Ana Silva', profilePicture: null, isVerified: false, bio: '' },
+};
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profile: { username: 'me', name: 'Me', profilePicture: null }, profileId: 'p-me' }),
-  getUserProfile: jest.fn(() => Promise.resolve(null)),
-  searchUsers: (q: string) => mockSearchUsers(q),
+  useProfileQuery: (username: string) => ({ data: mockProfiles[username] ?? null, isPending: false }),
+  // The search as its hook returns it; the debounce is out of the way below.
+  useProfileSearchQuery: (q: string) =>
+    require('../support/mockQuery').useMockQuery(`search:${q}`, () => mockSearchUsers(q), q.trim().length >= 2),
+  PROFILE_SEARCH_MIN_LENGTH: 2,
 }));
+jest.mock('../../lib/useDebouncedValue', () => ({ useDebouncedValue: <T,>(value: T) => value }));
 
 const ana = { id: 'p-ana', username: 'ana', name: 'Ana Silva', avatar: null };
 const bo = { id: 'p-bo', username: 'bo', name: 'Bo', avatar: null };
@@ -145,10 +152,12 @@ jest.mock('../../features/messages', () => ({
 const sharedPost = { id: 'post-9', username: 'ana', avatar: null, content: 'Kitchen install\nsecond line', media_type: 'text' };
 const mockFetchPost = jest.fn((_id: string) => Promise.resolve(sharedPost as unknown));
 jest.mock('../../features/posts', () => ({
-  fetchPostById: (id: string) => mockFetchPost(id),
+  usePostQuery: (id: string) =>
+    require('../support/mockQuery').useMockQuery(`post:${id}`, () => mockFetchPost(id), Boolean(id)),
 }));
 
 import MessagesScreen from '../../app/messages';
+import MessageThreadScreen from '../../app/messages/[username]';
 import SharePostScreen from '../../app/share-post';
 import { color, space } from '../../theme/tokens';
 
@@ -210,8 +219,11 @@ const typeInto = (input: HTMLInputElement, value: string) =>
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
 
-/** Opens Ana's thread from the inbox. */
-const openAna = (el: HTMLElement) => act(() => button(el, 'Conversation with ana')!.click());
+/** Ana's thread, as /messages/ana opens it. */
+const mountThread = (username = 'ana') => {
+  mockParams.current = { username };
+  return mount(<MessageThreadScreen />);
+};
 
 // ─── 4. Inbox ───────────────────────────────────────────────────────────
 
@@ -227,6 +239,52 @@ describe('Messages — inbox', () => {
     const row = button(el, 'Conversation with ana')!;
     expect(row.textContent).toContain('Ana Silva');
     expect(row.textContent).toContain('@ana');
+  });
+
+  it('previews each conversation\'s latest message under the name, with when it was sent', () => {
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    state.conversations.data = [
+      { ...ana, lastMessage: { text: 'See you\nthen', type: 'text', senderId: 'p-ana', sentAt: twoHoursAgo } },
+      { ...bo, lastMessage: { text: null, type: 'post_share', senderId: 'p-me', sentAt: twoHoursAgo } },
+    ];
+    const el = mount(<MessagesScreen />);
+
+    const anaRow = button(el, 'Conversation with ana. See you then. 2h')!;
+    expect(anaRow.textContent).toContain('See you then');
+    expect(anaRow.textContent).toContain('2h');
+    expect(anaRow.textContent).not.toContain('@ana');
+    // Yours says so, and a shared post says what it was.
+    expect(button(el, 'Conversation with bo. You: Sent a post. 2h')).not.toBeNull();
+  });
+
+  it('finds someone new to message, never yourself, once two characters are typed', async () => {
+    mockSearchUsers.mockImplementation(() =>
+      Promise.resolve([
+        { id: 'p-cy', username: 'cy', name: 'Cy', avatarUrl: null, isVerified: false, profileType: 'individual' },
+        { id: 'p-me', username: 'me', name: 'Me', avatarUrl: null, isVerified: false, profileType: 'individual' },
+      ]),
+    );
+    const el = mount(<MessagesScreen />);
+    const search = el.querySelector('input') as HTMLInputElement;
+
+    typeInto(search, 'c');
+    expect(el.textContent).toContain('Type at least 2 characters to search');
+    expect(mockSearchUsers).not.toHaveBeenCalled();
+
+    typeInto(search, 'cy');
+    await act(async () => { await Promise.resolve(); });
+    expect(mockSearchUsers).toHaveBeenCalledWith('cy');
+    expect(button(el, 'Message cy')).not.toBeNull();
+    expect(button(el, 'Message me')).toBeNull();
+
+    act(() => button(el, 'Message cy')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/messages/cy');
+  });
+
+  it('opens a conversation as its own screen', () => {
+    const el = mount(<MessagesScreen />);
+    act(() => button(el, 'Conversation with ana')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/messages/ana');
   });
 
   it('marks an unread conversation with an ink dot, and only that one', () => {
@@ -284,18 +342,26 @@ describe('Messages — thread', () => {
     ) ?? Array.from(el.querySelectorAll('button')).find(b => b.textContent === text);
 
   it("puts the other person's avatar and name in the header, opening their profile", () => {
-    const el = mount(<MessagesScreen />);
-    openAna(el);
+    const el = mountThread();
     const header = button(el, "View ana's profile")!;
     expect(header.textContent).toContain('Ana Silva');
     act(() => header.click());
     expect(mockPush).toHaveBeenCalledWith('/user/ana');
   });
 
+  it('marks a message read when it arrives in the open thread', () => {
+    state.thread.data = [msg('m1', 'p-ana', 'hey', { seen: true })];
+    mountThread();
+    mockMarkChatRead.mockClear();
+
+    state.thread.data = [msg('m1', 'p-ana', 'hey', { seen: true }), msg('m2', 'p-ana', 'you there?', { seen: false })];
+    rerender(<MessageThreadScreen />);
+    expect(mockMarkChatRead).toHaveBeenCalledWith('p-ana');
+  });
+
   it('draws yours in ink with inverse text and theirs on the panel', () => {
     state.thread.data = [msg('m1', 'p-ana', 'hey'), msg('m2', 'p-me', 'hi back')];
-    const el = mount(<MessagesScreen />);
-    openAna(el);
+    const el = mountThread();
     const theirs = bubbleOf(el, 'hey')!;
     const mine = bubbleOf(el, 'hi back')!;
     expect(theirs.style.backgroundColor).toBe(rgb(color.bgPanel));
@@ -305,12 +371,11 @@ describe('Messages — thread', () => {
 
   it('shows "Sending…" under a pending message, then "Sent" once the server row lands', () => {
     state.thread.data = [msg('m1', 'p-ana', 'hey'), msg('temp-message-1', 'p-me', 'on my way')];
-    const el = mount(<MessagesScreen />);
-    openAna(el);
+    const el = mountThread();
     expect(el.textContent).toContain('Sending…');
 
     state.thread.data = [msg('m1', 'p-ana', 'hey'), msg('m2', 'p-me', 'on my way')];
-    rerender(<MessagesScreen />);
+    rerender(<MessageThreadScreen />);
     expect(el.textContent).not.toContain('Sending…');
     expect(el.textContent).toContain('Sent · 14:30');
     // One copy only.
@@ -318,8 +383,7 @@ describe('Messages — thread', () => {
   });
 
   it('sends the typed message to the open conversation', () => {
-    const el = mount(<MessagesScreen />);
-    openAna(el);
+    const el = mountThread();
     expect(button(el, 'Send')!.disabled).toBe(true);
     typeInto(el.querySelector('input[aria-label="Message"]') as HTMLInputElement, 'hello');
     act(() => button(el, 'Send')!.click());
@@ -332,8 +396,7 @@ describe('Messages — thread', () => {
   it('replies from the long-press sheet: banner above the composer, then the reply carries it', () => {
     const hey = msg('m1', 'p-ana', 'are you free?');
     state.thread.data = [hey];
-    const el = mount(<MessagesScreen />);
-    openAna(el);
+    const el = mountThread();
     longPress(bubbleOf(el, 'are you free?')!);
     act(() => button(el, 'Reply')!.click());
     expect(el.textContent).toContain('Replying to @ana');
@@ -350,8 +413,7 @@ describe('Messages — thread', () => {
   it('renders a reply with an inset quote of the message it answers', () => {
     const original = msg('m1', 'p-ana', 'are you free?');
     state.thread.data = [original, msg('m2', 'p-me', 'yes', { reply_to: 'm1', repliedMessage: original })];
-    const el = mount(<MessagesScreen />);
-    openAna(el);
+    const el = mountThread();
     const bubble = bubbleOf(el, 'yes')!;
     expect(bubble.textContent).toContain('@ana');
     expect(bubble.textContent).toContain('are you free?');
@@ -361,8 +423,7 @@ describe('Messages — thread', () => {
 
   it('renders a shared post as a tappable card', () => {
     state.thread.data = [msg('m1', 'p-ana', '', { type: 'post_share', sharedPost })];
-    const el = mount(<MessagesScreen />);
-    openAna(el);
+    const el = mountThread();
     const card = Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('Kitchen install') && !b.getAttribute('aria-description'))!;
     act(() => card.click());
     expect(mockPush).toHaveBeenCalledWith('/post/post-9');
@@ -370,8 +431,7 @@ describe('Messages — thread', () => {
 
   it('opens on the newest message: the list is inverted, newest first (ONE-110)', () => {
     state.thread.data = [msg('m1', 'p-ana', 'first'), msg('m2', 'p-me', 'second'), msg('m3', 'p-ana', 'latest')];
-    const el = mount(<MessagesScreen />);
-    openAna(el);
+    const el = mountThread();
     const list = el.querySelector('[data-inverted="true"]')!;
     expect(list).not.toBeNull();
     const text = list.textContent!;
@@ -381,8 +441,7 @@ describe('Messages — thread', () => {
 
   it('keeps the layout rules reading oldest first: the latest of a run carries the time', () => {
     state.thread.data = [msg('m1', 'p-ana', 'one'), msg('m2', 'p-ana', 'two')];
-    const el = mount(<MessagesScreen />);
-    openAna(el);
+    const el = mountThread();
     const bubbles = Array.from(el.querySelectorAll('[data-inverted="true"] button'))
       .filter(b => b.getAttribute('aria-description') === 'Long press for options');
     // Newest first on screen, but 'two' still follows 'one' in the thread:
@@ -397,8 +456,7 @@ describe('Messages — thread', () => {
 
   it('scrolling up to the oldest message asks for the page before', () => {
     state.thread.data = [msg('m1', 'p-ana', 'hey')];
-    const el = mount(<MessagesScreen />);
-    openAna(el);
+    const el = mountThread();
     act(() => button(el, 'Reach the end of the list')!.click());
     expect(state.older.loadOlder).toHaveBeenCalledTimes(1);
   });
@@ -406,22 +464,30 @@ describe('Messages — thread', () => {
   it('shows a spinner above the oldest message while that page loads', () => {
     state.thread.data = [msg('m1', 'p-ana', 'hey')];
     state.older.isLoading = true;
-    const el = mount(<MessagesScreen />);
-    openAna(el);
+    const el = mountThread();
     expect(el.querySelector('[data-inverted="true"] [data-spinner="true"]')).not.toBeNull();
   });
 
   it('says hi when the thread is empty', () => {
-    const el = mount(<MessagesScreen />);
-    openAna(el);
+    const el = mountThread();
     expect(el.textContent).toContain('Say hi to @ana');
   });
 
-  it('goes back to the inbox from the header', () => {
-    const el = mount(<MessagesScreen />);
-    openAna(el);
-    act(() => button(el, 'Back to messages')!.click());
-    expect(button(el, 'Conversation with ana')).not.toBeNull();
+  // Its own screen: the native Back, and the swipe, return to the inbox.
+  it('leaves Back to the native header, with no Back of its own', () => {
+    const el = mountThread();
+    expect(button(el, 'Back to messages')).toBeNull();
+  });
+
+  it("says so when there's no one by that handle", () => {
+    const el = mountThread('nobody');
+    expect(el.textContent).toContain("This account isn't available");
+    expect(el.querySelector('input[aria-label="Message"]')).toBeNull();
+  });
+
+  it('reads the thread when it opens', () => {
+    mountThread();
+    expect(mockMarkChatRead).toHaveBeenCalledWith('p-ana', expect.anything());
   });
 });
 
@@ -442,7 +508,7 @@ describe('Share picker', () => {
   it('marks a row "Sent" once the post has gone to that person', async () => {
     mockParams.current = { id: 'post-9' };
     mockSearchUsers.mockImplementation(() =>
-      Promise.resolve([{ id: 'p-ana', username: 'ana', full_name: 'Ana Silva', avatar_url: null }]),
+      Promise.resolve([{ id: 'p-ana', username: 'ana', name: 'Ana Silva', avatarUrl: null, isVerified: false, profileType: 'individual' }]),
     );
     const el = mount(<SharePostScreen />);
     await flush();

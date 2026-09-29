@@ -2,15 +2,21 @@ import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ListRow, Sheet, TextField } from './ui';
 import { SearchIcon } from './Icons';
-import { useProfileResultsQuery, useProductResultsQuery, useProjectResultsQuery } from '../../features/search';
+import {
+  usePostResultsQuery,
+  usePostsByAuthorsQuery,
+  useProfileResultsQuery,
+  useProductResultsQuery,
+  useProjectResultsQuery,
+} from '../../features/search';
 import { useDebouncedValue } from '../../lib/useDebouncedValue';
-import { pickerOptions } from '../../lib/screens/composeTags';
+import { PICKER_AUTHORS_SEARCHED, pickerOptions, pickerPosts } from '../../lib/screens/composeTags';
 import { color, space, type } from '../../theme/tokens';
 import type { EmbeddedTagDestination } from '../../types';
 
-// What a tag in the composer points at (ONE-46): any profile, any product, or
-// any public project — anyone's, not only the author's. Tagging another
-// business's product in your photo is the point. Never a post (ONE-83).
+// What a tag in the composer points at (ONE-46): any profile, any product,
+// any public project or any post — anyone's, not only the author's. Tagging
+// another business's product in your photo is the point.
 //
 // Through the search functions (ONE-48), which leave out accounts blocked
 // either way — a block prevents a tag (ONE-93), so the picker never offers
@@ -21,28 +27,44 @@ export interface TagDestinationPickerProps {
   onPick: (destination: EmbeddedTagDestination) => void;
   /** Closed without a choice. */
   onClose: () => void;
+  /** The post the photo is on, when editing one: never offered as its own tag. */
+  hostPostId?: string | null;
 }
 
-const TagDestinationPicker: React.FC<TagDestinationPickerProps> = ({ visible, onPick, onClose }) => (
-  <Sheet visible={visible} onClose={onClose} title="Tag a profile, product or project">
+const TagDestinationPicker: React.FC<TagDestinationPickerProps> = ({ visible, onPick, onClose, hostPostId }) => (
+  <Sheet visible={visible} onClose={onClose} title="Tag a profile, product, project or post">
     {/* Mounted only while open, so its searches run only then. */}
-    {visible ? <PickerBody onPick={onPick} /> : null}
+    {visible ? <PickerBody onPick={onPick} hostPostId={hostPostId} /> : null}
   </Sheet>
 );
 
-const PickerBody: React.FC<{ onPick: (destination: EmbeddedTagDestination) => void }> = ({ onPick }) => {
+const PickerBody: React.FC<{ onPick: (destination: EmbeddedTagDestination) => void; hostPostId?: string | null }> = ({
+  onPick,
+  hostPostId,
+}) => {
   const [query, setQuery] = useState('');
   const term = useDebouncedValue(query);
   const profiles = useProfileResultsQuery(term);
   const products = useProductResultsQuery(term, null);
   const projects = useProjectResultsQuery(term, null, true);
+  const posts = usePostResultsQuery(term);
+  // A photo with no caption has no text to match: it's found by who posted it.
+  const authorIds = (profiles.data ?? []).slice(0, PICKER_AUTHORS_SEARCHED).map((p) => p.id);
+  const byAuthors = usePostsByAuthorsQuery(authorIds);
 
   const options = pickerOptions(
     profiles.data ?? [],
     products.data ?? [],
     (projects.data ?? []).map((p) => ({ id: p.id, name: p.name, coverUrl: p.coverUrl, isPublic: true })),
+    pickerPosts(posts.data ?? [], byAuthors.data ?? []).map((p) => ({
+      id: p.id,
+      content: p.content,
+      imageUrl: p.imageUrl,
+      authorUsername: p.authorUsername,
+    })),
+    hostPostId,
   );
-  const failed = profiles.isError && products.isError && projects.isError;
+  const failed = profiles.isError && products.isError && projects.isError && posts.isError;
 
   return (
     <View style={styles.body}>
@@ -53,7 +75,7 @@ const PickerBody: React.FC<{ onPick: (destination: EmbeddedTagDestination) => vo
         autoFocus
         autoCapitalize="none"
         autoCorrect={false}
-        accessibilityLabel="Search profiles, products and projects"
+        accessibilityLabel="Search profiles, products, projects and posts"
         leading={<SearchIcon color={color.textMuted} size={18} />}
         containerStyle={styles.search}
       />
@@ -74,7 +96,7 @@ const PickerBody: React.FC<{ onPick: (destination: EmbeddedTagDestination) => vo
               ? 'Search didn’t load. Check your connection.'
               : term.trim()
                 ? 'Nothing found. Try another name.'
-                : 'Search for a profile, product or project.'}
+                : 'Search for a profile, product, project or post.'}
           </Text>
         ) : null}
       </ScrollView>
@@ -83,7 +105,9 @@ const PickerBody: React.FC<{ onPick: (destination: EmbeddedTagDestination) => vo
 };
 
 const styles = StyleSheet.create({
+  // Shrinks with the sheet when the keyboard is up, so the search stays in view.
   body: {
+    flexShrink: 1,
     paddingBottom: space.sm,
   },
   search: {
@@ -91,6 +115,7 @@ const styles = StyleSheet.create({
     marginBottom: space.sm,
   },
   results: {
+    flexShrink: 1,
     maxHeight: 360,
   },
   empty: {

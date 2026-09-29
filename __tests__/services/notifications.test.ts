@@ -307,9 +307,9 @@ describe('registerForPushNotifications — under Expo Go', () => {
       mockPlatformOS = platform;
       jest.resetModules();
 
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+       
       const freshService = require('../../services/notifications');
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+       
       const freshNotifications = require('expo-notifications');
 
       const result = await freshService.registerForPushNotifications();
@@ -327,9 +327,9 @@ describe('registerForPushNotifications — under Expo Go', () => {
     mockExecutionEnvironment = 'standalone';
     jest.resetModules();
 
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const freshService = require('../../services/notifications');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const freshNotifications = require('expo-notifications');
     freshNotifications.getPermissionsAsync.mockResolvedValue({ status: 'granted' });
     freshNotifications.getExpoPushTokenAsync.mockResolvedValue({

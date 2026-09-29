@@ -2,7 +2,7 @@
 
 import React from 'react';
 import type { ColorValue } from 'react-native';
-import Svg, { Path, Circle, G, Rect } from 'react-native-svg';
+import Svg, { Path, Circle, G } from 'react-native-svg';
 import { color as palette } from '../../theme/tokens';
 
 export interface IconProps {

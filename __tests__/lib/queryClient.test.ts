@@ -15,6 +15,7 @@ import type { Query } from '@tanstack/react-query';
 import {
   queryClient,
   busterFor,
+  isOnline,
   isPersistable,
   shouldDehydrateQuery,
   retryDelay,
@@ -52,8 +53,8 @@ describe('queryClient — query defaults', () => {
     expect(queryDefaults().retry).toBe(2);
   });
 
-  it('does not refetch on window focus — it misfires on React Native', () => {
-    expect(queryDefaults().refetchOnWindowFocus).toBe(false);
+  it('refetches on focus, which QueryProvider reports as a return from the background', () => {
+    expect(queryDefaults().refetchOnWindowFocus).toBe(true);
   });
 
   it('does refetch on reconnect', () => {
@@ -61,7 +62,7 @@ describe('queryClient — query defaults', () => {
   });
 
   it('is a singleton — the same instance on every import', () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const again = require('../../lib/queryClient').queryClient;
     expect(again).toBe(queryClient);
     expect(queryClient).toBeInstanceOf(QueryClient);
@@ -69,6 +70,23 @@ describe('queryClient — query defaults', () => {
 });
 
 // ─── 2. Backoff ─────────────────────────────────────────────────────────
+
+describe('isOnline', () => {
+  it('is online when connected and reachable', () => {
+    expect(isOnline({ isConnected: true, isInternetReachable: true })).toBe(true);
+  });
+
+  it('is offline with no connection, or a connection that reaches nothing', () => {
+    expect(isOnline({ isConnected: false, isInternetReachable: false })).toBe(false);
+    expect(isOnline({ isConnected: true, isInternetReachable: false })).toBe(false);
+  });
+
+  it('counts reachability the OS has not worked out yet as online', () => {
+    expect(isOnline({ isConnected: true })).toBe(true);
+    expect(isOnline({ isConnected: true, isInternetReachable: null })).toBe(true);
+    expect(isOnline({})).toBe(true);
+  });
+});
 
 describe('queryClient — retry backoff', () => {
   it('backs off exponentially', () => {

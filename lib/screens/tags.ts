@@ -9,6 +9,7 @@
 import type { NewTag, OwnedTag, OwnedTagDestination, TagType } from '../../features/tags';
 import type { ProfileId } from '../../types';
 import { getTimeAgo } from '../timeAgo';
+import { postDestinationName } from './embeddedTags';
 
 // ─── Labels ─────────────────────────────────────────────────────────────
 
@@ -28,6 +29,8 @@ export const destinationLabel = (destination: OwnedTagDestination | null): strin
       return `${destination.name} · Product`;
     case 'project':
       return `${destination.name} · Project`;
+    case 'post':
+      return `${destination.name} · Post by @${destination.username}`;
   }
 };
 
@@ -40,6 +43,8 @@ export const destinationIdOf = (destination: OwnedTagDestination): string => {
       return destination.productId;
     case 'project':
       return destination.projectId;
+    case 'post':
+      return destination.postId;
   }
 };
 
@@ -154,12 +159,16 @@ export const TAGS_FILTERED_EMPTY_STATE = {
  * kills every copy of its code for good. Deactivating is the reversible
  * alternative, and the confirmation says so.
  */
+const DELETE_CONSEQUENCE: Record<TagType, (shortCode: string) => string> = {
+  physical: (shortCode) => `Anything printed with ${shortCode} will stop working for everyone, permanently. `,
+  digital: () => `Every copy of this tag's link will stop working for everyone, permanently. `,
+  embedded: () => `It comes off your post's photo, permanently. `,
+};
+
 export const deleteTagConfirm = (tag: Pick<OwnedTag, 'tagType' | 'shortCode'>) => ({
   title: 'Delete this tag?',
   body:
-    (tag.tagType === 'physical'
-      ? `Anything printed with ${tag.shortCode} will stop working for everyone, permanently. `
-      : `Every copy of this tag's link will stop working for everyone, permanently. `) +
+    DELETE_CONSEQUENCE[tag.tagType](tag.shortCode) +
     'Its scan count is deleted too. To stop it for now, make it inactive instead: that can be undone.',
   confirm: 'Delete permanently',
 });
@@ -202,10 +211,10 @@ export const CREATABLE_TAG_TYPES: { type: CreatableTagType; label: string; descr
 const isCreatableType = (value: unknown): value is CreatableTagType =>
   value === 'physical' || value === 'digital';
 
-/** The destination a draft points at: one of the three kinds the tag's columns hold. */
-export type DraftDestination = { kind: 'profile' | 'product' | 'project'; id: string };
+/** The destination a draft points at: one of the kinds the tag's columns hold. */
+export type DraftDestination = { kind: 'profile' | 'product' | 'project' | 'post'; id: string };
 
-const DESTINATION_KINDS: DraftDestination['kind'][] = ['profile', 'product', 'project'];
+const DESTINATION_KINDS: DraftDestination['kind'][] = ['profile', 'product', 'project', 'post'];
 
 const isDestinationKind = (value: unknown): value is DraftDestination['kind'] =>
   DESTINATION_KINDS.includes(value as DraftDestination['kind']);
@@ -262,16 +271,40 @@ export interface OwnedProjectChoice {
   isPublic?: boolean;
 }
 
+/** A post, as much of one as the picker shows. */
+export interface OwnedPostChoice {
+  id: string;
+  content: string;
+  username: string;
+  timestamp?: string;
+  media?: string | null;
+  media_type?: 'text' | 'image';
+}
+
 /**
- * The destination picker's sections: the profiles, products and projects the
- * account owns, and nothing else (ONE-89) — no posts (ONE-83), and nothing of
- * anyone else's, since RLS would refuse the insert and a legitimate-looking
- * choice must not end in an error. A kind with nothing to offer is left out.
+ * How many of your posts the picker lists: the newest. A post opened from its
+ * own menu is listed as well, however old.
+ */
+export const POST_CHOICES_SHOWN = 20;
+
+/** The posts to offer: the newest few, and `wanted` wherever it falls. */
+export const postChoices = <T extends { id: string }>(posts: readonly T[], wanted?: string): T[] => {
+  const newest = posts.slice(0, POST_CHOICES_SHOWN);
+  const extra = wanted && !newest.some((p) => p.id === wanted) ? posts.find((p) => p.id === wanted) : undefined;
+  return extra ? [extra, ...newest] : newest;
+};
+
+/**
+ * The destination picker's sections: the profiles, products, projects and
+ * posts the account owns, and nothing else (ONE-89) — nothing of anyone
+ * else's, since RLS would refuse the insert and a legitimate-looking choice
+ * must not end in an error. A kind with nothing to offer is left out.
  */
 export const destinationSections = (
   ownedProfiles: OwnedProfileChoice[],
   ownedProducts: OwnedProductChoice[] = [],
   ownedProjects: OwnedProjectChoice[] = [],
+  ownedPosts: OwnedPostChoice[] = [],
 ): DestinationSection[] =>
   [
     {
@@ -304,6 +337,16 @@ export const destinationSections = (
           .filter(Boolean)
           .join(' · '),
         imageUri: project.coverUrl ?? null,
+      })),
+    },
+    {
+      kind: 'post' as const,
+      title: 'Your posts',
+      options: ownedPosts.map((post) => ({
+        destination: { kind: 'post' as const, id: post.id },
+        title: postDestinationName(post.content, post.username),
+        subtitle: ['Post', getTimeAgo(post.timestamp)].filter(Boolean).join(' · '),
+        imageUri: post.media_type === 'image' ? post.media ?? null : null,
       })),
     },
   ].filter((section) => section.options.length > 0);

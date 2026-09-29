@@ -18,6 +18,7 @@ import type { InfiniteData } from '@tanstack/react-query';
 
 import {
   feedPosts,
+  findCachedPost,
   prependPost,
   replacePost,
   removePost,
@@ -31,6 +32,30 @@ const post = (id: string, likes = 0): Post =>
 
 const feed = (...pages: Post[][]): FeedData =>
   ({ pages, pageParams: pages.map(() => null) }) as InfiniteData<Post[], FeedCursor>;
+
+// ─── 0. A post from whatever list holds it ──────────────────────────────
+
+describe('findCachedPost', () => {
+  const full = (id: string): Post => ({ ...post(id), media_type: 'text' }) as Post;
+
+  it("finds a post in a feed's pages", () => {
+    expect(findCachedPost([feed([full('a')], [full('b')])], 'b')?.id).toBe('b');
+  });
+
+  it("finds a post in a plain list, as a profile's grid holds them", () => {
+    expect(findCachedPost([[full('a'), full('b')]], 'a')?.id).toBe('a');
+  });
+
+  it('ignores lists of other things that share an id field', () => {
+    const people = [{ id: 'a', username: 'ana' }];
+    expect(findCachedPost([people, 'text', null, { id: 'a' }], 'a')).toBeUndefined();
+  });
+
+  it('is undefined when nothing holds it', () => {
+    expect(findCachedPost([feed([full('a')])], 'z')).toBeUndefined();
+    expect(findCachedPost([], 'z')).toBeUndefined();
+  });
+});
 
 // ─── 1. Reading across pages ────────────────────────────────────────────
 

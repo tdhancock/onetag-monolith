@@ -15,9 +15,8 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 
 jest.mock('react-native', () => {
   const React = require('react');
@@ -62,10 +61,12 @@ const mockWriterFor = jest.fn((_postId: string, _ownerProfileId: string) => mock
 jest.mock('../../features/tags', () => ({
   useRecordScan: () => ({ mutate: jest.fn() }),
   embeddedTagWriter: (postId: string, ownerProfileId: string) => mockWriterFor(postId, ownerProfileId),
+  tagKeys: { lists: () => ['tags', 'list'] },
 }));
 jest.mock('../../features/posts', () => ({
   useUpdatePost: () => ({ mutateAsync: mockMutateAsync }),
-  fetchPostById: (id: string) => mockFetchPost(id),
+  usePostQuery: (id: string) =>
+    require('../support/mockQuery').useMockQuery(`post:${id}`, () => mockFetchPost(id), Boolean(id)),
   postKeys: { all: ['posts'] },
 }));
 

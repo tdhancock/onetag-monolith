@@ -20,8 +20,7 @@ import type { InfiniteData } from '@tanstack/react-query';
 import { commentKeys } from '../../../features/comments/keys';
 import { postKeys } from '../../../features/posts/keys';
 import { patchLists } from '../../../lib/optimisticToggle';
-import type { Comment } from '../../../types';
-import type { Post } from '../../../types';
+import type { Comment, Post } from '../../../types';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────
 

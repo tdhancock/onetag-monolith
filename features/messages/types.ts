@@ -9,8 +9,19 @@ import type { Message, Post, SimpleUser } from '../../types';
 
 export type { Message };
 
+/** A conversation's latest message, as the Messages list previews it. */
+export interface ConversationPreview {
+  text: string | null;
+  type: Message['type'];
+  senderId: string;
+  sentAt: string;
+}
+
 /** Someone the user has a conversation with, most recent first in the list. */
-export type Conversation = SimpleUser;
+export interface Conversation extends SimpleUser {
+  /** Absent only for a row written into the cache before the list's first read. */
+  lastMessage?: ConversationPreview | null;
+}
 
 /** What a send needs. The sender is always the signed-in user. */
 export interface SendMessageInput {

@@ -42,7 +42,7 @@ export default function LoginScreen() {
         email = data;
       }
 
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: password,
       });

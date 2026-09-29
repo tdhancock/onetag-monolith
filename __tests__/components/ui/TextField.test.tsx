@@ -16,9 +16,8 @@ jest.mock('react-native', () => require('../../support/reactNativeDom'));
 
 // ─── 2. Imports ─────────────────────────────────────────────────────────
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 import TextField, {
   TEXT_FIELD_COLORS,
   TEXT_FIELD_MIN_HEIGHT,

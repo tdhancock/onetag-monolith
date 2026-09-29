@@ -13,9 +13,8 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 
 jest.mock('react-native', () => {
   const React = require('react');
@@ -103,11 +102,27 @@ function typeInto(input: HTMLInputElement, value: string) {
   });
 }
 
+/** Promise hops for the form's async validation to start, or to land. */
+async function flush() {
+  for (let i = 0; i < 10; i += 1) await Promise.resolve();
+}
+
 /** Let the debounced availability check run and resolve. */
 async function settleCheck() {
   await act(async () => {
+    await flush();
     jest.advanceTimersByTime(USERNAME_CHECK_DEBOUNCE_MS);
-    await Promise.resolve();
+    await flush();
+  });
+}
+
+/** Press Create profile. Saving checks the handle again, on a timer, before it creates anything. */
+async function submit(el: HTMLElement) {
+  await act(async () => {
+    createButton(el)!.click();
+    await flush();
+    jest.runOnlyPendingTimers();
+    await flush();
   });
 }
 
@@ -205,7 +220,7 @@ describe('creating the profile', () => {
     await fillValid(el);
     typeInto(field(el, 'Bio'), '  Ceramics.  ');
 
-    await act(async () => { createButton(el)!.click(); });
+    await submit(el);
 
     expect(mockCreate).toHaveBeenCalledWith({
       profileType: 'business',
@@ -221,7 +236,7 @@ describe('creating the profile', () => {
     mockCreate.mockResolvedValue({ id: 'p-new', username: 'ana_works' });
     const el = mount();
     await fillValid(el);
-    await act(async () => { createButton(el)!.click(); });
+    await submit(el);
     expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ bio: null }));
   });
 
@@ -230,7 +245,7 @@ describe('creating the profile', () => {
     const el = mount();
     await fillValid(el);
 
-    await act(async () => { createButton(el)!.click(); });
+    await submit(el);
 
     expect(el.textContent).toContain('That handle is taken.');
     expect(createButton(el)!.disabled).toBe(true);
@@ -249,7 +264,7 @@ describe('creating the profile', () => {
     mockCreate.mockRejectedValue(new CreateProfileError('kind-taken'));
     const el = mount();
     await fillValid(el);
-    await act(async () => { createButton(el)!.click(); });
+    await submit(el);
     expect(mockToast).toHaveBeenCalledWith('You already have a business profile.', 'error');
   });
 
@@ -257,7 +272,7 @@ describe('creating the profile', () => {
     mockCreate.mockRejectedValue(new Error('offline'));
     const el = mount();
     await fillValid(el);
-    await act(async () => { createButton(el)!.click(); });
+    await submit(el);
     expect(mockToast).toHaveBeenCalledWith('Could not create the profile. Please try again.', 'error');
     expect(field(el, 'Username').value).toBe('ana_works');
     expect(mockDismissTo).not.toHaveBeenCalled();

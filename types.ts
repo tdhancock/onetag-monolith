@@ -135,6 +135,8 @@ export type EmbeddedTagDestination = (
     | { kind: 'profile'; profileId: string; username: string; profileType: 'individual' | 'business' }
     | { kind: 'product'; productId: string }
     | { kind: 'project'; projectId: string }
+    /** A post: named by its first line, or by its author when it has no text. */
+    | { kind: 'post'; postId: string; username: string }
 ) & { name: string; imageUrl: string | null };
 
 /** A Tag pinned to a point on a post's image, positioned in percent of the image content. */
@@ -175,7 +177,7 @@ export interface NotificationStory {
 
 export interface Notification {
     id: string;
-    type: 'like' | 'comment' | 'follow' | 'follow_request' | 'comment_like' | 'repost' | 'mention' | 'story_like';
+    type: 'like' | 'comment' | 'reply' | 'follow' | 'follow_request' | 'comment_like' | 'repost' | 'mention' | 'story_like';
     is_read: boolean;
     created_at: string;
     content?: string | null;
@@ -218,6 +220,9 @@ export interface Comment {
     timestamp: Date;
     likes: number;
     isLiked: boolean;
+    /** The comment this one replies to, which is never itself a reply. */
+    parentId?: string | null;
+    /** Replies to this comment, oldest first. Always empty on a reply. */
     replies: Comment[];
 }
 

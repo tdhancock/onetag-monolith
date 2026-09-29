@@ -159,7 +159,7 @@ describe('tags, completed', () => {
     expect(sql).toContain('ON public.tags (dest_project_id) WHERE dest_project_id IS NOT NULL');
   });
 
-  it('point at exactly one destination of the four kinds, and no post', () => {
+  it('point at exactly one destination of the four kinds then; a post became one later (post_destinations)', () => {
     expect(sql).toContain('DROP CONSTRAINT tags_one_destination');
     expect(sql).toContain('CHECK (num_nonnulls(dest_profile_id, dest_product_id, dest_project_id) = 1)');
     expect(sql).toMatch(/COMMENT ON CONSTRAINT tags_one_destination ON public\.tags IS '[^']*four kinds/);

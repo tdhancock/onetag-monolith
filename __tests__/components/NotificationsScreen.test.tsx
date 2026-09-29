@@ -11,9 +11,8 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 
 // ─── 1. Mock the native runtime ─────────────────────────────────────────
 
@@ -187,6 +186,27 @@ describe('Notifications — rows', () => {
     expect(row.querySelector('img')?.getAttribute('src')).toBe('https://example.test/p.jpg');
     act(() => row.click());
     expect(mockPush).toHaveBeenCalledWith('/post/post-1');
+  });
+
+  it('opens a comment on the comment itself, not only its post', () => {
+    state.query.data = [
+      notification({
+        id: 'r',
+        type: 'reply',
+        post: { id: 'post-1', content: 'x', media: null, media_type: 'text' },
+        comment: { id: 'c-9', text: 'agreed' },
+      }),
+    ];
+    const el = mount();
+    act(() => rowFor(el, 'ana', 'replied to your comment.')!.click());
+    expect(mockPush).toHaveBeenCalledWith('/comments/post-1?commentId=c-9');
+  });
+
+  it('opens a liked OneSnap in the viewer', () => {
+    state.query.data = [notification({ id: 's', type: 'story_like', story: { id: 'st-1', media_url: null } })];
+    const el = mount();
+    act(() => rowFor(el, 'ana', 'liked your OneSnap.')!.click());
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/story-viewer', params: { storyId: 'st-1' } });
   });
 
   it('shows a text post\'s first line as its thumbnail', () => {

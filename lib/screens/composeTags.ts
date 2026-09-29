@@ -9,7 +9,7 @@
 // Editing starts from the post's saved tags as drafts, and saving writes only
 // the difference, so a tag that is merely moved keeps its id and its scans.
 
-import { clampPct } from './embeddedTags';
+import { clampPct, postDestinationName } from './embeddedTags';
 import type { EmbeddedTag, EmbeddedTagDestination } from '../../types';
 
 /** The most tags one photo may carry. Twenty on one photo is unusable, and a sign of misuse. */
@@ -67,6 +67,8 @@ export const destinationRef = (destination: EmbeddedTagDestination): { kind: Emb
       return { kind: 'product', id: destination.productId };
     case 'project':
       return { kind: 'project', id: destination.projectId };
+    case 'post':
+      return { kind: 'post', id: destination.postId };
   }
 };
 
@@ -101,6 +103,12 @@ export interface PickerProject {
   coverUrl: string | null;
   isPublic: boolean;
 }
+export interface PickerPost {
+  id: string;
+  content: string;
+  imageUrl: string | null;
+  authorUsername: string;
+}
 
 export interface PickerOption {
   key: string;
@@ -110,14 +118,17 @@ export interface PickerOption {
 }
 
 /**
- * One list from the three searches: profiles, products and public projects,
- * anyone's. Never a post — a post is not a Destination (ONE-83) — and never a
- * private project, which the database would refuse (ONE-44).
+ * One list from the four searches: profiles, products, public projects and
+ * posts, anyone's. Never a private project, which the database would refuse
+ * (ONE-44), nor the post the photo is on (`hostPostId`, when editing one).
+ * A post is a Destination since 2026-09-28, reversing ONE-83.
  */
 export const pickerOptions = (
   profiles: PickerProfile[],
   products: PickerProduct[],
   projects: PickerProject[],
+  posts: PickerPost[] = [],
+  hostPostId?: string | null,
 ): PickerOption[] => [
   ...profiles.map((p) => ({
     key: `profile-${p.id}`,
@@ -143,7 +154,33 @@ export const pickerOptions = (
       subtitle: 'Project',
       destination: { kind: 'project' as const, projectId: p.id, name: p.name, imageUrl: p.coverUrl },
     })),
+  ...posts
+    .filter((p) => p.id !== hostPostId)
+    .map((p) => ({
+      key: `post-${p.id}`,
+      subtitle: `Post by @${p.authorUsername}`,
+      destination: {
+        kind: 'post' as const,
+        postId: p.id,
+        username: p.authorUsername,
+        name: postDestinationName(p.content, p.authorUsername),
+        imageUrl: p.imageUrl,
+      },
+    })),
 ];
+
+/** How many matching profiles' posts the tag picker lists beside the text matches. */
+export const PICKER_AUTHORS_SEARCHED = 3;
+
+/**
+ * The posts the tag picker offers: those whose text matched, then the newest
+ * by the profiles that matched, which is how a photo with no caption is
+ * found. Each post once.
+ */
+export const pickerPosts = <T extends { id: string }>(textMatches: readonly T[], byAuthors: readonly T[]): T[] => {
+  const seen = new Set<string>();
+  return [...textMatches, ...byAuthors].filter((post) => !seen.has(post.id) && Boolean(seen.add(post.id)));
+};
 
 /** What the author is told when the post went out and its tags did not. */
 export const TAGS_FAILED_TITLE = 'Your post is up, but its tags didn’t save';

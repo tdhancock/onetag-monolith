@@ -1,14 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet } from 'react-native';
+import React from 'react';
+import { ActivityIndicator, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useStore } from '@tanstack/react-form';
 import { useApp } from '../../../store/AppContext.native';
 import { useCurrentProfile } from '../../../features/profiles';
-import { useProjectQuery, useUpdateProject } from '../../../features/projects';
+import { useProjectQuery, useUpdateProject, type Project } from '../../../features/projects';
 import { MediaUploadError } from '../../../services/mediaUpload';
 import KeyboardAvoider from '../../../components/native/KeyboardAvoider';
+import FormScrollView from '../../../components/native/FormScrollView';
 import ModalHeader from '../../../components/native/ModalHeader';
-import ProjectForm from '../../../components/native/ProjectForm';
+import ProjectForm, { projectFormOptions } from '../../../components/native/ProjectForm';
+import { useAppForm } from '../../../components/native/form';
 import { EmptyState } from '../../../components/native/ui';
 import {
   canManageProject,
@@ -17,9 +20,7 @@ import {
   PROJECT_SAVE_FAILED,
   projectDraftChanged,
   projectDraftFrom,
-  projectDraftValid,
   projectEditsFrom,
-  type ProjectDraft,
 } from '../../../lib/screens/projects';
 import { color, space } from '../../../theme/tokens';
 
@@ -31,20 +32,12 @@ export default function EditProjectScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const projectId = typeof params.id === 'string' ? params.id : '';
   const router = useRouter();
-  const { addToast } = useApp();
-  const { profileId, authUserId } = useCurrentProfile();
+  const { profileId } = useCurrentProfile();
   const { data: project, isPending } = useProjectQuery(projectId);
-  const updateProject = useUpdateProject(authUserId);
-  const [draft, setDraft] = useState<ProjectDraft | null>(null);
-
-  // Start the form from the project once, so a refetch never wipes an edit.
-  useEffect(() => {
-    if (project && draft === null) setDraft(projectDraftFrom(project));
-  }, [project, draft]);
 
   const close = () => router.back();
 
-  if (isPending || (project && !draft)) {
+  if (isPending) {
     return (
       <SafeAreaView style={styles.screen}>
         <ModalHeader title="Edit project" onCancel={close} onSave={() => undefined} canSave={false} />
@@ -53,7 +46,7 @@ export default function EditProjectScreen() {
     );
   }
 
-  if (!project || !draft || !canManageProject(profileId, project)) {
+  if (!project || !canManageProject(profileId, project)) {
     return (
       <SafeAreaView style={styles.screen}>
         <ModalHeader title="Edit project" onCancel={close} onSave={() => undefined} canSave={false} />
@@ -68,36 +61,55 @@ export default function EditProjectScreen() {
     );
   }
 
-  const canSave = projectDraftValid(draft) && projectDraftChanged(draft, project) && !updateProject.isPending;
+  return <EditProjectForm project={project} onDone={close} />;
+}
 
-  const handleSave = () => {
-    if (!canSave) return;
-    updateProject.mutate(
-      { projectId: project.id, edits: projectEditsFrom(draft) },
-      {
-        onSuccess: () => {
-          addToast('Saved.', 'success');
-          close();
+/**
+ * The form, once the project has loaded. It starts from the project; a
+ * refetch moves it along until the owner starts editing, and never after.
+ */
+function EditProjectForm({ project, onDone }: { project: Project; onDone: () => void }) {
+  const { addToast } = useApp();
+  const { authUserId } = useCurrentProfile();
+  const updateProject = useUpdateProject(authUserId);
+  const form = useAppForm({
+    ...projectFormOptions,
+    defaultValues: projectDraftFrom(project),
+    onSubmit: ({ value }) =>
+      updateProject.mutate(
+        { projectId: project.id, edits: projectEditsFrom(value) },
+        {
+          onSuccess: () => {
+            addToast('Saved.', 'success');
+            onDone();
+          },
+          onError: (error) =>
+            addToast(error instanceof MediaUploadError ? PROJECT_PHOTO_FAILED : PROJECT_SAVE_FAILED, 'error'),
         },
-        onError: (error) =>
-          addToast(error instanceof MediaUploadError ? PROJECT_PHOTO_FAILED : PROJECT_SAVE_FAILED, 'error'),
-      },
-    );
+      ),
+  });
+  const valid = useStore(form.store, (state) => state.canSubmit);
+  // Save waits for something to save, not just for a valid draft.
+  const changed = useStore(form.store, (state) => projectDraftChanged(state.values, project));
+
+  const canSave = valid && changed && !updateProject.isPending;
+  const handleSave = () => {
+    if (canSave) void form.handleSubmit();
   };
 
   return (
     <SafeAreaView style={styles.screen}>
       <ModalHeader
         title="Edit project"
-        onCancel={close}
+        onCancel={onDone}
         onSave={handleSave}
         canSave={canSave}
         saving={updateProject.isPending}
       />
       <KeyboardAvoider style={styles.fill}>
-        <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
-          <ProjectForm draft={draft} onChange={setDraft} />
-        </ScrollView>
+        <FormScrollView style={styles.fill} contentContainerStyle={styles.scroll}>
+          <ProjectForm form={form} />
+        </FormScrollView>
       </KeyboardAvoider>
     </SafeAreaView>
   );

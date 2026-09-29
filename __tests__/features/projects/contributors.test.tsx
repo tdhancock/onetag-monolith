@@ -26,9 +26,8 @@
 
 import fs from 'fs';
 import path from 'path';
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 jest.mock('react-native', () => {

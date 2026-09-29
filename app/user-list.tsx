@@ -1,11 +1,16 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { View, FlatList, RefreshControl, StyleSheet } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
-import { useFollowState, useToggleFollow, useCurrentProfile } from '../features/profiles';
-import { getFollowerUsers, getFollowingUsers } from '../features/profiles';
-import { getPostLikers, getPostReposters } from '../features/posts';
+import {
+  useFollowState,
+  useToggleFollow,
+  useCurrentProfile,
+  useFollowersQuery,
+  useFollowingQuery,
+} from '../features/profiles';
+import { usePostLikersQuery, usePostRepostersQuery } from '../features/posts';
 import { Button, EmptyState, ListRow, Skeleton } from '../components/native/ui';
 import { followButton, userListEmptyTitle, type UserListType } from '../lib/screens/profile';
 import { color, space } from '../theme/tokens';
@@ -38,38 +43,26 @@ export default function UserListScreen() {
   const { isFollowing: isUserFollowing, isRequested: isUserRequested } = useFollowState(profileId);
   const follow = useToggleFollow(profileId);
 
-  const [users, setUsers] = useState<SimpleUser[]>([]);
-  const [loading, setLoading] = useState(true);
+  // One list, read through its own query; the other three stay idle.
+  const lists = {
+    followers: useFollowersQuery(type === 'followers' ? userId : undefined),
+    following: useFollowingQuery(type === 'following' ? userId : undefined),
+    likes: usePostLikersQuery(type === 'likes' ? postId : undefined),
+    reposts: usePostRepostersQuery(type === 'reposts' ? postId : undefined),
+  };
+  const list = lists[type] as (typeof lists)[UserListType] | undefined;
+  const users = useMemo(() => list?.data ?? [], [list?.data]);
+  const loading = list?.isLoading ?? false;
   const [refreshing, setRefreshing] = useState(false);
-
-  const fetchUsers = useCallback(async (): Promise<SimpleUser[]> => {
-    if (type === 'followers' && userId) return getFollowerUsers(userId);
-    if (type === 'following' && userId) return getFollowingUsers(userId);
-    if (type === 'likes' && postId) return getPostLikers(postId);
-    if (type === 'reposts' && postId) return getPostReposters(postId);
-    return [];
-  }, [type, userId, postId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetchUsers()
-      .then((result) => { if (!cancelled) setUsers(result); })
-      .catch((err) => console.error('Failed to fetch user list:', err))
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [fetchUsers]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      setUsers(await fetchUsers());
-    } catch (err) {
-      console.error('Failed to refresh user list:', err);
+      await list?.refetch();
     } finally {
       setRefreshing(false);
     }
-  }, [fetchUsers]);
+  }, [list]);
 
   // The optimistic toggle flips the cache immediately, so there is no per-row
   // pending state to keep (ONE-15).

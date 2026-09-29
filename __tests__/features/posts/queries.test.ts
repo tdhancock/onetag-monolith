@@ -11,10 +11,12 @@
 const mockUseInfiniteQuery = jest.fn();
 const mockUseQuery = jest.fn();
 
+const mockCached: [unknown, unknown][] = [];
 jest.mock('@tanstack/react-query', () => ({
   __esModule: true,
   useInfiniteQuery: (options: unknown) => mockUseInfiniteQuery(options),
   useQuery: (options: unknown) => mockUseQuery(options),
+  useQueryClient: () => ({ getQueriesData: () => mockCached }),
 }));
 
 jest.mock('../../../services/supabase.native', () => ({
@@ -29,7 +31,7 @@ jest.mock('../../../features/posts/api', () => ({
   fetchFeedPage: (args: unknown) => mockFetchFeedPage(args),
 }));
 
-import { useFeedQuery, usePostQuery } from '../../../features/posts/queries';
+import { useFeedQuery, usePostLikersQuery, usePostQuery, usePostRepostersQuery } from '../../../features/posts/queries';
 import { fetchPostById, nextFeedCursor, FEED_PAGE_SIZE } from '../../../features/posts/api';
 import { postKeys } from '../../../features/posts/keys';
 import type { Post } from '../../../types';
@@ -149,6 +151,7 @@ describe('usePostQuery', () => {
       queryKey: readonly unknown[];
       queryFn: unknown;
       enabled: boolean;
+      placeholderData: () => Post | undefined;
     };
   };
 
@@ -165,5 +168,31 @@ describe('usePostQuery', () => {
   it('is disabled without an id', () => {
     expect(postOptions(undefined).enabled).toBe(false);
     expect(postOptions('p-1').enabled).toBe(true);
+  });
+
+  it('shows the post at once from a list that already holds it', () => {
+    const listed = { id: 'p-1', username: 'ana', media_type: 'text', likes: 2 } as Post;
+    mockCached.splice(0, mockCached.length, [['posts', 'feed', 'me'], { pages: [[listed]] }]);
+    expect(postOptions('p-1').placeholderData()).toBe(listed);
+    expect(postOptions('p-2').placeholderData()).toBeUndefined();
+    mockCached.length = 0;
+  });
+});
+
+describe('usePostLikersQuery and usePostRepostersQuery', () => {
+  const optionsOf = (hook: (id: string | undefined) => unknown, id: string | undefined) => {
+    mockUseQuery.mockClear();
+    hook(id);
+    return mockUseQuery.mock.calls[0]![0] as { queryKey: readonly unknown[]; enabled: boolean };
+  };
+
+  it('keys each list on its own branch', () => {
+    expect(optionsOf(usePostLikersQuery, 'p-1').queryKey).toEqual(postKeys.likers('p-1'));
+    expect(optionsOf(usePostRepostersQuery, 'p-1').queryKey).toEqual(postKeys.reposters('p-1'));
+  });
+
+  it('waits for a post id', () => {
+    expect(optionsOf(usePostLikersQuery, undefined).enabled).toBe(false);
+    expect(optionsOf(usePostRepostersQuery, undefined).enabled).toBe(false);
   });
 });

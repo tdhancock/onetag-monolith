@@ -223,9 +223,13 @@ describe('routeForDestination', () => {
     expect(routeForDestination({ kind: 'product', productId: 'a/b?c' })).toBe('/product/a%2Fb%3Fc');
   });
 
+  it('sends a post destination to the post (since 2026-09-28)', () => {
+    expect(routeForDestination({ kind: 'post', postId: 'po-1' })).toBe('/post/po-1');
+    expect(routeForDestination({ kind: 'post', postId: 'a/b?c' })).toBe('/post/a%2Fb%3Fc');
+  });
+
   it('returns null, rather than crashing, for a kind this build does not know', () => {
-    // A post is never a Destination (ONE-83), so this stays unknown.
-    expect(routeForDestination({ kind: 'post', postId: 'x' } as unknown as TagDestination)).toBeNull();
+    expect(routeForDestination({ kind: 'event', eventId: 'x' } as unknown as TagDestination)).toBeNull();
   });
 });
 

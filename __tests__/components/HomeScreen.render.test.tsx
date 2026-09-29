@@ -14,9 +14,8 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 
 // ─── 1. Mock the native runtime ─────────────────────────────────────────
 
@@ -70,7 +69,11 @@ jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 const mockPush = jest.fn();
 const mockNavigate = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush, navigate: mockNavigate }) }));
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockPush, navigate: mockNavigate }),
+  // The tab is on screen for as long as it's mounted.
+  useFocusEffect: (effect: () => void | (() => void)) => require('react').useEffect(effect, []),
+}));
 
 // ─── 2. Mock the data layer ─────────────────────────────────────────────
 
@@ -106,11 +109,14 @@ const state = {
     fetchNextPage: jest.fn(),
   },
   reel: { data: [] as unknown[], isPending: false, refetch: jest.fn(() => Promise.resolve()) },
+  /** The newest post the feed holds, as the New posts check answers. */
+  newest: null as null | { id: string; createdAt: string },
   filteredFeed: { data: { pages: [[]] } as undefined | { pages: { id: string }[][] }, isPending: false },
 };
 const mockFeedInterests: (string | null)[] = [];
 
 const mockFollowToggle = jest.fn();
+const mockSuggestionsAsked = jest.fn();
 jest.mock('../../features/profiles', () => ({
   useCurrentProfile: () => ({ profile: { username: 'me' }, profileId: 'p-me', authUserId: 'a-me' }),
   useFollowState: () => ({
@@ -120,7 +126,11 @@ jest.mock('../../features/profiles', () => ({
   }),
   useToggleFollow: () => ({ toggle: mockFollowToggle }),
   profileKeys: { all: ['profiles'] },
-  getSmartUserSuggestions: () => Promise.resolve(state.suggestions),
+  // Asked for only while the feed is empty and nobody is followed.
+  useUserSuggestionsQuery: (profileId?: string) => {
+    if (profileId) mockSuggestionsAsked(profileId);
+    return { data: profileId ? state.suggestions : undefined };
+  },
 }));
 jest.mock('../../lib/realtimeBridge', () => ({ useRealtimeSync: jest.fn() }));
 jest.mock('../../features/notifications', () => ({
@@ -149,11 +159,8 @@ jest.mock('../../features/posts', () => ({
     mockFeedInterests.push(interest ?? null);
     return interest ? { ...state.feed, ...state.filteredFeed } : state.feed;
   },
-  fetchPostById: jest.fn(),
   feedPosts: (data?: { pages: { id: string }[][] }) => (data ? data.pages.flat() : []),
-  prependPost: jest.fn(),
-  replacePost: jest.fn(),
-  removePost: jest.fn(),
+  useNewestFeedPostQuery: () => ({ data: state.newest }),
   postKeys: { all: ['posts'], feed: () => ['posts', 'feed'] },
 }));
 jest.mock('../../services/supabase.native', () => ({ supabase: {} }));
@@ -186,7 +193,9 @@ beforeEach(() => {
   state.notifications = 0;
   state.messages = 0;
   state.suggestions = [];
+  mockSuggestionsAsked.mockClear();
   state.feed.data = { pages: [[{ id: 'post-1' }, { id: 'post-2' }]] };
+  state.newest = null;
   state.feed.isPending = false;
   state.feed.isError = false;
   state.feed.refetch.mockClear();
@@ -216,6 +225,30 @@ const rgb = (hex: string) => {
   probe.style.color = hex;
   return probe.style.color;
 };
+
+// ─── New posts ──────────────────────────────────────────────────────────
+
+describe('Home — New posts', () => {
+  const at = (minutes: number) => new Date(Date.UTC(2026, 8, 28, 10, minutes)).toISOString();
+
+  it('offers newer posts over the feed, and loads them from the top', async () => {
+    state.feed.data = { pages: [[{ id: 'post-1', timestamp: at(0) } as never, { id: 'post-2', timestamp: at(-5) } as never]] };
+    state.newest = { id: 'post-9', createdAt: at(3) };
+    state.feed.refetch.mockClear();
+    const el = await mount();
+    const pill = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === 'New posts')!;
+    expect(pill).toBeDefined();
+    await act(async () => pill.click());
+    expect(state.feed.refetch).toHaveBeenCalled();
+  });
+
+  it('offers nothing while the top of the feed is its newest post', async () => {
+    state.feed.data = { pages: [[{ id: 'post-1', timestamp: at(0) } as never]] };
+    state.newest = { id: 'post-1', createdAt: at(0) };
+    const el = await mount();
+    expect(Array.from(el.querySelectorAll('button')).some((b) => b.textContent === 'New posts')).toBe(false);
+  });
+});
 
 // ─── 4. The loaded feed ─────────────────────────────────────────────────
 
@@ -312,9 +345,18 @@ describe('Home — the feed fails', () => {
 // ─── 8. Empty ───────────────────────────────────────────────────────────
 
 describe('Home — empty', () => {
+  it('asks for suggestions only while the feed is empty and nobody is followed', async () => {
+    await mount();
+    expect(mockSuggestionsAsked).not.toHaveBeenCalled();
+
+    state.feed.data = { pages: [[]] };
+    await rerender();
+    expect(mockSuggestionsAsked).toHaveBeenCalledWith('p-me');
+  });
+
   it('welcomes someone who follows nobody, with Follow cards that flip in place', async () => {
     state.feed.data = { pages: [[]] };
-    state.suggestions = [{ suggested_user_id: 'u-ana', username: 'ana', avatar_url: null }];
+    state.suggestions = [{ id: 'u-ana', username: 'ana', name: 'ana', avatar: null, isVerified: false, isPrivate: false }];
     const el = await mount();
 
     expect(el.textContent).toContain('Your feed starts with who you follow');

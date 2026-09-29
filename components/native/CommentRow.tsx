@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
-import { useCommentLikesQuery, useToggleCommentLike } from '../../features/comments';
+import { useToggleCommentLike } from '../../features/comments';
 import { Avatar, IconButton, Skeleton } from './ui';
 import { HeartIcon } from './Icons';
 import RenderUserContent from './RenderUserContent';
@@ -16,12 +16,22 @@ interface CommentRowProps {
   onViewProfile: (username: string) => void;
   /** Supplied only for comments the viewer may delete: the row then swipes to Delete. */
   onDelete?: (commentId: string) => void;
+  /** Supplying this puts Reply after the time and likes. */
+  onReply?: (comment: Comment) => void;
+  /** A reply, drawn smaller and indented under the comment it answers. */
+  isReply?: boolean;
+  /** The comment a notification opened on, marked for a moment. */
+  highlighted?: boolean;
 }
 
 /** The commenter's avatar diameter. */
 export const COMMENT_AVATAR_SIZE = 32;
+/** A reply's avatar diameter. */
+export const REPLY_AVATAR_SIZE = 24;
+/** How far a reply is indented: to where the comment it answers starts its text. */
+export const REPLY_INDENT = COMMENT_AVATAR_SIZE + space.md;
 
-/** "2h · 3 likes". Reply joins it once threading exists; a dead control would not. */
+/** "2h · 3 likes". Reply follows it as a control of its own. */
 export const commentMeta = (timeAgo: string, likes: number): string =>
   [timeAgo, likes > 0 ? `${likes} ${likes === 1 ? 'like' : 'likes'}` : null]
     .filter(Boolean)
@@ -32,22 +42,29 @@ export const commentMeta = (timeAgo: string, likes: number): string =>
  * line of time and likes, and a heart on the right. Your own comments swipe
  * to reveal Delete.
  */
-const CommentRow: React.FC<CommentRowProps> = ({ comment, onViewProfile, onDelete }) => {
+const CommentRow: React.FC<CommentRowProps> = ({
+  comment,
+  onViewProfile,
+  onDelete,
+  onReply,
+  isReply = false,
+  highlighted = false,
+}) => {
   const { triggerHapticFeedback } = useApp();
   const { profileId } = useCurrentProfile();
 
-  // Likes are a query and an optimistic toggle (ONE-14): the count moves at
-  // once and reverts if the write fails.
-  const { data: likes } = useCommentLikesQuery(comment.id, profileId);
+  // Likes come with the comment, read with its post's comments, and flip
+  // through an optimistic toggle (ONE-14): the count moves at once and
+  // reverts if the write fails.
   const likeHaptic = useCallback(() => triggerHapticFeedback(), [triggerHapticFeedback]);
   const like = useToggleCommentLike(profileId, likeHaptic);
 
-  const isLiked = Boolean(likes?.isLiked);
-  const likesCount = likes?.count ?? 0;
+  const isLiked = Boolean(comment.isLiked);
+  const likesCount = comment.likes ?? 0;
 
   const row = (
     <View
-      style={styles.row}
+      style={[styles.row, isReply && styles.replyRow, highlighted && styles.highlighted]}
       // Swiping is invisible to a screen reader; the same Delete is offered as
       // an accessibility action instead.
       accessibilityActions={onDelete ? [{ name: 'delete', label: 'Delete comment' }] : undefined}
@@ -61,7 +78,7 @@ const CommentRow: React.FC<CommentRowProps> = ({ comment, onViewProfile, onDelet
         accessibilityLabel={`View ${comment.username}'s profile`}
         hitSlop={6}
       >
-        <Avatar uri={comment.avatar} name={comment.username} size={COMMENT_AVATAR_SIZE} />
+        <Avatar uri={comment.avatar} name={comment.username} size={isReply ? REPLY_AVATAR_SIZE : COMMENT_AVATAR_SIZE} />
       </Pressable>
       <View style={styles.body}>
         <Text style={styles.text}>
@@ -71,7 +88,19 @@ const CommentRow: React.FC<CommentRowProps> = ({ comment, onViewProfile, onDelet
           {' '}
           <RenderUserContent content={comment.text} />
         </Text>
-        <Text style={styles.meta}>{commentMeta(getTimeAgo(comment.timestamp), likesCount)}</Text>
+        <View style={styles.metaRow}>
+          <Text style={styles.meta}>{commentMeta(getTimeAgo(comment.timestamp), likesCount)}</Text>
+          {onReply ? (
+            <Pressable
+              onPress={() => onReply(comment)}
+              accessibilityRole="button"
+              accessibilityLabel={`Reply to ${comment.username}`}
+              hitSlop={8}
+            >
+              <Text style={styles.replyLabel}>Reply</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
       <IconButton
         icon={<HeartIcon liked={isLiked} color={isLiked ? color.heart : color.textMuted} size={16} strokeWidth={1.8} />}
@@ -140,11 +169,28 @@ const styles = StyleSheet.create({
   username: {
     fontFamily: type.bodyBold,
   },
-  meta: {
+  replyRow: {
+    minHeight: 44,
+    paddingLeft: space.lg + REPLY_INDENT,
+  },
+  highlighted: {
+    backgroundColor: color.bgPanel,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
     marginTop: space.xs,
+  },
+  meta: {
     fontFamily: type.body,
     fontSize: 13,
     color: color.textMuted,
+  },
+  replyLabel: {
+    fontFamily: type.bodyBold,
+    fontSize: 13,
+    color: color.textMid,
   },
   deleteAction: {
     justifyContent: 'center',

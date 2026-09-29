@@ -61,6 +61,28 @@ update published for an app-version runtime can't be opened in Expo Go at all. W
 to development builds or TestFlight, switch the policy to `appVersion` or `fingerprint`. Expo Go
 then stops opening new updates, which is the point: they're for the builds.
 
+## What to test in this build
+
+Tell testers what changed, so they look there first. For the build from the first round of
+feedback (PR #33):
+
+- **Notifications** open where they're about: a follow opens the profile, a comment or reply
+  opens the comments at that comment, a liked OneSnap opens it. Back returns to Notifications.
+- **Messages** show each conversation's latest message and when it was sent. A conversation is
+  its own screen: Back and the swipe return to the inbox.
+- **Replies** to comments, threaded under them. Deleting a comment with replies asks first.
+- **Tags** on a photo post, including tags that point to another post.
+- **The keyboard** never covers what you're typing into: sign-up, Edit profile, comments,
+  messages, products and projects.
+- **Your profile** has a proper Edit profile button under the bio.
+- **OneSnaps**: tap right for the next one, left for the one before.
+- **Home** offers "New posts" when there are some, rather than moving the feed under you.
+- **Coming back to the app** after a while refreshes what's on screen; offline, likes and
+  follows wait and go through when the connection returns.
+- **Handles**: sign-up, adding a profile and Edit profile all say "Taken" before you save.
+
+Push notifications still can't be tested in Expo Go (above); the Notifications screen can.
+
 ## Your own phone
 
 Nothing changes: `npx expo start` and scan the QR code in Expo Go, signed in to the same Expo

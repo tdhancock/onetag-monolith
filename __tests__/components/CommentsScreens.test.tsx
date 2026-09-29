@@ -11,9 +11,8 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 
 // ─── 1. Mock the native runtime ─────────────────────────────────────────
 
@@ -102,7 +101,6 @@ const state = {
     isError: false,
     refetch: jest.fn(() => Promise.resolve()),
   },
-  likes: {} as Record<string, { count: number; isLiked: boolean }>,
   post: {
     data: null as unknown,
     isPending: false,
@@ -114,10 +112,10 @@ const mockDelete = jest.fn();
 const mockToggleLike = jest.fn();
 jest.mock('../../features/comments', () => ({
   useCommentsQuery: () => state.comments,
-  useCommentLikesQuery: (id: string) => ({ data: state.likes[id] ?? { count: 0, isLiked: false } }),
   useAddComment: () => ({ mutate: mockAdd, isPending: false }),
   useDeleteComment: () => ({ mutate: mockDelete }),
   useToggleCommentLike: () => ({ toggle: mockToggleLike }),
+  threadIdFor: (c: { id: string; parentId?: string | null }) => c.parentId ?? c.id,
 }));
 jest.mock('../../features/posts', () => ({ usePostQuery: () => state.post }));
 jest.mock('../../components/native/PostCard', () => {
@@ -149,7 +147,6 @@ beforeEach(() => {
   state.comments.data = [comment('c1', 'ana', 'first!'), comment('c2', 'me', 'mine', 'p-me')];
   state.comments.isPending = false;
   state.comments.isError = false;
-  state.likes = {};
   state.post.data = { id: 'post-1', username: 'ana', replies: 5, content: 'x', media_type: 'text' };
   state.post.isPending = false;
   [mockPush, mockBack, mockReplace, mockAdd, mockDelete, mockToggleLike].forEach(m => m.mockClear());
@@ -209,6 +206,15 @@ describe('Post detail', () => {
     expect(mockBack).toHaveBeenCalled();
   });
 
+  it('asks someone signed out to join, rather than saying the post is gone, as a scanned post tag lands here', () => {
+    mockAuth.status = 'signed-out';
+    state.post.data = null;
+    const el = mount(<PostDetailScreen />);
+    expect(el.textContent).toContain('Join OneTag to see this post');
+    act(() => Array.from(el.querySelectorAll('button')).find(b => b.textContent === 'Join OneTag')!.click());
+    expect(mockReplace).toHaveBeenCalledWith('/(auth)/signup');
+  });
+
   it('leaves Back to the native header when there is a screen to go back to (ONE-90)', () => {
     const el = mount(<PostDetailScreen />);
     expect(button(el, 'Back')).toBeNull();
@@ -226,12 +232,13 @@ describe('Post detail', () => {
 // ─── 5. Comment rows ────────────────────────────────────────────────────
 
 describe('Comments — rows', () => {
-  it('reads "username text", then "2h · N likes"', () => {
-    state.likes = { c1: { count: 3, isLiked: false } };
+  it('reads "username text", then "2h · N likes", then Reply', () => {
+    // Likes come with the comment, read with the post's comments.
+    state.comments.data = [{ ...comment('c1', 'ana', 'first!'), likes: 3 }, comment('c2', 'me', 'mine', 'p-me')];
     const el = mount(<CommentsScreen />);
     expect(el.textContent).toContain('ana first!');
     expect(el.textContent).toContain('2h · 3 likes');
-    expect(el.textContent).not.toContain('Reply');
+    expect(button(el, 'Reply to ana')).not.toBeNull();
   });
 
   it('meta drops a zero like count', () => {
@@ -240,7 +247,7 @@ describe('Comments — rows', () => {
   });
 
   it('fills the heart red when liked, and toggles on tap', () => {
-    state.likes = { c1: { count: 1, isLiked: true } };
+    state.comments.data = [{ ...comment('c1', 'ana', 'first!'), likes: 1, isLiked: true }];
     const el = mount(<CommentsScreen />);
     const liked = button(el, 'Like comment, liked')!;
     expect(liked.querySelector('svg')!.getAttribute('data-fill')).toBe(color.heart);
@@ -291,7 +298,110 @@ describe('Comments — composer', () => {
   });
 });
 
-// ─── 7. Empty, loading, error ───────────────────────────────────────────
+// ─── 7. Replies ─────────────────────────────────────────────────────────
+
+describe('Comments — replies', () => {
+  const composer = (el: HTMLElement) => el.querySelector('input[aria-label^="Reply to"], input[aria-label="Add a comment"]') as HTMLInputElement;
+
+  function type(el: HTMLElement, text: string) {
+    const field = composer(el);
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, text);
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
+  const withReplies = (count: number) => ({
+    ...comment('c1', 'ana', 'first!'),
+    replies: Array.from({ length: count }, (_, i) => ({ ...comment(`r${i + 1}`, 'bo', `reply ${i + 1}`), parentId: 'c1' })),
+  });
+
+  it('shows a reply under the comment it answers', () => {
+    state.comments.data = [withReplies(1)];
+    const el = mount(<CommentsScreen />);
+    expect(el.textContent).toContain('bo reply 1');
+    expect(button(el, 'Reply to bo')).not.toBeNull();
+  });
+
+  it('folds a longer thread behind "View N replies", and opens it', () => {
+    state.comments.data = [withReplies(3)];
+    const el = mount(<CommentsScreen />);
+    expect(el.textContent).not.toContain('reply 1');
+    const more = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === 'View 3 replies')!;
+    act(() => more.click());
+    expect(el.textContent).toContain('reply 1');
+    expect(el.textContent).toContain('reply 3');
+  });
+
+  it('replies with the handle in front, into the thread of the comment answered, and says so meanwhile', () => {
+    const el = mount(<CommentsScreen />);
+    act(() => button(el, 'Reply to ana')!.click());
+    expect(el.textContent).toContain('Replying to @ana');
+    expect(composer(el).value).toBe('@ana ');
+    expect(composer(el).getAttribute('placeholder')).toBe('Reply to @ana…');
+
+    type(el, '@ana agreed');
+    act(() => button(el, 'Post comment')!.click());
+    expect(mockAdd).toHaveBeenCalledWith(expect.objectContaining({ postId: 'post-1', text: '@ana agreed', parentId: 'c1' }));
+    expect(el.textContent).not.toContain('Replying to');
+  });
+
+  it('files a reply to a reply under the thread it sits in', () => {
+    state.comments.data = [withReplies(1)];
+    const el = mount(<CommentsScreen />);
+    act(() => button(el, 'Reply to bo')!.click());
+    type(el, '@bo yes');
+    act(() => button(el, 'Post comment')!.click());
+    expect(mockAdd).toHaveBeenCalledWith(expect.objectContaining({ parentId: 'c1' }));
+  });
+
+  it('asks before deleting a comment others replied to, since their replies go with it', () => {
+    const { Alert } = jest.requireMock('react-native') as { Alert: { alert: jest.Mock } };
+    Alert.alert.mockClear();
+    state.comments.data = [
+      { ...comment('c2', 'me', 'mine', 'p-me'), replies: [{ ...comment('r1', 'bo', 'agreed'), parentId: 'c2' }] },
+    ];
+    const el = mount(<CommentsScreen />);
+    act(() => button(el, 'Delete comment')!.click());
+    expect(mockDelete).not.toHaveBeenCalled();
+    const [title, body, actions] = Alert.alert.mock.calls[0] as [string, string, { text: string; onPress?: () => void }[]];
+    expect(title).toBe('Delete this comment?');
+    expect(body).toBe('Its reply will be deleted too.');
+
+    act(() => actions.find((a) => a.text === 'Delete')!.onPress!());
+    expect(mockDelete).toHaveBeenCalledWith({ postId: 'post-1', commentId: 'c2' }, expect.anything());
+  });
+
+  it('opens a folded thread on the reply a notification is about, and marks it', () => {
+    mockParams.current = { postId: 'post-1', commentId: 'r2' };
+    state.comments.data = [withReplies(3)];
+    const el = mount(<CommentsScreen />);
+    // The thread of three would fold; it opens because a notification points into it.
+    expect(el.textContent).toContain('reply 2');
+    const row = Array.from(el.querySelectorAll('div')).find(
+      (d) => d.textContent?.startsWith('Bbo reply 2') && d.style.backgroundColor === rgb(color.bgPanel),
+    );
+    expect(row).toBeDefined();
+  });
+
+  it('can be called off, leaving an ordinary comment', () => {
+    const el = mount(<CommentsScreen />);
+    act(() => button(el, 'Reply to ana')!.click());
+    act(() => button(el, 'Cancel reply')!.click());
+    expect(el.textContent).not.toContain('Replying to');
+    type(el, 'just a comment');
+    act(() => button(el, 'Post comment')!.click());
+    expect(mockAdd).toHaveBeenCalledWith(expect.objectContaining({ parentId: null }));
+  });
+
+  it('puts no handle in front of a reply to yourself', () => {
+    const el = mount(<CommentsScreen />);
+    act(() => button(el, 'Reply to me')!.click());
+    expect(composer(el).value).toBe('');
+  });
+});
+
+// ─── 8. Empty, loading, error ───────────────────────────────────────────
 
 describe('Comments — states', () => {
   it('invites the first comment, focusing the composer on tap', () => {

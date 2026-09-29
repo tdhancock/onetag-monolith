@@ -17,8 +17,7 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
-import { act } from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStatus, useAuthUserId } from '../../../features/auth/queries';

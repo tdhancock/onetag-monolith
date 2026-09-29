@@ -114,7 +114,7 @@ describe('Block user flow — block action', () => {
     let state = createBlockListState();
     state = toggleBlockUser(state, 'spammer');
     state = toggleBlockUser(state, 'troll');
-    state = toggleBlockUser(state, 'bot42');
+    toggleBlockUser(state, 'bot42');
 
     const rehydrated = rehydrateBlockList();
 

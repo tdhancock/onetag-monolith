@@ -4,7 +4,6 @@ import React from 'react';
 import { Tabs, useRouter } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
 import { useUnreadNotificationCount } from '../../features/notifications';
 import { useUnreadMessageCount } from '../../features/messages';
@@ -40,7 +39,7 @@ const CENTER_ICON_SIZE = 20;
 export default function TabLayout() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { profile: userProfile, profileId } = useCurrentProfile();
+  const { profileId } = useCurrentProfile();
 
   // The badge subscribes to the count, not to the list (ONE-17): a
   // notification whose unrelated fields change — a sender's avatar arriving —

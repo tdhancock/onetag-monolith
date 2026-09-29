@@ -12,7 +12,7 @@ turn it on in production.
    to it. Signing out deletes the device's row first.
    (`supabase/migrations/20260928190000_push_tokens_per_device.sql`)
 2. When a `notifications` row of a type that pushes is written (`follow`,
-   `follow_request`, `comment`, `mention`), or a `messages` row, a trigger
+   `follow_request`, `comment`, `reply`, `mention`), or a `messages` row, a trigger
    calls `request_push()`. That queues a POST through `pg_net` to the
    `send-push` edge function: `{ "kind": "notification" | "message", "id": … }`,
    with a shared secret in `x-push-secret`.
@@ -24,13 +24,37 @@ turn it on in production.
    account's tokens, and sends to each of its devices through Expo. A token
    Expo reports as `DeviceNotRegistered` is deleted.
    (`supabase/functions/send-push`)
-5. A tapped push is routed in `app/_layout.tsx`: a follow opens the sender's
-   profile, a follow request opens Follow requests, a comment or mention opens
-   the post, and a message opens the thread with the sender.
+5. A tapped push is routed in `app/_layout.tsx`, by `pushRoute` in
+   `lib/screens/notifications.ts`. It opens the same screen as tapping that
+   notification in the app (below). A push that arrives while the app is
+   closed is routed once the app has started, and only once.
 
 The text is the Notifications screen's own sentence. A message's push says who
 it's from, never what it says. Likes, reposts, comment likes and OneSnap likes
 don't push.
+
+## Where a notification opens
+
+Tapping a push and tapping a row on the Notifications screen open the same
+screen: `pushRoute` and `notificationRoute` in `lib/screens/notifications.ts`.
+Each opens as a pushed screen with Back. Notifications and Messages are never
+modals, because on iOS whatever a modal opens becomes another modal with no
+Back.
+
+| Notification | Pushes | Opens |
+| -- | -- | -- |
+| Follow | yes | The follower's profile |
+| Follow request | yes | Follow requests |
+| Comment | yes | The post's comments, scrolled to that comment and highlighted for a moment |
+| Reply | yes | The same, at the reply |
+| Mention | yes | The comment it's in, or the post when the mention is in a caption |
+| Message | yes | The conversation with the sender |
+| Like, repost | no | The post |
+| Comment like | no | The comment |
+| OneSnap like | no | The OneSnap in the viewer, while it hasn't expired |
+
+A row whose post or OneSnap is gone opens nothing. A push with nothing to
+route by opens Notifications.
 
 Until both Vault secrets below exist, `request_push()` does nothing. That's why
 the local stack and the test suite never send anything.
@@ -47,9 +71,10 @@ first, for example with `openssl rand -hex 32`.
    supabase functions deploy send-push
    ```
 
-   Edge functions don't ride the `deploy-migrations` workflow. `verify_jwt =
-   false` comes from `supabase/config.toml`: the database calls it with the
-   shared secret, not a JWT.
+   After this first time, a merge that changes the function deploys it
+   through the `deploy-functions` workflow. `verify_jwt = false` comes from
+   `supabase/config.toml`: the database calls it with the shared secret, not
+   a JWT.
 
    If the Expo project has *Enhanced push security* on, also run
    `supabase secrets set EXPO_ACCESS_TOKEN=<token from expo.dev>`.

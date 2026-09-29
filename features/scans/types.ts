@@ -5,7 +5,7 @@
 // repeats collapse into a count and a latest time — the display, not the data.
 
 /** What kind of Destination a scanned tag led to. */
-export type ScanDestinationKind = 'profile' | 'product' | 'project';
+export type ScanDestinationKind = 'profile' | 'product' | 'project' | 'post';
 
 /** One destination in a history, with how often and when it was last scanned. */
 export interface ScanHistoryEntry {

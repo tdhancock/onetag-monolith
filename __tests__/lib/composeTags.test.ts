@@ -10,6 +10,7 @@ import {
   TAG_LIMIT_MESSAGE,
   TAG_REFUSED_MESSAGE,
   destinationRef,
+  pickerPosts,
   diffTags,
   hasTagEdits,
   isTagRefusal,
@@ -101,17 +102,40 @@ describe('the picker', () => {
       { id: 'pj-1', name: 'Loft', coverUrl: null, isPublic: true },
       { id: 'pj-2', name: 'Vault', coverUrl: null, isPublic: false },
     ],
+    [
+      { id: 'po-1', content: 'The new kitchen\nwith more', imageUrl: 'k.jpg', authorUsername: 'jane' },
+      { id: 'po-host', content: 'this photo', imageUrl: 'h.jpg', authorUsername: 'me' },
+      { id: 'po-2', content: '', imageUrl: 'p.jpg', authorUsername: 'bo' },
+    ],
+    'po-host',
   );
 
-  it('offers profiles, products and public projects from any account', () => {
-    expect(options.map((o) => o.destination.kind)).toEqual(['profile', 'product', 'project']);
+  it('offers profiles, products, public projects and posts from any account', () => {
+    expect(options.map((o) => o.destination.kind)).toEqual(['profile', 'product', 'project', 'post', 'post']);
     expect(options[1].subtitle).toBe('Product · Other Co');
     expect(options[0].subtitle).toBe('@studio · Business Profile');
   });
 
-  it('never a private project, and never a post', () => {
+  it('names a post by its first line, or by who posted it when it has no text', () => {
+    const posts = options.filter((o) => o.destination.kind === 'post');
+    expect(posts.map((o) => [o.destination.name, o.subtitle, o.destination.imageUrl])).toEqual([
+      ['The new kitchen', 'Post by @jane', 'k.jpg'],
+      ['Post by @bo', 'Post by @bo', 'p.jpg'],
+    ]);
+  });
+
+  it('never a private project, nor the post the photo is on', () => {
     expect(options.map((o) => o.destination.name)).not.toContain('Vault');
-    expect(options.every((o) => ['profile', 'product', 'project'].includes(o.destination.kind))).toBe(true);
+    expect(options.map((o) => o.key)).not.toContain('post-po-host');
+  });
+
+  it('lists posts that matched by text first, then the newest by matching profiles, each once', () => {
+    expect(pickerPosts([{ id: 'a' }, { id: 'b' }], [{ id: 'b' }, { id: 'c' }]).map((p) => p.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('writes a post tag to its post', () => {
+    const post = options.find((o) => o.destination.kind === 'post')!;
+    expect(destinationRef(post.destination)).toEqual({ kind: 'post', id: 'po-1' });
   });
 });
 

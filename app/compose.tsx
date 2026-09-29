@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   Pressable,
-  ScrollView,
   Alert,
   StyleSheet,
 } from 'react-native';
@@ -32,6 +31,7 @@ import TagDestinationPicker from '../components/native/TagDestinationPicker';
 import InterestFilter from '../components/native/InterestFilter';
 import CharacterRing from '../components/native/CharacterRing';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
+import FormScrollView from '../components/native/FormScrollView';
 import { ImageIcon } from '../components/native/Icons';
 import { canPublish } from '../lib/screens/compose';
 import {
@@ -286,9 +286,8 @@ export default function ComposeScreen() {
       </View>
 
       <KeyboardAvoider style={styles.fill}>
-        <ScrollView
+        <FormScrollView
           style={styles.fill}
-          keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           contentContainerStyle={styles.scroll}
         >
@@ -387,7 +386,7 @@ export default function ComposeScreen() {
 
           {/* The rest of the page still means "write here". */}
           <Pressable onPress={() => inputRef.current?.focus()} accessible={false} style={styles.fill} />
-        </ScrollView>
+        </FormScrollView>
       </KeyboardAvoider>
 
       <TagDestinationPicker visible={pickingFor !== null} onPick={handlePickDestination} onClose={handleClosePicker} />

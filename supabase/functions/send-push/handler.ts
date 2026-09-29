@@ -10,7 +10,8 @@
 //
 // Decided 2026-09-27 (ONE-103):
 //   - these push: follow, follow_request, comment, mention, and messages.
-//     Likes, reposts, comment likes and OneSnap likes don't.
+//     Likes, reposts, comment likes and OneSnap likes don't. A reply to a
+//     comment pushes too, as a comment does (20260928234000_comment_replies).
 //   - a message's push says who it's from, never what it says.
 //   - a token Expo reports as DeviceNotRegistered is deleted.
 //
@@ -18,7 +19,7 @@
 // (lib/screens/notifications.ts). Deno can't import the app, so the sentences
 // are mirrored here, and __tests__/supabase/sendPush.test.ts keeps them in step.
 
-export const PUSH_NOTIFICATION_TYPES = ['follow', 'follow_request', 'comment', 'mention'] as const;
+export const PUSH_NOTIFICATION_TYPES = ['follow', 'follow_request', 'comment', 'reply', 'mention'] as const;
 export type PushNotificationType = (typeof PUSH_NOTIFICATION_TYPES)[number];
 
 /** Mirrors notificationSentence in lib/screens/notifications.ts. */
@@ -26,6 +27,7 @@ export const PUSH_SENTENCES: Record<PushNotificationType, string> = {
   follow: 'started following you.',
   follow_request: 'asked to follow you.',
   comment: 'commented on your post.',
+  reply: 'replied to your comment.',
   mention: 'mentioned you.',
 };
 
@@ -45,6 +47,8 @@ export type PushEvent =
       senderUsername: string;
       receiver: PushReceiver;
       postId: string | null;
+      /** The comment it's about, which a tap opens on. */
+      commentId?: string | null;
     }
   | {
       kind: 'message';
@@ -105,8 +109,13 @@ export const buildPush = (event: PushEvent): Omit<ExpoMessage, 'to'> | null => {
     case 'follow_request':
       return { title, body, data: { type }, sound: 'default' };
     case 'comment':
-    case 'mention':
-      return { title, body, data: event.postId ? { type, postId: event.postId } : { type }, sound: 'default' };
+    case 'reply':
+    case 'mention': {
+      const data: Record<string, string> = { type };
+      if (event.postId) data.postId = event.postId;
+      if (event.postId && event.commentId) data.commentId = event.commentId;
+      return { title, body, data, sound: 'default' };
+    }
   }
 };
 

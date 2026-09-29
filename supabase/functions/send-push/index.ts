@@ -45,7 +45,7 @@ Deno.serve((request) =>
       const { data, error } = await admin
         .from('notifications')
         .select(
-          'type, post_id, sender:profiles!notifications_sender_id_fkey(username), receiver:profiles!notifications_receiver_id_fkey(username, user_id, profile_type)',
+          'type, post_id, comment_id, sender:profiles!notifications_sender_id_fkey(username), receiver:profiles!notifications_receiver_id_fkey(username, user_id, profile_type)',
         )
         .eq('id', id)
         .maybeSingle();
@@ -53,7 +53,14 @@ Deno.serve((request) =>
       const sender = one(data?.sender as ProfileEmbed | ProfileEmbed[]);
       const receiver = receiverOf(one(data?.receiver as ProfileEmbed | ProfileEmbed[]));
       if (!data || !sender || !receiver) return null;
-      return { kind: 'notification', type: data.type, senderUsername: sender.username, receiver, postId: data.post_id ?? null };
+      return {
+        kind: 'notification',
+        type: data.type,
+        senderUsername: sender.username,
+        receiver,
+        postId: data.post_id ?? null,
+        commentId: data.comment_id ?? null,
+      };
     },
 
     async loadMessage(id): Promise<PushEvent | null> {

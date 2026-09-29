@@ -17,6 +17,7 @@
 //   4. Header action targets (/notifications and /messages) and labels
 
 import {
+    hasNewerPosts,
     HOME_EMPTY_FOLLOWING_ACTION,
     HOME_EMPTY_FOLLOWING_BODY,
     HOME_EMPTY_FOLLOWING_TITLE,
@@ -199,5 +200,23 @@ describe('HomeScreen – header action labels', () => {
         expect(getHomeHeaderLabel('notifications', 3)).toBe('Notifications, 3 unread');
         expect(getHomeHeaderLabel('messages', 0)).toBe('Messages');
         expect(getHomeHeaderLabel('messages', 120)).toBe('Messages, 120 unread');
+    });
+});
+
+describe('HomeScreen — New posts', () => {
+    const top = { id: 'p-1', timestamp: '2026-09-28T10:00:00Z' };
+
+    it('offers them when the feed holds a post newer than the top of the list', () => {
+        expect(hasNewerPosts({ id: 'p-2', createdAt: '2026-09-28T10:05:00Z' }, top)).toBe(true);
+    });
+
+    it('offers nothing when the top is the newest, or when a post is merely older', () => {
+        expect(hasNewerPosts({ id: 'p-1', createdAt: '2026-09-28T10:00:00Z' }, top)).toBe(false);
+        expect(hasNewerPosts({ id: 'p-0', createdAt: '2026-09-28T09:00:00Z' }, top)).toBe(false);
+        expect(hasNewerPosts(null, top)).toBe(false);
+    });
+
+    it('offers them to an empty list once something arrives', () => {
+        expect(hasNewerPosts({ id: 'p-2', createdAt: '2026-09-28T10:05:00Z' }, undefined)).toBe(true);
     });
 });

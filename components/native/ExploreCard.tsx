@@ -55,6 +55,7 @@ const ExploreCard: React.FC<ExploreCardProps> = React.memo(({ item, size, gapRig
     </Pressable>
   );
 });
+ExploreCard.displayName = 'ExploreCard';
 
 const styles = StyleSheet.create({
   cell: {

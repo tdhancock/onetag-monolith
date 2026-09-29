@@ -6,39 +6,68 @@
 // them.
 
 import { supabase } from '../../services/supabase.native';
+import { threadComments } from './thread';
 import type { Comment } from './types';
 import type { ProfileId } from '../../types';
 
-export const getCommentsForPost = async (postId: string): Promise<Comment[]> => {
+/**
+ * What a post's comments are read with: each comment's author, its like
+ * count, and whether the viewer is among the likes (`viewer_like`, narrowed
+ * to them). One request for the whole list: each row used to ask for its own
+ * likes, two requests a comment.
+ */
+export const COMMENT_SELECT =
+    '*, profiles!user_id(username, avatar_url), like_count:comment_likes(count), viewer_like:comment_likes(user_id)';
+
+/** Narrows `viewer_like` to nobody, when nobody is viewing. */
+const NO_VIEWER = '00000000-0000-0000-0000-000000000000';
+
+const likeCount = (embed: unknown): number => {
+    const first = Array.isArray(embed) ? (embed[0] as { count?: unknown } | undefined) : undefined;
+    return Number(first?.count) || 0;
+};
+
+/**
+ * A post's comments as threads: newest first, each with its replies beneath
+ * it, oldest first (see ./thread), each with its likes as the viewer sees
+ * them.
+ */
+export const getCommentsForPost = async (postId: string, viewerId?: ProfileId): Promise<Comment[]> => {
     const { data, error } = await supabase
         .from('comments')
-        .select('*, profiles!user_id(username, avatar_url)')
+        .select(COMMENT_SELECT)
         .eq('post_id', postId)
+        .eq('viewer_like.user_id', viewerId ?? NO_VIEWER)
         .order('created_at', { ascending: false });
 
     if (error) return [];
-    return (data || []).map((c: any) => ({
+    return threadComments((data || []).map((c: any) => ({
         id: c.id,
         userId: c.user_id,
         username: c.profiles.username,
         avatar: c.profiles.avatar_url,
         text: c.content,
         timestamp: new Date(c.created_at),
-        likes: 0, // Simplified for now
-        isLiked: false, // Simplified for now
-        replies: [], // Simplified for now
-    }));
+        likes: likeCount(c.like_count),
+        isLiked: Array.isArray(c.viewer_like) && c.viewer_like.length > 0,
+        parentId: c.parent_id ?? null,
+        replies: [],
+    })));
 };
 
-export async function addComment(postId: string, userId: ProfileId, content: string) {
+/**
+ * Comment on a post, or reply to one of its comments. The database files a
+ * reply to a reply under the comment that reply answers.
+ */
+export async function addComment(postId: string, userId: ProfileId, content: string, parentId?: string | null) {
   const { data, error } = await supabase
     .from('comments')
-    .insert([{ post_id: postId, user_id: userId, content }])
+    .insert([{ post_id: postId, user_id: userId, content, parent_id: parentId ?? null }])
     .select('*, profiles!user_id(username, avatar_url)')
     .single();
 
   if (error) {
-    console.error("Yorum ekleme hatası:", error.message || error);
+    console.error('Failed to add a comment:', error.message || error);
     throw error;
   }
 

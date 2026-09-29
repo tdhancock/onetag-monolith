@@ -9,15 +9,16 @@ import type { ProfileId } from '../../types';
  * Where a live tag sends someone.
  *
  * One member per destination kind the app can route to. A Destination is one
- * of four kinds — Business Profile, Individual Profile, Product, Project —
- * and both profile kinds are the one member here. Each kind has a column in
- * `resolve_tag` and a route in `lib/screens/tagResolution.ts`. A post is not
- * a Destination (ONE-83).
+ * of five kinds — Business Profile, Individual Profile, Product, Project and,
+ * since 2026-09-28, Post (reversing ONE-83) — and both profile kinds are the
+ * one member here. Each kind has a column in `resolve_tag` and a route in
+ * `lib/screens/tagResolution.ts`.
  */
 export type TagDestination =
   | { kind: 'profile'; profileId: string; username: string }
   | { kind: 'product'; productId: string }
-  | { kind: 'project'; projectId: string };
+  | { kind: 'project'; projectId: string }
+  | { kind: 'post'; postId: string };
 
 export type TagDestinationKind = TagDestination['kind'];
 
@@ -43,6 +44,10 @@ export interface ResolveTagRow {
   dest_product_id: string | null;
   /** Returned for a private project too: the project screen decides who sees it (ONE-41). */
   dest_project_id: string | null;
+  /** Returned for any post too: the post screen decides who sees it. */
+  dest_post_id?: string | null;
+  /** The post's author, which the web page names it by. */
+  dest_post_username?: string | null;
 }
 
 /** Why a resolution could not be read, in terms a screen can say something about. */
@@ -64,8 +69,8 @@ export type TagFormat = 'qr';
 
 /**
  * Where an owner's tag points, with enough to show it: one member per
- * destination kind, like `TagDestination` — a profile, a product or a project
- * (ONE-89).
+ * destination kind, like `TagDestination` — a profile, a product, a project
+ * (ONE-89) or a post.
  */
 export type OwnedTagDestination =
   | {
@@ -76,7 +81,9 @@ export type OwnedTagDestination =
       profileType: 'individual' | 'business';
     }
   | { kind: 'product'; productId: string; name: string }
-  | { kind: 'project'; projectId: string; name: string };
+  | { kind: 'project'; projectId: string; name: string }
+  /** `name` is the post's first line, or who posted it when it has no text. */
+  | { kind: 'post'; postId: string; name: string; username: string };
 
 /** A destination by kind and id, as a new tag is pointed at one. */
 export interface TagDestinationRef {
@@ -101,6 +108,8 @@ export interface OwnedTag {
   createdAt: string;
   /** Null when the destination is gone, or is a kind this build doesn't read. */
   destination: OwnedTagDestination | null;
+  /** The post an Embedded Tag sits on. Physical and Digital Tags have none. */
+  hostPostId?: string | null;
   scanCount: number;
   lastScannedAt: string | null;
 }
@@ -149,10 +158,20 @@ export interface TagRow {
   dest_profile_id: string | null;
   dest_product_id?: string | null;
   dest_project_id?: string | null;
+  dest_post_id?: string | null;
+  host_post_id?: string | null;
   /** A one-to-one embed arrives as an object; an older server or a mock may hand back an array. */
   dest_profile?: DestinationProfileRow | DestinationProfileRow[] | null;
   dest_product?: DestinationNamedRow | DestinationNamedRow[] | null;
   dest_project?: DestinationNamedRow | DestinationNamedRow[] | null;
+  dest_post?: DestinationPostRow | DestinationPostRow[] | null;
+}
+
+/** A post a tag points at, as much of it as the owner's list shows. */
+export interface DestinationPostRow {
+  id: string;
+  content: string | null;
+  author?: { username: string } | { username: string }[] | null;
 }
 
 /** A product or project a tag points at, as much of it as the owner's list shows. */

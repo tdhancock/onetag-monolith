@@ -6,10 +6,19 @@
 // results stay up while the next search runs.
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { searchPosts, searchProducts, searchProfiles, searchProjects } from './api';
+import { postsByAuthors, searchPosts, searchProducts, searchProfiles, searchProjects } from './api';
 import { searchKeys } from './keys';
 
 const options = { placeholderData: keepPreviousData, staleTime: 30_000 } as const;
+
+/** The newest posts by the profiles a search matched (see postsByAuthors). */
+export const usePostsByAuthorsQuery = (profileIds: readonly string[]) =>
+  useQuery({
+    queryKey: searchKeys.postsByAuthors(profileIds),
+    queryFn: () => postsByAuthors(profileIds),
+    enabled: profileIds.length > 0,
+    ...options,
+  });
 
 export const useProfileResultsQuery = (term: string) => {
   const t = term.trim();

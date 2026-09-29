@@ -15,29 +15,30 @@ import {
 import { DMMono_500Medium } from '@expo-google-fonts/dm-mono';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
-import { AppProvider, useApp } from '../store/AppContext.native';
+import { AppProvider } from '../store/AppContext.native';
 import { useCurrentProfile } from '../features/profiles';
 import { supabase } from '../services/supabase.native';
 import {
   registerForPushNotifications,
   savePushToken,
-  addNotificationResponseListener,
   setBadgeCount,
 } from '../services/notifications';
 import ToastContainer from '../components/native/Toast';
 import { color, type } from '../theme/tokens';
 import QueryProvider from '../lib/QueryProvider';
 import { opensWithoutSession } from '../lib/screens/auth';
+import { pushRoute } from '../lib/screens/notifications';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
-  const { theme } = useApp();
   const { authUserId, status: profileStatus } = useCurrentProfile();
   const segments = useSegments();
   const router = useRouter();
-  const notificationResponseListener = useRef<Notifications.EventSubscription | null>(null);
+  // The auth listener is registered once; it reads where the app is now.
+  const currentSegments = useRef(segments);
+  currentSegments.current = segments;
 
   const [fontsLoaded, fontError] = useFonts({
     DMMono_500Medium,
@@ -58,12 +59,12 @@ function RootLayoutNav() {
 
     // Initial session check + redirect
     supabase.auth.getSession().then(({ data: { session } }) => {
-      const inAuthGroup = segments[0] === '(auth)';
+      const inAuthGroup = currentSegments.current[0] === '(auth)';
       // Tag Resolution never needs an account (ONE-30): a stranger who
       // opens a scanned sticker's link must land on its Destination, not on
       // the sign-in screen. Nor does a product or project page opened from a
       // shared link (ONE-40, ONE-41).
-      const publicRoute = opensWithoutSession(segments[0]);
+      const publicRoute = opensWithoutSession(currentSegments.current[0]);
       if (!session && !inAuthGroup && !publicRoute) {
         router.replace('/(auth)/login');
       } else if (session && inAuthGroup) {
@@ -73,7 +74,10 @@ function RootLayoutNav() {
 
     // Auth state change listener — registered ONCE
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN') {
+      // Signing in from the sign-in or sign-up screens goes home. supabase-js
+      // also reports SIGNED_IN as it restores a saved session at launch; that
+      // must not replace the screen a tag link or a push opened the app on.
+      if (event === 'SIGNED_IN' && currentSegments.current[0] === '(auth)') {
         router.replace('/(tabs)');
       } else if (event === 'SIGNED_OUT') {
         router.replace('/(auth)/login');
@@ -83,7 +87,7 @@ function RootLayoutNav() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [fontsLoaded]); // segments removed — listener is stable across navigations
+  }, [fontsLoaded, router]); // not segments: the listener is stable across navigations
 
   // Push notifications registration
   // Account-scoped: a device registers for the account, never for one of its
@@ -111,30 +115,25 @@ function RootLayoutNav() {
     }
   }, [profileStatus, segments, router]);
 
-  // Notification tap handler — route to relevant screen
+  // A tapped push opens what it is about (pushRoute). The last response,
+  // rather than a listener, so a tap that launched the app is handled too:
+  // a listener registers after that tap has been delivered, and the app
+  // opened on the home tab instead of the follower's profile or the post.
+  // It waits for the navigator, which mounts once the fonts have loaded, and
+  // is cleared once handled so a later launch doesn't open it again.
+  const lastResponse = Notifications.useLastNotificationResponse();
+  const handledResponse = useRef<string | null>(null);
+  const navigatorReady = Boolean(fontsLoaded || fontError);
   useEffect(() => {
-    notificationResponseListener.current = addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data as Record<string, string> | undefined;
-      if (!data) return;
+    if (!navigatorReady || !lastResponse) return;
+    if (lastResponse.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+    const id = lastResponse.notification.request.identifier;
+    if (handledResponse.current === id) return;
+    handledResponse.current = id;
 
-      if (data.type === 'follow' && data.username) {
-        router.push(`/user/${data.username}`);
-      } else if (data.type === 'follow_request') {
-        router.push('/follow-requests');
-      } else if (data.type === 'message') {
-        // send-push names the sender; the thread with them opens (ONE-103).
-        router.push(data.username ? `/messages?chatWith=${data.username}` : '/messages');
-      } else if (data.postId) {
-        router.push(`/post/${data.postId}`);
-      } else {
-        router.push('/notifications');
-      }
-    });
-
-    return () => {
-      notificationResponseListener.current?.remove();
-    };
-  }, []);
+    router.push(pushRoute(lastResponse.notification.request.content.data as Record<string, unknown> | undefined) as never);
+    Notifications.clearLastNotificationResponse();
+  }, [lastResponse, navigatorReady, router]);
 
   if (!fontsLoaded && !fontError) {
     return null;
@@ -158,13 +157,22 @@ function RootLayoutNav() {
     >
       <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
       <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+      {/* Notifications and Messages lead on to profiles and posts, so they
+          are pushed screens, not modals. On iOS anything opened from a modal
+          opens as another modal stacked on it, with no Back: a follow
+          notification's profile arrived that way, and the way back was a
+          swipe down nobody found. */}
+      <Stack.Screen name="notifications" options={{ headerShown: true }} />
+      <Stack.Screen name="messages/index" options={{ headerShown: true }} />
+      {/* A conversation is its own screen, so Back and the swipe both return
+          to the inbox. */}
+      <Stack.Screen name="messages/[username]" options={{ headerShown: true }} />
       {/* Every modal is declared here, with whether it shows a header, and
           never from inside the screen. A screen that sets `presentation` on
           itself is first pushed as a card and then asked to become a modal,
           which the native stack cannot do in place; one that changes its
-          header's visibility inside a modal is remounted, losing its state. */}
-      <Stack.Screen name="notifications" options={{ presentation: 'modal', headerShown: true }} />
-      <Stack.Screen name="messages" options={{ presentation: 'modal', headerShown: true }} />
+          header's visibility inside a modal is remounted, losing its state.
+          A modal never pushes a screen onward, for the reason above. */}
       <Stack.Screen name="share-post" options={{ presentation: 'modal', headerShown: true }} />
       <Stack.Screen name="compose" options={{ presentation: 'modal' }} />
       <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />

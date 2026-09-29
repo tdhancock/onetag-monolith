@@ -59,7 +59,7 @@ function rehydrateBlockedUsers(ls: MemoryStorage): Set<string> {
           (item: unknown) => typeof item === 'string'
         );
       }
-    } catch (e) {
+    } catch {
       // Mirrors the source: swallow parse errors, fall back to empty.
     }
   }

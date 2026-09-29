@@ -1,14 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet } from 'react-native';
+import React from 'react';
+import { ActivityIndicator, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useStore } from '@tanstack/react-form';
 import { useApp } from '../../../store/AppContext.native';
 import { useCurrentProfile } from '../../../features/profiles';
 import { useProductQuery, useUpdateProduct } from '../../../features/products';
 import { MediaUploadError } from '../../../services/mediaUpload';
 import KeyboardAvoider from '../../../components/native/KeyboardAvoider';
+import FormScrollView from '../../../components/native/FormScrollView';
 import ModalHeader from '../../../components/native/ModalHeader';
-import ProductForm from '../../../components/native/ProductForm';
+import ProductForm, { productFormOptions } from '../../../components/native/ProductForm';
+import { useAppForm } from '../../../components/native/form';
 import { EmptyState } from '../../../components/native/ui';
 import {
   canManageProduct,
@@ -16,10 +19,9 @@ import {
   PRODUCT_SAVE_FAILED,
   productDraftChanged,
   productDraftFrom,
-  productDraftValid,
   productEditsFrom,
-  type ProductDraft,
 } from '../../../lib/screens/products';
+import type { Product } from '../../../features/products';
 import { color, space } from '../../../theme/tokens';
 
 /**
@@ -31,21 +33,12 @@ export default function EditProductScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const productId = typeof params.id === 'string' ? params.id : '';
   const router = useRouter();
-  const { addToast } = useApp();
-  const { profileId, authUserId } = useCurrentProfile();
+  const { profileId } = useCurrentProfile();
   const { data: product, isPending } = useProductQuery(productId);
-  const updateProduct = useUpdateProduct(authUserId);
-  const [draft, setDraft] = useState<ProductDraft | null>(null);
-
-  // Start the form from the product once it has loaded, and only then: a
-  // refetch while editing must not wipe what the owner has typed.
-  useEffect(() => {
-    if (product && draft === null) setDraft(productDraftFrom(product));
-  }, [product, draft]);
 
   const close = () => router.back();
 
-  if (isPending || (product && !draft)) {
+  if (isPending) {
     return (
       <SafeAreaView style={styles.screen}>
         <ModalHeader title="Edit product" onCancel={close} onSave={() => undefined} canSave={false} />
@@ -54,7 +47,7 @@ export default function EditProductScreen() {
     );
   }
 
-  if (!product || !draft || !canManageProduct(profileId, product)) {
+  if (!product || !canManageProduct(profileId, product)) {
     return (
       <SafeAreaView style={styles.screen}>
         <ModalHeader title="Edit product" onCancel={close} onSave={() => undefined} canSave={false} />
@@ -71,36 +64,55 @@ export default function EditProductScreen() {
     );
   }
 
-  const canSave = productDraftValid(draft) && productDraftChanged(draft, product) && !updateProduct.isPending;
+  return <EditProductForm product={product} onDone={close} />;
+}
 
-  const handleSave = () => {
-    if (!canSave) return;
-    updateProduct.mutate(
-      { product, edits: productEditsFrom(draft, product) },
-      {
-        onSuccess: () => {
-          addToast('Saved.', 'success');
-          close();
+/**
+ * The form, once the product has loaded. It starts from the product; a
+ * refetch moves it along until the owner starts typing, and never after.
+ */
+function EditProductForm({ product, onDone }: { product: Product; onDone: () => void }) {
+  const { addToast } = useApp();
+  const { authUserId } = useCurrentProfile();
+  const updateProduct = useUpdateProduct(authUserId);
+  const form = useAppForm({
+    ...productFormOptions,
+    defaultValues: productDraftFrom(product),
+    onSubmit: ({ value }) =>
+      updateProduct.mutate(
+        { product, edits: productEditsFrom(value, product) },
+        {
+          onSuccess: () => {
+            addToast('Saved.', 'success');
+            onDone();
+          },
+          onError: (error) =>
+            addToast(error instanceof MediaUploadError ? PRODUCT_PHOTO_FAILED : PRODUCT_SAVE_FAILED, 'error'),
         },
-        onError: (error) =>
-          addToast(error instanceof MediaUploadError ? PRODUCT_PHOTO_FAILED : PRODUCT_SAVE_FAILED, 'error'),
-      },
-    );
+      ),
+  });
+  const valid = useStore(form.store, (state) => state.canSubmit);
+  // Save waits for something to save, not just for a valid draft.
+  const changed = useStore(form.store, (state) => productDraftChanged(state.values, product));
+
+  const canSave = valid && changed && !updateProduct.isPending;
+  const handleSave = () => {
+    if (canSave) void form.handleSubmit();
   };
 
   return (
     <SafeAreaView style={styles.screen}>
       <ModalHeader
         title="Edit product"
-        onCancel={close}
+        onCancel={onDone}
         onSave={handleSave}
         canSave={canSave}
         saving={updateProduct.isPending}
       />
       <KeyboardAvoider style={styles.fill}>
-        <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
-          <ProductForm draft={draft} onChange={setDraft} />
-        </ScrollView>
+        <FormScrollView style={styles.fill} contentContainerStyle={styles.scroll}>
+          <ProductForm form={form} />
+        </FormScrollView>
       </KeyboardAvoider>
     </SafeAreaView>
   );

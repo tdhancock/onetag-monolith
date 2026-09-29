@@ -13,9 +13,8 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 
 // ─── 1. Mock the native runtime ─────────────────────────────────────────
 
@@ -36,9 +35,15 @@ jest.mock('react-native-safe-area-context', () => {
 });
 jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 jest.mock('expo-image', () => require('../support/expoImageStub'));
+const mockPickedDate = new Date(Date.UTC(2000, 0, 15));
 jest.mock('@react-native-community/datetimepicker', () => {
   const React = require('react');
-  return { __esModule: true, default: () => React.createElement('div', { 'data-date-picker': 'true' }) };
+  // The picker hands back whatever date the test puts in mockPickedDate.
+  return {
+    __esModule: true,
+    default: (p: { onChange: (e: { type: string }, d?: Date) => void }) =>
+      React.createElement('div', { 'data-date-picker': 'true', onClick: () => p.onChange({ type: 'set' }, mockPickedDate) }),
+  };
 });
 
 const mockPush = jest.fn();
@@ -66,9 +71,9 @@ import { Alert } from 'react-native';
 import {
   loginFormValid,
   opensWithoutSession,
-  signupFormValid,
-  signupPasswordErrors,
+  signupErrors,
   usernameAvailabilityLabel,
+  usernameStatusFrom,
   PASSWORD_TOO_SHORT,
   PASSWORDS_DO_NOT_MATCH,
   USERNAME_CHECK_DEBOUNCE_MS,
@@ -267,6 +272,35 @@ describe('Sign up', () => {
     expect(buttonWithText(el, 'Done')).toBeDefined();
   });
 
+  it('creates the account once every field is filled, checking the username again first', async () => {
+    const el = mount(<SignupScreen />);
+    typeInto(input(el, 'Full name'), 'Ana Silva');
+    typeInto(input(el, 'Username'), 'Ana_New');
+    typeInto(input(el, 'Email'), ' ana@example.com ');
+    typeInto(input(el, 'Password'), 'secret1');
+    typeInto(input(el, 'Confirm password'), 'secret1');
+    await waitForCheck();
+    expect(buttonWithText(el, 'Create account')!.disabled).toBe(true);
+
+    act(() => button(el, 'Select your birthday')!.click());
+    act(() => (el.querySelector('[data-date-picker="true"]') as HTMLElement).click());
+    expect(button(el, 'Birthday, January 15, 2000')).not.toBeNull();
+
+    const create = buttonWithText(el, 'Create account')!;
+    expect(create.disabled).toBe(false);
+    mockUsernameExists.mockClear();
+    await act(async () => { create.click(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+
+    // Lowercased as typed; looked up again before anything is sent.
+    expect(mockUsernameExists).toHaveBeenCalledWith('ana_new');
+    expect(auth.signUp).toHaveBeenCalledWith({
+      email: 'ana@example.com',
+      password: 'secret1',
+      options: { data: { full_name: 'Ana Silva', username: 'ana_new', birthday: '2000-01-15', bio: 'Hello, I am using OneTag' } },
+    });
+  });
+
   it('opens the picker from the last text field while the birthday is empty', () => {
     const el = mount(<SignupScreen />);
     act(() => (propsOf(input(el, 'Confirm password')).onSubmitEditing as () => void)());
@@ -300,13 +334,13 @@ describe('auth rules', () => {
   const filled = {
     fullName: 'Ana Silva',
     username: 'ana',
-    usernameError: null,
-    usernameStatus: 'available' as const,
     email: 'ana@example.com',
     password: 'secret1',
     confirmPassword: 'secret1',
     birthday: '2000-01-01',
   };
+  const problems = (draft: typeof filled) =>
+    Object.entries(signupErrors(draft)).filter(([, error]) => error !== null).map(([field]) => field);
 
   it('lets someone without an account be launched into tag resolution, a product or a project, and nothing else', () => {
     // A scanned sticker (ONE-30), and a shared or scanned product or project (ONE-40, ONE-41).
@@ -324,24 +358,31 @@ describe('auth rules', () => {
     expect(loginFormValid('ana', 'x')).toBe(true);
   });
 
-  it('accepts a complete sign-up and refuses each gap', () => {
-    expect(signupFormValid(filled)).toBe(true);
-    expect(signupFormValid({ ...filled, usernameStatus: 'taken' })).toBe(false);
-    expect(signupFormValid({ ...filled, usernameStatus: 'checking' })).toBe(false);
-    expect(signupFormValid({ ...filled, usernameStatus: 'unknown' })).toBe(true);
-    expect(signupFormValid({ ...filled, usernameError: 'Too short' })).toBe(false);
-    expect(signupFormValid({ ...filled, password: '12345', confirmPassword: '12345' })).toBe(false);
-    expect(signupFormValid({ ...filled, confirmPassword: 'other' })).toBe(false);
-    expect(signupFormValid({ ...filled, birthday: '' })).toBe(false);
+  it('accepts a complete sign-up and names each gap', () => {
+    expect(problems(filled)).toEqual([]);
+    expect(problems({ ...filled, fullName: ' ' })).toEqual(['fullName']);
+    expect(problems({ ...filled, username: '' })).toEqual(['username']);
+    expect(problems({ ...filled, username: 'An' })).toEqual(['username']);
+    expect(problems({ ...filled, email: '' })).toEqual(['email']);
+    expect(problems({ ...filled, birthday: '' })).toEqual(['birthday']);
   });
 
-  it('shows password errors only once each field is touched', () => {
-    const f = { password: '123', confirmPassword: '12' };
-    expect(signupPasswordErrors(f, {})).toEqual({ password: null, confirmPassword: null });
-    expect(signupPasswordErrors(f, { password: true, confirmPassword: true })).toEqual({
-      password: PASSWORD_TOO_SHORT,
-      confirmPassword: PASSWORDS_DO_NOT_MATCH,
-    });
+  it('says what is wrong with the passwords', () => {
+    expect(signupErrors({ ...filled, password: '12345', confirmPassword: '12345' }).password).toBe(PASSWORD_TOO_SHORT);
+    expect(signupErrors({ ...filled, confirmPassword: 'other' }).confirmPassword).toBe(PASSWORDS_DO_NOT_MATCH);
+  });
+
+  it('reads the username check from the field', () => {
+    const at = (s: Partial<Parameters<typeof usernameStatusFrom>[0]>) =>
+      usernameStatusFrom({ username: 'ana_new', checking: false, taken: false, confirmedFree: false, ...s });
+    expect(at({ username: '' })).toBe('idle');
+    // The rule speaks first; nothing is looked up.
+    expect(at({ username: 'A!', checking: true })).toBe('idle');
+    expect(at({ checking: true })).toBe('checking');
+    expect(at({ taken: true })).toBe('taken');
+    expect(at({ confirmedFree: true })).toBe('available');
+    // Not yet looked up, or the lookup failed: nothing said.
+    expect(at({})).toBe('idle');
   });
 
   it('labels the username check', () => {

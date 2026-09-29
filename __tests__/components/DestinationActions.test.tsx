@@ -15,9 +15,8 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 jest.mock('react-native', () => require('../support/reactNativeDom'));

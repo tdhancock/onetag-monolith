@@ -20,6 +20,7 @@ app/                       expo-router routes — every screen, nothing else
   <route>.tsx              stack screens: compose, messages, settings, …
 components/native/         shared components
 components/native/ui/      shared visual primitives — token-only, no raw hex
+components/native/form.tsx TanStack Form, with the app's fields bound in (useAppForm, withForm)
 features/<domain>/         the data layer — every server read and write lives here
 lib/                       queryClient, QueryProvider, queryKeys, realtimeBridge, pure utilities
 lib/screens/               pure screen logic, extracted so it can be tested
@@ -35,10 +36,12 @@ __tests__/                 Jest
 types.ts                   shared domain types (repo root)
 app.config.ts              app.json plus universal links for the tag host (repo root)
 public/.well-known/        the files the tag host serves so the OS opens the app for /t/*
+docs/tags.md               the five Destination kinds, who may point a tag at what, and resolution
 docs/deep-links.md         how tag links reach the app, and how to verify universal links
-docs/push-notifications.md how a notification becomes a push, and how to turn it on in production
+docs/push-notifications.md how a notification becomes a push, where each one opens, and turning it on
 docs/testing-with-expo-go.md how testers open OneTag in Expo Go, and how to publish for them
 scripts/                   CI gates
+eslint.config.js           lint: the hooks rules, and the feature-folder rules enforced
 ```
 
 **Every file under `app/` is a route.** expo-router registers `.ts` modules too, so a
@@ -57,7 +60,8 @@ npx expo start          # or npm start / npm run ios / npm run android
 npm test                # jest
 npm run test:watch
 npx tsc --noEmit        # or npm run typecheck
-npm run verify          # typecheck + test + raw-hex gate — what CI runs
+npm run lint            # eslint, no warnings allowed
+npm run verify          # typecheck + lint + test + raw-hex gate — what CI runs
 npm run db:start        # local Supabase; also db:stop, db:status, db:reset, db:diff
 npm run db:test         # the pgTAP suite in supabase/tests, against the local stack
 npm run check:api       # the API checks in __tests__/api, against the local stack
@@ -79,7 +83,8 @@ permission gets a check beside the others. The harness refuses any host but the 
 
 **Never run `supabase db push`.** Migrations apply against a local stack (`npm run db:start`,
 `npm run db:reset`) and reach production only via the `deploy-migrations` workflow on merge,
-behind a required review.
+behind a required review. Edge functions go the same way, through `deploy-functions`, which
+deploys every function whenever one changes on `main`; their secrets are set once by hand.
 
 **A function only signed-in callers run revokes `FROM PUBLIC, anon`**, then grants
 `authenticated`. Supabase's default privileges grant every new `public` function to `anon`
@@ -133,6 +138,14 @@ Like, Save, Follow and Repost are one operation — an optimistic boolean toggle
 table with a count — so they share **one** generic helper. Four hand-written variants is the
 thing this pattern exists to prevent.
 
+**Screens read through hooks.** A screen or component never calls a domain's `get…`,
+`fetch…` or `search…` itself; it uses the query hook, adding one if there isn't one. A read in
+an effect is uncached and never refetches. ESLint enforces this and rules 2 and 3.
+
+TanStack Query knows when the app returns to the front and when it's offline
+(`lib/QueryProvider.tsx`): stale queries refetch on return, and offline, queries and mutations
+wait. The cache shows in Expo's dev tools (shift+m in `npx expo start`, React Query).
+
 M2 is finished: the old shared service module is gone and every domain lives in a feature
 folder. When a feature's `api.ts` needs something another feature has, move it to `services/`
 — see `services/postRows.ts` — rather than importing across features.
@@ -156,6 +169,23 @@ Before re-skinning or building a screen, read the
 and reach for `components/native/ui` (Button, IconButton, TextField, ListRow, SettingsRow, Sheet,
 EmptyState, Skeleton, …) rather than hand-rolling one inside a screen.
 
+## Screens
+
+- **A modal never pushes a screen onward.** On iOS whatever a modal opens becomes another
+  modal, with no Back. A screen that leads on to others (Notifications, Messages) is a pushed
+  screen. Modals are declared in `app/_layout.tsx`, never from inside the screen.
+- **Text input sits in a `KeyboardAvoider`, scrolled by a `FormScrollView`** (both in
+  `components/native`), never React Native's `KeyboardAvoidingView`: it measures wrong
+  inside an iOS page sheet. A list with its own input uses `automaticallyAdjustKeyboardInsets`.
+- **Forms run on TanStack Form** through `useAppForm` / `withForm` from
+  `components/native/form.tsx`. The rules stay a pure function per form in `lib/screens`,
+  returning an error per field, handed to the form with `draftValidator`
+  (`lib/formErrors.ts`). A username field uses `useUsernameCheck`.
+- **A gesture handler reads its callbacks through a ref.** A `PanResponder` is built once, so
+  callbacks it closes over go stale; the OneSnap viewer closed on tap because of it.
+  `react-hooks/exhaustive-deps` is an error; a dependency left out on purpose gets a disable
+  comment saying why.
+
 ## Vocabulary
 
 Use these exactly — as table names, variable names, and user-facing labels.
@@ -166,7 +196,7 @@ Use these exactly — as table names, variable names, and user-facing labels.
 | **Physical Tag** | A QR code in the real world. Always-on; anyone can scan it without the owner present. |
 | **Digital Tag** | A Tag shared from inside the app as a short link. The owner shares it deliberately. |
 | **Embedded Tag** | A Tag inside a post, pinned to a point on its image. Created during post creation. Tapped, never scanned. In the UI it is just a tag. |
-| **Destination** | What a Tag points to. Exactly four kinds: Business Profile, Individual Profile, Product, Project. |
+| **Destination** | What a Tag points to. Exactly five kinds: Business Profile, Individual Profile, Product, Project, Post. (Post was added 2026-09-28, reversing ONE-83.) |
 | **Tag Resolution** | Reading a Tag, identifying its Destination, routing there, recording the Scan. |
 | **Scan** | Reading a Physical Tag with the camera. Applies to Physical Tags only. |
 | **Scan History** | A user's private log of Tags they scanned. Private by default; opt-in to public. |

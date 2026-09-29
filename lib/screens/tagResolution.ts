@@ -25,6 +25,7 @@ const DESTINATION_ROUTES: RouteBuilders = {
   profile: ({ username }) => `/user/${encodeURIComponent(username)}`,
   product: ({ productId }) => productRoute(productId),
   project: ({ projectId }) => projectRoute(projectId),
+  post: ({ postId }) => `/post/${encodeURIComponent(postId)}`,
 };
 
 /** The route a destination lives at, or null for a kind this build cannot route. */

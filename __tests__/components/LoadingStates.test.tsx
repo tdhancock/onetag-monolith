@@ -30,9 +30,8 @@ jest.mock('expo-image', () => require('../support/expoImageStub'));
 jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 
 // ─── 2. Imports ─────────────────────────────────────────────────────────
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 import { Animated } from 'react-native';
 import PostSkeleton, {
   SKELETON_AVATAR_SIZE,

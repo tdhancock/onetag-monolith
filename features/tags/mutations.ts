@@ -17,6 +17,7 @@ import type { ProfileId } from '../../types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
 import { scanKeys } from '../scans';
 import { postKeys } from '../posts';
+import { profileKeys } from '../profiles';
 
 export interface RecordScanInput {
   tagId: string;
@@ -161,7 +162,9 @@ export interface CreateEmbeddedTagsInput {
  * Embed tags in a post the composer just published (ONE-46). Not optimistic:
  * the post is already out, and a failure is reported to the author with a
  * retry rather than rolled back. On success every cached post list and the
- * post itself refetch, so the tags appear where the post does.
+ * post itself refetch, so the tags appear where the post does — the
+ * profile's grid too, which publishing refetched before the tags existed —
+ * and so does the author's Tags dashboard.
  */
 export const useCreateEmbeddedTags = () => {
   const queryClient = useQueryClient();
@@ -169,6 +172,8 @@ export const useCreateEmbeddedTags = () => {
     mutationFn: ({ hostPostId, ownerProfileId, tags }) => createEmbeddedTags(hostPostId, ownerProfileId, tags),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: postKeys.all });
+      void queryClient.invalidateQueries({ queryKey: profileKeys.all });
+      void queryClient.invalidateQueries({ queryKey: tagKeys.lists() });
     },
   });
 };

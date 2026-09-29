@@ -36,7 +36,7 @@ describe('resolve_tag', () => {
     }
   });
 
-  it('returns no post destination — a post is not one of the four kinds (ONE-83)', () => {
+  it('returns no post destination here — a post became one later (post_destinations)', () => {
     expect(sql).not.toContain('dest_post_id');
   });
 

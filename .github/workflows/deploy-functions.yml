@@ -1,0 +1,56 @@
+name: Deploy edge functions
+
+# Deploys the Supabase edge functions to production when they change on main.
+#
+# WHY THIS EXISTS: nothing else deploys them. A merge that changed one left
+# production running the old code until someone ran `supabase functions
+# deploy` by hand: a post tag's web page said its destination was gone, and
+# comment replies never pushed. This makes deploying them the same single,
+# reviewable, logged path the migrations take.
+#
+# It deploys every function under supabase/functions, each with the
+# verify_jwt setting supabase/config.toml gives it (tag-resolve and send-push
+# take no JWT). Secrets the functions read (TAG_BASE_URL, PUSH_WEBHOOK_SECRET,
+# EXPO_ACCESS_TOKEN) are set once with `supabase secrets set`, not here:
+# see docs/deep-links.md and docs/push-notifications.md.
+#
+# SETUP REQUIRED before this can run, shared with deploy-migrations.yml:
+#   1. Repository secrets:
+#        SUPABASE_ACCESS_TOKEN  — personal access token (Account > Access Tokens)
+#        SUPABASE_PROJECT_ID    — production project ref
+#   2. The GitHub Environment named "production", with required reviewers.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+      - 'supabase/config.toml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-functions
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    environment: production # gated on the reviewers configured for this environment
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy every function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy --project-ref "${{ secrets.SUPABASE_PROJECT_ID }}"
+
+      - name: List what is deployed
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions list --project-ref "${{ secrets.SUPABASE_PROJECT_ID }}"

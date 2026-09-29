@@ -50,6 +50,37 @@ export const lastOwnMessageId = (
   return null;
 };
 
+/** A conversation's own screen, by the other person's handle. */
+export const messageThreadRoute = (username: string): string => `/messages/${encodeURIComponent(username)}`;
+
+/** The latest message of a conversation, as the Messages list reads it. */
+export interface PreviewMessage {
+  text: string | null;
+  type?: 'text' | 'profile_share' | 'post_share' | 'story_reply';
+  senderId: string;
+}
+
+/**
+ * The line under a name in the Messages list: the conversation's latest
+ * message on one line, "You: " in front when you sent it. A shared post or
+ * profile says what was shared, since it has no text of its own. Null when
+ * there is nothing to preview, and the row shows the handle instead.
+ */
+export const conversationPreview = (
+  message: PreviewMessage | null | undefined,
+  myId: string | null | undefined,
+): string | null => {
+  if (!message) return null;
+  const text = message.text?.replace(/\s+/g, ' ').trim() ?? '';
+  let body: string;
+  if (message.type === 'post_share') body = text || 'Sent a post';
+  else if (message.type === 'profile_share') body = text || 'Sent a profile';
+  else if (message.type === 'story_reply') body = text || 'Replied to a OneSnap';
+  else body = text;
+  if (!body) return null;
+  return message.senderId === myId ? `You: ${body}` : body;
+};
+
 /** A message's time as 24-hour HH:MM, the format the thread has always used. */
 export const formatMessageTime = (iso: string): string => {
   const date = new Date(iso);

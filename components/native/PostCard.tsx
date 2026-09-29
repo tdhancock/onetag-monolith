@@ -19,12 +19,14 @@ import {
   SendIcon,
   ReportIcon,
   PencilAltIcon,
+  TagIcon,
 } from './Icons';
 import { reportPost } from '../../features/moderation';
 import { useIsAdmin } from '../../features/admin';
 import { useAuthUserId } from '../../features/auth';
 import { POST_REPORT_REASONS } from '../../services/reportReasons';
 import { getTimeAgo } from '../../lib/timeAgo';
+import { tagCreateRoute } from '../../lib/screens/tags';
 import {
   actionLabels,
   commentsLinkLabel,
@@ -85,6 +87,7 @@ const PostHeader: React.FC<{
 }> = React.memo(({ post, isMyPost, timeAgo, onViewProfile, onDelete, onEditPost, isPreview }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const router = useRouter();
   const { addToast } = useApp();
   const { profileId, authUserId } = useCurrentProfile();
   const isAdmin = useIsAdmin(authUserId);
@@ -147,11 +150,26 @@ const PostHeader: React.FC<{
         {!showReport ? (
           (isMyPost || isAdmin) ? (
             <>
-              {isMyPost && post.media_type === 'text' && onEditPost && (
+              {/* A photo post edits too: its caption, and its tags (ONE-92).
+                  Offered on text posts only, that screen was unreachable. */}
+              {isMyPost && onEditPost && (
                 <SheetRow
                   label="Edit Post"
                   icon={<PencilAltIcon color={color.text} size={20} />}
                   onPress={() => { setMenuVisible(false); onEditPost(); }}
+                />
+              )}
+              {/* A post is a Destination: its author can print it as a QR
+                  code or share it as a link. */}
+              {isMyPost && (
+                <SheetRow
+                  label="Create tag"
+                  hint="A QR code or a link that opens this post."
+                  icon={<TagIcon color={color.text} size={20} />}
+                  onPress={() => {
+                    setMenuVisible(false);
+                    router.push(tagCreateRoute({ kind: 'post', destination: post.id }));
+                  }}
                 />
               )}
               <SheetRow
@@ -179,6 +197,7 @@ const PostHeader: React.FC<{
     </View>
   );
 });
+PostHeader.displayName = 'PostHeader';
 
 // ─── PostCard ──────────────────────────────────────
 
@@ -239,7 +258,6 @@ const PostCard: React.FC<PostCardProps> = ({
   const media = useImageContentRect();
 
   const isTextOnly = post.media_type === 'text';
-  const isImage = post.media_type === 'image';
   const timeAgo = getTimeAgo(post.timestamp);
 
   // The reply count comes off the post itself. It used to prefer the length
@@ -280,7 +298,7 @@ const PostCard: React.FC<PostCardProps> = ({
       Animated.spring(heartScale, { toValue: 1.2, useNativeDriver: true, speed: 50 }),
       Animated.timing(heartScale, { toValue: 0, duration: 400, useNativeDriver: true }),
     ]).start(() => setShowHeart(false));
-  }, [isStoryVersion, liked]);
+  }, [isStoryVersion, liked, handleLike, triggerHapticFeedback, heartScale]);
 
   const handleDelete = useCallback(() => {
     Alert.alert('Delete Post', 'Are you sure you want to delete this post?', [
@@ -302,7 +320,7 @@ const PostCard: React.FC<PostCardProps> = ({
     } else {
       router.push(`/user/${post.username}`);
     }
-  }, [post.username, post.avatar]);
+  }, [post.username, post.avatar, onViewProfile, router]);
 
   // Last tap tracking for double tap
   const lastTap = useRef(0);

@@ -16,9 +16,8 @@ jest.mock('react-native', () => require('../../support/reactNativeDom'));
 
 // ─── 2. Imports ─────────────────────────────────────────────────────────
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 import { AccessibilityInfo, Animated } from 'react-native';
 import Skeleton, {
   PULSE_MIN_OPACITY,

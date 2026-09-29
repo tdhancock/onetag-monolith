@@ -14,8 +14,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
 import { addComment, deleteComment, toggleCommentLike } from './api';
 import { commentKeys } from './keys';
+import { addToThreads, findInThreads, patchInThreads, removeFromThreads } from './thread';
 import type { Comment } from './types';
-import type { CommentLikes } from './queries';
 import { postKeys, type Post } from '../posts';
 import { patchLists, useOptimisticToggle } from '../../lib/optimisticToggle';
 import type { ProfileId } from '../../types';
@@ -42,6 +42,7 @@ const moveReplyCount = (queryClient: QueryClient, postId: string, delta: number)
 const optimisticComment = (
   text: string,
   author: CommentAuthor,
+  parentId: string | null,
 ): Comment => ({
   id: `temp-${Date.now()}`,
   userId: author.id ?? '',
@@ -51,6 +52,7 @@ const optimisticComment = (
   timestamp: new Date(),
   likes: 0,
   isLiked: false,
+  parentId,
   replies: [],
 } as unknown as Comment);
 
@@ -65,12 +67,15 @@ export interface AddCommentVariables {
   postId: string;
   text: string;
   author: CommentAuthor;
+  /** The comment this replies to: the opening comment of its thread. */
+  parentId?: string | null;
 }
 
 /**
- * Post a comment.
+ * Post a comment, or a reply to one.
  *
- * The comment appears immediately with a temporary id and the reply count
+ * The comment appears immediately with a temporary id — a new thread at the
+ * top, or a reply at the foot of its thread — and the post's comment count
  * moves with it; on success the server row replaces the placeholder, and on
  * failure both are taken back.
  */
@@ -78,19 +83,19 @@ export const useAddComment = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ postId, text, author }: AddCommentVariables) => {
+    mutationFn: ({ postId, text, author, parentId }: AddCommentVariables) => {
       if (!author.id) throw new Error('You must be signed in to comment.');
-      return addComment(postId, author.id, text);
+      return addComment(postId, author.id, text, parentId);
     },
 
-    onMutate: async ({ postId, text, author }: AddCommentVariables) => {
+    onMutate: async ({ postId, text, author, parentId }: AddCommentVariables) => {
       const listKey = commentKeys.forPost(postId);
       await queryClient.cancelQueries({ queryKey: listKey });
 
       const previous = queryClient.getQueryData<Comment[]>(listKey);
-      const pending = optimisticComment(text, author);
+      const pending = optimisticComment(text, author, parentId ?? null);
 
-      queryClient.setQueryData<Comment[]>(listKey, (comments) => [pending, ...(comments ?? [])]);
+      queryClient.setQueryData<Comment[]>(listKey, (comments) => addToThreads(comments ?? [], pending, parentId));
       moveReplyCount(queryClient, postId, 1);
 
       return { previous, pendingId: pending.id };
@@ -115,7 +120,11 @@ export interface DeleteCommentVariables {
   commentId: string;
 }
 
-/** Remove a comment, optimistically. */
+/**
+ * Remove a comment, optimistically. Removing the comment a thread opens with
+ * removes its replies too, as the database does, and the post's count drops
+ * by all of them.
+ */
 export const useDeleteComment = () => {
   const queryClient = useQueryClient();
 
@@ -132,22 +141,19 @@ export const useDeleteComment = () => {
       await queryClient.cancelQueries({ queryKey: listKey });
 
       const previous = queryClient.getQueryData<Comment[]>(listKey);
-      const existed = Boolean(previous?.some((comment) => comment.id === commentId));
+      const { threads, removed } = removeFromThreads(previous ?? [], commentId);
 
-      queryClient.setQueryData<Comment[]>(listKey, (comments) =>
-        (comments ?? []).filter((comment) => comment.id !== commentId),
-      );
+      queryClient.setQueryData<Comment[]>(listKey, threads);
+      if (removed > 0) moveReplyCount(queryClient, postId, -removed);
 
-      if (existed) moveReplyCount(queryClient, postId, -1);
-
-      return { previous, existed };
+      return { previous, removed };
     },
 
     onError: (_error, { postId }, context) => {
       if (!context) return;
 
       queryClient.setQueryData(commentKeys.forPost(postId), context.previous);
-      if (context.existed) moveReplyCount(queryClient, postId, 1);
+      if (context.removed > 0) moveReplyCount(queryClient, postId, context.removed);
     },
 
     onSettled: (_data, _error, { postId }) => {
@@ -164,27 +170,34 @@ export interface CommentLikeToggle {
 /**
  * Like or unlike a comment.
  *
- * A configuration of the shared helper: the entity is the comment's own
- * likes entry, `isOn` is the boolean on it and `count` the number beside it.
- * The helper also replaces the hand-rolled double-tap guard the comments
- * screen used to keep: a second tap while the first is in flight is gated by
- * the mutation's own pending state.
+ * A configuration of the shared helper. The comment lives in its post's
+ * comment list, as threads, which is where its like and count are read from
+ * and flipped: `isLiked` and `likes` on the comment. The list is refetched
+ * once the server answers, one request, where each row used to read and
+ * refetch its own likes. The helper also replaces the hand-rolled
+ * double-tap guard the comments screen used to keep: a second tap while the
+ * first is in flight is gated by the mutation's own pending state.
  */
 export const useToggleCommentLike = (
   viewerId: ProfileId | undefined,
   onHaptic?: () => void,
 ): CommentLikeToggle => {
-  const mutation = useOptimisticToggle<CommentLikes>({
+  const mutation = useOptimisticToggle<Comment>({
     mutationFn: (commentId) => {
       if (!viewerId) return Promise.reject(new Error('You must be signed in to like a comment.'));
       return toggleCommentLike(commentId, viewerId);
     },
+    // A comment has no entry of its own; it's patched in the lists.
     entityKey: (commentId) => commentKeys.likes(commentId),
-    listKey: commentKeys.all,
-    entityId: () => '',
-    isOn: (likes) => likes.isLiked,
-    count: (likes) => likes.count,
-    apply: (likes, next) => ({ isLiked: next.isOn, count: next.count }),
+    listKey: commentKeys.posts(),
+    entityId: (comment) => comment.id,
+    isOn: (comment) => comment.isLiked,
+    count: (comment) => comment.likes,
+    apply: (comment, next) => ({ ...comment, isLiked: next.isOn, likes: next.count }),
+    otherLists: {
+      find: (data, id) => (Array.isArray(data) ? findInThreads(data as Comment[], id) : undefined),
+      patch: (data, id, transform) => (Array.isArray(data) ? patchInThreads(data as Comment[], id, transform) : data),
+    },
     onToggle: () => onHaptic?.(),
   });
 

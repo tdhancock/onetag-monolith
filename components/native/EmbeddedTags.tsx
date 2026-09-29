@@ -13,17 +13,21 @@ import {
   destinationTypeLabel,
   pointForPct,
   tagAccessibilityLabel,
+  tagLabelPosition,
   TAG_HIT_SIZE,
+  TAG_LABEL_HEIGHT,
   TAG_MARKER_SIZE,
   type Rect,
 } from '../../lib/screens/embeddedTags';
 import { routeForDestination } from '../../lib/screens/tagResolution';
-import { color, space, type } from '../../theme/tokens';
+import { color, space, type, withAlpha } from '../../theme/tokens';
 import type { EmbeddedTag } from '../../types';
 
 // Embedded Tags on a post's image (ONE-45): a marker at each tag's stored
-// position, a count badge, and a card when a tag is tapped. The composer's
-// preview (ONE-46) renders this same component with `interactive` off.
+// position, a count badge, and a card when a tag is tapped. The badge shows
+// and hides each tag's name beside its marker, so a photo reads as what's in
+// it rather than as unlabelled squares. The composer's preview (ONE-46)
+// renders this same component with `interactive` off, names always showing.
 
 export interface EmbeddedTagsProps {
   tags: EmbeddedTag[];
@@ -46,6 +50,9 @@ const EmbeddedTags: React.FC<EmbeddedTagsProps> = ({ tags, contentRect, interact
   const { profileId } = useCurrentProfile();
   const recordScan = useRecordScan();
   const [open, setOpen] = useState<EmbeddedTag | null>(null);
+  const [namesShown, setNamesShown] = useState(false);
+  // The author previewing a draft always sees what each tag points at.
+  const showNames = namesShown || !interactive;
 
   const handleTap = useCallback(
     (tag: EmbeddedTag) => {
@@ -93,7 +100,28 @@ const EmbeddedTags: React.FC<EmbeddedTagsProps> = ({ tags, contentRect, interact
           );
         })}
 
-      <TaggedBadge count={tags.length} />
+      {contentRect &&
+        showNames &&
+        tags.map((tag) => (
+          <Pressable
+            key={`name-${tag.id}`}
+            testID={`tag-name-${tag.id}`}
+            onPress={interactive ? () => handleTap(tag) : undefined}
+            disabled={!interactive}
+            // The marker beside it already announces the tag.
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={[styles.namePosition, tagLabelPosition(contentRect, tag.xPct, tag.yPct)]}
+          >
+            <TagName name={tag.destination.name} />
+          </Pressable>
+        ))}
+
+      <TaggedBadge
+        count={tags.length}
+        labelsShown={namesShown}
+        onToggleLabels={interactive ? () => setNamesShown((shown) => !shown) : undefined}
+      />
 
       {interactive && (
         <Sheet visible={open !== null} onClose={() => setOpen(null)}>
@@ -124,6 +152,15 @@ const EmbeddedTags: React.FC<EmbeddedTagsProps> = ({ tags, contentRect, interact
     </>
   );
 };
+
+/** A tag's name on a scrim, as it sits beside its marker on the photo. */
+export const TagName: React.FC<{ name: string; pending?: boolean }> = ({ name, pending = false }) => (
+  <View style={[styles.name, pending && styles.namePending]}>
+    <Text style={[styles.nameText, pending && styles.nameTextPending]} numberOfLines={1}>
+      {name}
+    </Text>
+  </View>
+);
 
 /**
  * Measures where a `contentFit="contain"` image is drawn inside its view:
@@ -163,6 +200,30 @@ const styles = StyleSheet.create({
     backgroundColor: color.text,
     borderWidth: 2,
     borderColor: color.inverse,
+  },
+  namePosition: {
+    position: 'absolute',
+  },
+  name: {
+    height: TAG_LABEL_HEIGHT,
+    maxWidth: 160,
+    justifyContent: 'center',
+    paddingHorizontal: space.sm,
+    // The badge's scrim, so the white name reads over any photo.
+    backgroundColor: withAlpha(color.text, 0.72),
+  },
+  namePending: {
+    backgroundColor: color.inverse,
+    borderWidth: 1,
+    borderColor: color.text,
+  },
+  nameText: {
+    fontFamily: type.bodyMedium,
+    fontSize: 12,
+    color: color.inverse,
+  },
+  nameTextPending: {
+    color: color.text,
   },
   card: {
     flexDirection: 'row',

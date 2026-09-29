@@ -297,3 +297,61 @@ describe('optimistic toggle — two taps', () => {
     expect(client.getQueryData<Item>(detailKey('p1'))).toMatchObject({ isOn: true, count: 4 });
   });
 });
+
+// ─── Lists that aren't pages ────────────────────────────────────────────
+//
+// A post's comments are threads, not infinite pages. `otherLists` says how
+// to find and change an entity in one, so a comment's like flips in the list
+// its row reads, and comes back if the server refuses.
+
+describe('optimistic toggle — a list that is not pages', () => {
+  interface Thread extends Item {
+    replies: Item[];
+  }
+  const threadsKey = ['items', 'threads', 'post-1'];
+  const threads = (): Thread[] => [
+    { ...item({ id: 'c1' }), replies: [item({ id: 'r1', isOn: false, count: 2 })] },
+  ];
+  const find = (data: unknown, id: string): Item | undefined => {
+    if (!Array.isArray(data)) return undefined;
+    for (const t of data as Thread[]) {
+      if (t.id === id) return t;
+      const reply = t.replies.find((r) => r.id === id);
+      if (reply) return reply;
+    }
+    return undefined;
+  };
+  const patch = (data: unknown, id: string, transform: (i: Item) => Item): unknown =>
+    Array.isArray(data)
+      ? (data as Thread[]).map((t) => ({ ...t, replies: t.replies.map((r) => (r.id === id ? transform(r) : r)) }))
+      : data;
+
+  it('flips the entity where it sits in the list, and reports which way', async () => {
+    const client = newClient();
+    client.setQueryData(threadsKey, threads());
+    const onToggle = jest.fn();
+    let resolve!: () => void;
+    const pending = runToggle(
+      client,
+      config({ otherLists: { find, patch }, onToggle, mutationFn: () => new Promise<void>((r) => { resolve = r; }) }),
+      'r1',
+    );
+    await flushMicrotasks();
+
+    expect(client.getQueryData<Thread[]>(threadsKey)![0]!.replies[0]).toMatchObject({ isOn: true, count: 3 });
+    expect(onToggle).toHaveBeenCalledWith({ isOn: true });
+    resolve();
+    await pending;
+  });
+
+  it('puts it back when the server refuses', async () => {
+    const client = newClient();
+    client.setQueryData(threadsKey, threads());
+    await runToggle(
+      client,
+      config({ otherLists: { find, patch }, mutationFn: async () => { throw new Error('no'); } }),
+      'r1',
+    );
+    expect(client.getQueryData<Thread[]>(threadsKey)![0]!.replies[0]).toMatchObject({ isOn: false, count: 2 });
+  });
+});

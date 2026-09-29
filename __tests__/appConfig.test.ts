@@ -43,6 +43,13 @@ describe('iOS', () => {
       `applinks:${tagHost(configured)}`,
     ]);
   });
+
+  // The keyboard handling assumes a page sheet reaches the bottom of the
+  // screen, as on an iPhone; on an iPad it floats mid-screen. The app is
+  // built for phones.
+  it('runs on iPhone only', () => {
+    expect(staticConfig().ios?.supportsTablet).toBe(false);
+  });
 });
 
 describe('Android', () => {
@@ -60,6 +67,12 @@ describe('Android', () => {
   it.each(BASE_URLS)('follows the tag host, for %p', (configured) => {
     const [filter] = verifiedFilters(withTagLinks(staticConfig(), configured));
     expect(filter.data).toEqual([{ scheme: 'https', host: tagHost(configured), pathPrefix: '/t/' }]);
+  });
+
+  // KeyboardAvoider makes room for the keyboard itself. "pan" slid the whole
+  // window up on top of that, hiding headers and doubling the space.
+  it('lets the keyboard resize the window rather than pan it', () => {
+    expect(staticConfig().android?.softwareKeyboardLayoutMode).toBe('resize');
   });
 });
 

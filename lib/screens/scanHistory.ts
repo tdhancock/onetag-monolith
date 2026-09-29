@@ -11,6 +11,7 @@ export const SCAN_DESTINATION_LABEL: Record<ScanHistoryEntry['kind'], string> = 
   profile: 'Profile',
   product: 'Product',
   project: 'Project',
+  post: 'Post',
 };
 
 /**
@@ -25,6 +26,7 @@ export const destinationOfEntry = (entry: ScanHistoryEntry): TagDestination | nu
     return entry.username ? { kind: 'profile', profileId: entry.destinationId, username: entry.username } : null;
   }
   if (entry.kind === 'product') return { kind: 'product', productId: entry.destinationId };
+  if (entry.kind === 'post') return { kind: 'post', postId: entry.destinationId };
   return { kind: 'project', projectId: entry.destinationId };
 };
 

@@ -16,9 +16,8 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 
 jest.mock('react-native', () => require('../support/reactNativeDom'));
 jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
@@ -94,7 +93,7 @@ describe('placement', () => {
   it('draws no marker while the picture loads, but still shows the count', () => {
     const el = mount({ contentRect: null });
     expect(markers(el)).toHaveLength(0);
-    expect(el.textContent).toContain('3 TAGGED · TAP TO SEE');
+    expect(el.textContent).toContain('3 TAGGED · SHOW');
   });
 
   it('renders nothing on media without tags', () => {
@@ -137,6 +136,35 @@ describe('tapping', () => {
   });
 });
 
+describe('names', () => {
+  const name = (el: HTMLElement, id: string) =>
+    el.querySelector(`[data-testid="tag-name-${id}"]`) as HTMLButtonElement | null;
+  const badge = (el: HTMLElement) => el.querySelector('button[aria-label^="3 tagged"]') as HTMLButtonElement;
+
+  it('start hidden, and the badge shows and hides each tag\'s name beside it', () => {
+    const el = mount();
+    expect(name(el, 't-lamp')).toBeNull();
+
+    act(() => badge(el).click());
+    expect(name(el, 't-lamp')!.textContent).toBe('Lamp');
+    expect(name(el, 't-studio')!.textContent).toBe('Studio');
+    expect(el.textContent).toContain('3 TAGGED · HIDE');
+    // Showing names is not a scan.
+    expect(mockRecordScan).not.toHaveBeenCalled();
+
+    act(() => badge(el).click());
+    expect(name(el, 't-lamp')).toBeNull();
+  });
+
+  it('open the tag, as its marker does', () => {
+    const el = mount();
+    act(() => badge(el).click());
+    act(() => name(el, 't-loft')!.click());
+    expect(mockRecordScan).toHaveBeenCalledWith({ tagId: 't-loft', scannerProfileId: 'p-viewer' });
+    expect(el.textContent).toContain('Project');
+  });
+});
+
 describe('the composer preview', () => {
   it('draws the same markers and records nothing when tapped', () => {
     const el = mount({ interactive: false });
@@ -144,5 +172,11 @@ describe('the composer preview', () => {
     act(() => marker(el, 't-lamp').click());
     expect(mockRecordScan).not.toHaveBeenCalled();
     expect(el.textContent).not.toContain('Product');
+  });
+
+  it('always shows the names, so the author sees what each tag points at', () => {
+    const el = mount({ interactive: false });
+    expect(el.querySelector('[data-testid="tag-name-t-lamp"]')!.textContent).toBe('Lamp');
+    expect(el.querySelector('button[aria-label^="3 tagged"]')).toBeNull();
   });
 });

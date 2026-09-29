@@ -89,6 +89,26 @@ describe('mapEmbeddedTags', () => {
     ).toEqual([]);
   });
 
+  it('reads a post destination by its first line, with its photo', () => {
+    const [tag] = mapEmbeddedTags([
+      tagRow({
+        dest_product_id: null,
+        dest_product: null,
+        dest_post_id: 'po-1',
+        dest_post: { id: 'po-1', content: '\n  Our new kitchen\nmore', image_url: 'k.jpg', author: { username: 'jane' } },
+      }),
+    ]);
+    expect(tag!.destination).toEqual({ kind: 'post', postId: 'po-1', username: 'jane', name: 'Our new kitchen', imageUrl: 'k.jpg' });
+  });
+
+  it("leaves off a tag on a post the viewer can't see, as RLS returns it", () => {
+    expect(mapEmbeddedTags([tagRow({ dest_product_id: null, dest_product: null, dest_post_id: 'po-x', dest_post: null })])).toEqual([]);
+  });
+
+  it('embeds the destination post through its own key, since tags also sit on posts', () => {
+    expect(POST_SELECT_QUERY).toContain('dest_post:posts!dest_post_id(');
+  });
+
   it('is empty for a post with none', () => {
     expect(mapEmbeddedTags(undefined)).toEqual([]);
     expect(mapEmbeddedTags([])).toEqual([]);

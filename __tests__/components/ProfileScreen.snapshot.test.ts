@@ -125,7 +125,7 @@ describe('ProfileScreen utils – type contracts', () => {
     });
 
     it('formatStatCount always returns a string', () => {
-        const samples: Array<number | null | undefined> = [0, 1, 999, 1_000, 1_234_567, null, undefined, NaN];
+        const samples: (number | null | undefined)[] = [0, 1, 999, 1_000, 1_234_567, null, undefined, NaN];
         for (const s of samples) {
             expect(typeof formatStatCount(s)).toBe('string');
         }
@@ -170,7 +170,7 @@ describe('ProfileScreen utils – cross-helper invariants', () => {
     });
 
     it('getEditButtonProps.isEnabled is true exactly when a non-empty username is present', () => {
-        const truthy: Array<Parameters<typeof getEditButtonProps>[0]> = [
+        const truthy: Parameters<typeof getEditButtonProps>[0][] = [
             { username: 'a' },
             { username: 'amelia' },
             { username: 'a', name: 'A', bio: 'hi' },
@@ -178,7 +178,7 @@ describe('ProfileScreen utils – cross-helper invariants', () => {
         for (const input of truthy) {
             expect(getEditButtonProps(input).isEnabled).toBe(true);
         }
-        const falsy: Array<Parameters<typeof getEditButtonProps>[0]> = [
+        const falsy: Parameters<typeof getEditButtonProps>[0][] = [
             null,
             undefined,
             {},
@@ -193,7 +193,7 @@ describe('ProfileScreen utils – cross-helper invariants', () => {
     it('hasBio agrees with getBioText for every input shape', () => {
         // The component uses one of the two interchangeably; this
         // guards against a future refactor that drifts them apart.
-        const samples: Array<Parameters<typeof getBioText>[0]> = [
+        const samples: Parameters<typeof getBioText>[0][] = [
             null,
             undefined,
             {},

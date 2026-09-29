@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { MonoLabel } from './ui';
+import { MonoLabel, Pressable } from './ui';
 import { taggedBadgeLabel } from '../../lib/screens/embeddedTags';
 import { color, space, withAlpha } from '../../theme/tokens';
 
@@ -10,23 +10,49 @@ import { color, space, withAlpha } from '../../theme/tokens';
 
 export interface TaggedBadgeProps {
   count: number;
-  /** A grid thumbnail: the count alone, no "tap to see". */
+  /** A grid thumbnail: the count alone, smaller, and not a button. */
   compact?: boolean;
+  /**
+   * On a post, the badge shows and hides the tags' name labels. Whether they
+   * are showing now, and what a tap does.
+   */
+  labelsShown?: boolean;
+  onToggleLabels?: () => void;
 }
 
 /**
  * Bottom-left over the image. On a grid thumbnail it is the only sign of
  * tags — markers at that scale are unusable.
  */
-const TaggedBadge: React.FC<TaggedBadgeProps> = ({ count, compact = false }) => {
-  const label = taggedBadgeLabel(count, compact);
+const TaggedBadge: React.FC<TaggedBadgeProps> = ({ count, compact = false, labelsShown = false, onToggleLabels }) => {
+  const toggles = Boolean(onToggleLabels) && !compact;
+  const label = taggedBadgeLabel(count, toggles ? (labelsShown ? 'shown' : 'hidden') : undefined);
   if (!label) return null;
+
+  const text = (
+    <MonoLabel color="inverse" size={compact ? 8 : 10}>
+      {label}
+    </MonoLabel>
+  );
+
+  if (!toggles) {
+    return (
+      <View style={[styles.badge, compact && styles.badgeCompact]} pointerEvents="none">
+        {text}
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.badge, compact && styles.badgeCompact]} pointerEvents="none">
-      <MonoLabel color="inverse" size={compact ? 8 : 10}>
-        {label}
-      </MonoLabel>
-    </View>
+    <Pressable
+      onPress={onToggleLabels}
+      accessibilityRole="button"
+      accessibilityLabel={`${count} tagged. ${labelsShown ? 'Hide' : 'Show'} their names`}
+      hitSlop={8}
+      style={styles.badge}
+    >
+      {text}
+    </Pressable>
   );
 };
 

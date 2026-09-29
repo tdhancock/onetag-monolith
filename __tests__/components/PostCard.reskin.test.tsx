@@ -15,9 +15,8 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 
 // ─── 1. Mock the native runtime and everything PostCard reaches for ─────
 
@@ -48,7 +47,8 @@ jest.mock('react-native-svg', () => {
   const leaf = (name: string) => () => React.createElement(name);
   return { __esModule: true, default: Svg, Svg, Path: leaf('path'), Circle: leaf('circle'), G: leaf('g'), Rect: leaf('rect') };
 });
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }) }));
+const mockRouterPush = jest.fn();
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockRouterPush, back: jest.fn() }) }));
 jest.mock('../../features/moderation', () => ({ reportPost: jest.fn() }));
 jest.mock('../../features/admin', () => ({ useIsAdmin: () => false }));
 jest.mock('../../features/auth', () => ({ useAuthUserId: () => undefined }));
@@ -306,5 +306,33 @@ describe('PostCard — options sheet', () => {
     const label = Array.from(del.querySelectorAll('span')).find(s => s.textContent === 'Delete Post')!;
     expect(label.style.color).toBe(rgb(color.heart));
     expect(text(container)).toContain('Cancel');
+  });
+
+  // Editing a photo post is how its tags are added, moved or removed after
+  // it's out (ONE-92); offered on text posts only, that screen was unreachable.
+  // A post is a Destination: its author can make a tag for it from here.
+  it('offers Create tag on your own post, opening the flow with the post chosen', () => {
+    mockRouterPush.mockClear();
+    const container = mount(basePost({ username: 'tanner' } as unknown as Partial<Post>));
+    act(() => button(container, 'Post options')!.click());
+    act(() => button(container, 'Create tag')!.click());
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/tags/create',
+      params: { kind: 'post', destination: 'post-1' },
+    });
+  });
+
+  it("offers no Create tag on someone else's post", () => {
+    const container = mount(basePost());
+    act(() => button(container, 'Post options')!.click());
+    expect(button(container, 'Create tag')).toBeNull();
+  });
+
+  it('offers Edit on your own photo post, as on a text one', () => {
+    const onEditPost = jest.fn();
+    const container = mount(basePost({ username: 'tanner' } as unknown as Partial<Post>), { onEditPost });
+    act(() => button(container, 'Post options')!.click());
+    act(() => button(container, 'Edit Post')!.click());
+    expect(onEditPost).toHaveBeenCalledWith(expect.objectContaining({ id: 'post-1' }));
   });
 });

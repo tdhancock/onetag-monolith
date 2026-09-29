@@ -324,7 +324,7 @@ export default function SearchScreen() {
             <Text style={styles.hintSub}>{NO_RESULTS_HINT}</Text>
           </View>
         ) : (
-          <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.results}>
+          <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets keyboardDismissMode="on-drag" contentContainerStyle={styles.results}>
             {(tab === 'all' || tab === 'profiles') && section('Profiles', profiles, renderPerson, 'profiles')}
             {(tab === 'all' || tab === 'posts') && section('Hashtags', filteredHashtags, renderHashtag, 'posts')}
             {(tab === 'all' || tab === 'posts') && section('Posts', posts, renderPost, 'posts')}

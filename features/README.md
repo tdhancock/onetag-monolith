@@ -47,6 +47,15 @@ A raw array key literal anywhere else — a screen, a hook, a mutation's
 `invalidateQueries` call — is a bug. `keys.ts` calls `createQueryKeys` from
 `lib/queryKeys.ts`, which is the single place the key *shape* is defined.
 
+**And screens read through hooks.** A screen or component never calls a
+domain's read (`get…`, `fetch…`, `search…`) itself: it uses the query hook,
+and adds one to `queries.ts` if there isn't one. A read in an effect is
+uncached, starts over on every visit, and never refetches when the app
+returns. Six screens did that beside hooks that already existed.
+
+ESLint enforces all four (`eslint.config.js`), in `npm run lint`, `verify`
+and CI. Tests are exempt: they reach inside a domain on purpose.
+
 ## Why the key shape matters
 
 TanStack Query matches queries by key **prefix**. `createQueryKeys` builds

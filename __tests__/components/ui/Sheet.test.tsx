@@ -7,12 +7,15 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-jest.mock('react-native', () => require('../../support/reactNativeDom'));
+jest.mock('react-native', () => ({
+  ...require('../../support/reactNativeDom'),
+  Dimensions: { get: () => ({ width: 390, height: 844 }) },
+}));
 jest.mock('react-native-svg', () => require('../../support/reactNativeSvgStub'));
 
-import React from 'react';
+import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
+import { Keyboard } from 'react-native';
 import Sheet, { SheetRow, SHEET_ROW_HEIGHT } from '../../../components/native/ui/Sheet';
 import { color } from '../../../theme/tokens';
 
@@ -75,6 +78,33 @@ describe('Sheet', () => {
     expect(el.textContent).toContain('Why are you reporting this?');
     act(() => button(el, 'Back')!.click());
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  // The tag picker's search lives in a sheet. Without this the keyboard
+  // covered the whole sheet, so a placed tag could never be given a
+  // destination.
+  it('rides on the keyboard while open', () => {
+    const listeners = new Map<string, (event: { endCoordinates: { screenY: number } }) => void>();
+    (Keyboard.addListener as jest.Mock).mockImplementation((name: string, listener: never) => {
+      listeners.set(name, listener);
+      return { remove: () => listeners.delete(name) };
+    });
+
+    const el = mount(<Sheet visible onClose={jest.fn()}><SheetRow label="Block" onPress={jest.fn()} /></Sheet>);
+    const sheetRoot = el.querySelector('[data-modal]')!.firstElementChild as HTMLElement;
+    expect(sheetRoot.style.paddingBottom).toBe('0px');
+
+    act(() => listeners.get('keyboardWillChangeFrame')!({ endCoordinates: { screenY: 508 } }));
+    expect(sheetRoot.style.paddingBottom).toBe('336px');
+
+    act(() => listeners.get('keyboardWillHide')!({ endCoordinates: { screenY: 844 } }));
+    expect(sheetRoot.style.paddingBottom).toBe('0px');
+  });
+
+  it("doesn't follow the keyboard while closed", () => {
+    (Keyboard.addListener as jest.Mock).mockClear();
+    mount(<Sheet visible={false} onClose={jest.fn()}><SheetRow label="Block" onPress={jest.fn()} /></Sheet>);
+    expect(Keyboard.addListener).not.toHaveBeenCalled();
   });
 });
 

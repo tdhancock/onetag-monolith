@@ -14,7 +14,11 @@ import {
   pointForPct,
   tagAccessibilityLabel,
   taggedBadgeLabel,
+  tagLabelPosition,
+  tagLabelSide,
   TAG_HIT_SIZE,
+  TAG_LABEL_GAP,
+  TAG_LABEL_HEIGHT,
   TAG_MARKER_SIZE,
 } from '../../lib/screens/embeddedTags';
 import type { EmbeddedTagDestination } from '../../types';
@@ -129,15 +133,18 @@ describe('hit areas', () => {
 });
 
 describe('copy', () => {
-  it('counts the tags and says to tap, never to shop or buy', () => {
-    const label = taggedBadgeLabel(3)!;
-    expect(label).toBe('3 TAGGED · TAP TO SEE');
-    expect(label).not.toMatch(/shop|buy/i);
-    expect(taggedBadgeLabel(3, true)).toBe('3 TAGGED');
+  it('counts the tags, and says which way the names switch, never to shop or buy', () => {
+    expect(taggedBadgeLabel(3, 'hidden')).toBe('3 TAGGED · SHOW');
+    expect(taggedBadgeLabel(3, 'shown')).toBe('3 TAGGED · HIDE');
+    expect(taggedBadgeLabel(3)).toBe('3 TAGGED');
+    for (const label of [taggedBadgeLabel(3, 'hidden'), taggedBadgeLabel(3, 'shown'), taggedBadgeLabel(3)]) {
+      expect(label).not.toMatch(/shop|buy/i);
+    }
   });
 
   it('shows no badge on media without tags', () => {
     expect(taggedBadgeLabel(0)).toBeNull();
+    expect(taggedBadgeLabel(0, 'hidden')).toBeNull();
   });
 
   const lamp: EmbeddedTagDestination = { kind: 'product', productId: 'pd', name: 'Lamp', imageUrl: null };
@@ -159,5 +166,29 @@ describe('copy', () => {
 
   it('announces a tag by its destination\'s name and type', () => {
     expect(tagAccessibilityLabel(lamp)).toBe('Tagged Product: Lamp');
+  });
+});
+
+describe('name labels', () => {
+  // A 2:1 picture letterboxed in a 400×500 view: drawn 400×200 at y = 150.
+  const rect = { x: 0, y: 150, width: 400, height: 200 };
+  const reach = TAG_MARKER_SIZE / 2 + TAG_LABEL_GAP;
+
+  it('go to the right of a marker, and to the left near the right edge, so they stay on the picture', () => {
+    expect(tagLabelSide(rect, 10)).toBe('right');
+    expect(tagLabelSide(rect, 55)).toBe('right');
+    expect(tagLabelSide(rect, 80)).toBe('left');
+  });
+
+  it('sit just past the marker, centred on it', () => {
+    expect(tagLabelPosition(rect, 25, 50)).toEqual({ top: 250 - TAG_LABEL_HEIGHT / 2, left: 100 + reach });
+    // 320pt across a 400pt view: the label ends just short of the marker.
+    expect(tagLabelPosition(rect, 80, 50)).toEqual({ top: 250 - TAG_LABEL_HEIGHT / 2, right: 400 - (320 - reach) });
+  });
+
+  it('measure from the right edge of the whole view, letterbox and all', () => {
+    // A tall picture pillarboxed in a 400pt view: drawn 200pt wide from x = 100.
+    const tall = { x: 100, y: 0, width: 200, height: 400 };
+    expect(tagLabelPosition(tall, 100, 0).right).toBe(400 - (300 - reach));
   });
 });

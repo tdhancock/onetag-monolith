@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(49);
+SELECT plan(50);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -117,6 +117,8 @@ SELECT ok(NOT has_function_privilege('authenticated', 'public.notify(text, uuid,
   'authenticated cannot execute notify() (ONE-107)');
 SELECT ok(NOT has_function_privilege('authenticated', 'public.notify_mentions(text, uuid, uuid, uuid)', 'EXECUTE'),
   'authenticated cannot execute notify_mentions() (ONE-107)');
+SELECT ok(NOT has_function_privilege('authenticated', 'public.thread_comment()', 'EXECUTE'),
+  'authenticated cannot execute thread_comment(), a trigger');
 
 SELECT ok(NOT has_function_privilege('anon', 'public.messages_thread(uuid, uuid, timestamptz, uuid, integer)', 'EXECUTE'),
   'anon cannot execute messages_thread() (ONE-110)');

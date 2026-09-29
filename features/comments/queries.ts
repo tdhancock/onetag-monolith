@@ -1,7 +1,7 @@
 // Read hooks for the comments domain.
 
 import { useQuery } from '@tanstack/react-query';
-import { getCommentsForPost, getCommentLikesCount, isCommentLikedByUser } from './api';
+import { getCommentsForPost } from './api';
 import { commentKeys } from './keys';
 import type { Comment } from './types';
 import type { ProfileId } from '../../types';
@@ -15,35 +15,12 @@ import type { ProfileId } from '../../types';
  * key: two mounts of this screen share one request, and a request for the
  * previous post cannot land on the new one because it is a different key.
  */
-export const useCommentsQuery = (postId: string | undefined) =>
+export const useCommentsQuery = (postId: string | undefined, viewerId?: ProfileId) =>
   useQuery<Comment[]>({
+    // The viewer isn't in the key: a profile switch resets every comment
+    // list (useProfileSwitchReset), so no list outlives the viewer it's for.
     queryKey: commentKeys.forPost(postId ?? ''),
-    queryFn: () => getCommentsForPost(postId!),
+    queryFn: () => getCommentsForPost(postId!, viewerId),
     enabled: Boolean(postId),
   });
 
-/** A comment's like count, and whether the viewer is in it. */
-export interface CommentLikes {
-  count: number;
-  isLiked: boolean;
-}
-
-/**
- * Likes for one comment.
- *
- * Disabled for an optimistic comment that has no server id yet — there is
- * nothing to count, and the id it is holding will be replaced.
- */
-export const useCommentLikesQuery = (commentId: string | undefined, viewerId: ProfileId | undefined) =>
-  useQuery<CommentLikes>({
-    queryKey: commentKeys.likes(commentId ?? ''),
-    queryFn: async () => {
-      const [count, isLiked] = await Promise.all([
-        getCommentLikesCount(commentId!),
-        isCommentLikedByUser(commentId!, viewerId!),
-      ]);
-
-      return { count, isLiked };
-    },
-    enabled: Boolean(commentId && viewerId) && !commentId!.startsWith('temp-'),
-  });

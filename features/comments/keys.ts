@@ -14,6 +14,8 @@ export const commentKeys = {
    * one request rather than racing and needing an abort (ONE-14).
    */
   forPost: (postId: string) => [...base.all, 'post', postId] as const,
+  /** Every post's comments: where a comment's like is patched, whichever post it's on. */
+  posts: () => [...base.all, 'post'] as const,
   /** Whether the viewer liked one comment, and how many likes it has. */
   likes: (commentId: string) => [...base.all, 'likes', commentId] as const,
 };

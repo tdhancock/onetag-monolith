@@ -99,6 +99,30 @@ export const fetchFeedPage = async ({
 };
 
 /**
+ * The newest post the reader's feed holds now, or null for an empty feed:
+ * one row from the function the feed pages through.
+ *
+ * The home feed asks this now and then, and offers "New posts" when the
+ * answer is newer than its top, rather than listening to every post
+ * published anywhere and fetching each one to see whether it belonged.
+ */
+export const fetchNewestFeedPost = async (userId: string, interest: string | null = null): Promise<FeedCursor> => {
+  const { data, error } = await supabase
+    .rpc('feed_posts', {
+      p_viewer: userId,
+      p_before: null,
+      p_before_id: null,
+      p_interest: interest || null,
+      p_limit: 1,
+    })
+    .select('id, created_at');
+
+  if (error) throw error;
+  const row = ((data || []) as { id: string; created_at: string }[])[0];
+  return row ? { id: row.id, createdAt: row.created_at } : null;
+};
+
+/**
  * The cursor for the page after this one, or `undefined` when there is none.
  *
  * A short page means the end of the feed. Exported so the rule is testable

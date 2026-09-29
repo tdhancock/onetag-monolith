@@ -11,11 +11,10 @@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import React from 'react';
+import React, { act } from 'react';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { createRoot, Root } from 'react-dom/client';
-import { act } from 'react';
 
 jest.mock('react-native', () => require('../support/reactNativeDom'));
 jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
