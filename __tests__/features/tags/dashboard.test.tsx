@@ -71,11 +71,15 @@ jest.mock('react-native-safe-area-context', () => {
 });
 jest.mock('react-native-svg', () => require('../../support/reactNativeSvgStub'));
 jest.mock('expo-image', () => require('../../support/expoImageStub'));
-jest.mock('react-native-qrcode-svg', () => {
+// The code itself is drawn and decoded in TagQRCode's own suite (ONE-136);
+// here it only needs to say which tag's code a screen shows, and how big.
+jest.mock('../../../components/native/TagQRCode', () => {
   const React = require('react');
+  const { buildTagUrl } = require('../../../lib/tagLinks');
   return {
     __esModule: true,
-    default: (props: { value: string }) => React.createElement('div', { 'data-qr': props.value }),
+    default: (props: { shortCode: string; size: number }) =>
+      React.createElement('div', { 'data-qr': buildTagUrl(props.shortCode), 'data-size': props.size }),
   };
 });
 

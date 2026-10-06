@@ -41,12 +41,19 @@ jest.mock('react-native-safe-area-context', () => {
 });
 jest.mock('react-native-svg', () => require('../support/reactNativeSvgStub'));
 jest.mock('expo-image', () => require('../support/expoImageStub'));
-jest.mock('react-native-qrcode-svg', () => {
+// The code itself is drawn and decoded in TagQRCode's own suite (ONE-136);
+// here it only needs to say which tag's code a screen shows, and how big.
+jest.mock('../../components/native/TagQRCode', () => {
   const React = require('react');
+  const { buildTagUrl } = require('../../lib/tagLinks');
   return {
     __esModule: true,
-    default: (props: { value: string; size: number }) =>
-      React.createElement('div', { 'data-qr': props.value, 'data-size': props.size }),
+    default: (props: { shortCode: string; size: number; showCode?: boolean }) =>
+      React.createElement('div', {
+        'data-qr': buildTagUrl(props.shortCode),
+        'data-size': props.size,
+        'data-show-code': String(props.showCode ?? true),
+      }),
   };
 });
 
@@ -126,7 +133,6 @@ import { buildTagUrl } from '../../lib/tagLinks';
 import { PHOTOS_DENIED_MESSAGE } from '../../lib/screens/tags';
 import { PNG_SIGNATURE } from '../../lib/png';
 import { TAG_QR_EXPORT_PX, tagQrPng } from '../../lib/tagQr';
-import { type } from '../../theme/tokens';
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -180,15 +186,15 @@ afterEach(() => {
 });
 
 describe('the export screen', () => {
-  it("shows the QR large, with the tag's name and destination and the short code beneath in DM Mono", async () => {
+  it("shows the QR large, with the tag's name and destination and the short code beneath", async () => {
     const el = await mount();
     expect(el.textContent).toContain('Front door');
     expect(el.textContent).toContain('Ana Studio · @ana_studio');
     const qr = el.querySelector('[data-qr]')!;
     expect(qr.getAttribute('data-qr')).toBe(buildTagUrl('ABC23XYZ'));
     expect(Number(qr.getAttribute('data-size'))).toBeGreaterThanOrEqual(300);
-    const code = Array.from(el.querySelectorAll('span')).find((s) => s.textContent === 'ABC23XYZ') as HTMLElement;
-    expect(code.style.fontFamily).toBe(type.mono);
+    // TagQRCode prints the code beneath, in DM Mono; its own suite pins how.
+    expect(qr.getAttribute('data-show-code')).toBe('true');
   });
 
   it('does not ask for Photos permission on mount', async () => {
