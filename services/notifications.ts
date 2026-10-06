@@ -5,6 +5,7 @@ import * as Device from 'expo-device';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
 import { supabase } from './supabase.native';
+import { color } from '../theme/tokens';
 
 // Expo Go removed support for remote push notifications in SDK 53. Registering
 // from Expo Go cannot succeed on either platform regardless of configuration,
@@ -52,7 +53,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
       name: 'Default',
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#3b82f6',
+      lightColor: color.text,
     });
   }
 

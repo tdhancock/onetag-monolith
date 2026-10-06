@@ -202,7 +202,7 @@ describe('registerForPushNotifications', () => {
         name: 'Default',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#3b82f6',
+        lightColor: '#0a0a0a',
       },
     );
   });
