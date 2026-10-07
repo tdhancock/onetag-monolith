@@ -50,6 +50,9 @@ const destinationOf = (row: ResolveTagRow): TagDestination | null => {
 /** Read a `resolve_tag` row — or its absence — as a resolution. */
 export const mapResolveTagRow = (row: ResolveTagRow | null): TagResolution => {
   if (!row) return { status: 'not-found' };
+  if (row.active && row.linked === false) {
+    return { status: 'unlinked', tagId: row.tag_id, ownedByCaller: row.owned_by_caller === true };
+  }
   if (!row.active || !row.tag_id) return { status: 'inactive' };
   return { status: 'active', tagId: row.tag_id, destination: destinationOf(row) };
 };

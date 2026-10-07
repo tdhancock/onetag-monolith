@@ -10,9 +10,24 @@ kind on 2026-09-28, reversing ONE-83: a post's link is a tag as much as a profil
 (`supabase/migrations/20260928235000_post_destinations.sql`).
 
 `tags` holds one destination column per kind — `dest_profile_id`, `dest_product_id`,
-`dest_project_id`, `dest_post_id` — and `tags_one_destination` requires exactly one. A tag's
-destination and short code never change once it exists (`protect_tag_identity`): print a new tag
-rather than repoint an old one. Deleting the destination deletes the tags that point to it.
+`dest_project_id`, `dest_post_id` — and `tags_one_destination` requires exactly one, or none for a
+blank Physical Tag (below). A tag's short code never changes, and neither does its destination
+once it has one (`protect_tag_identity`): print a new tag rather than repoint an old one. Deleting
+the destination deletes the tags that point to it.
+
+## Blank tags
+
+A Physical Tag may be created **blank**: printed, stuck on something, and Linked to a Destination
+later, exactly once (ONE-135, decided 2026-10-06). A sheet of codes goes on a house before anything
+in it is in the app, and each is linked when it is first scanned. The one change
+`protect_tag_identity` allows is that first link, from no destination to exactly one; after it the
+tag is as frozen as any other. Only Physical Tags may be blank: a Digital Tag is shared from its
+destination, and an Embedded Tag is placed on one.
+
+A blank tag records no Scan (`tag_accepts_scans`), since there is nowhere it was scanned to.
+`resolve_tag` says whether a tag is `linked` and whether the caller `owned_by_caller` it, and gives a
+blank tag's id to its owner alone, who needs it to link the tag. Anyone else learns only that it
+isn't set up yet.
 
 A new kind adds its column to both of those, a route in `lib/screens/tagResolution.ts`, a picker
 option in `lib/screens/composeTags.ts`, and a card in `supabase/functions/tag-resolve`.
@@ -21,7 +36,7 @@ option in `lib/screens/composeTags.ts`, and a card in `supabase/functions/tag-re
 
 | Tag | Made from | May point to |
 | -- | -- | -- |
-| **Physical** (a QR code) | Tags, in the app | Only your own: your profile, your products and projects, your posts |
+| **Physical** (a QR code) | Tags, in the app | Only your own: your profile, your products and projects, your posts. Or nothing yet, until it is linked |
 | **Digital** (a short link) | Share on the destination | The same: only your own |
 | **Embedded** (a point on a photo) | Composing or editing a photo post | Any profile, product, project or post you can see, except the photo's own post |
 

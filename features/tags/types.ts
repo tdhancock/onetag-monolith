@@ -1,7 +1,8 @@
 // Domain types for tags (ONE-30).
 //
 // A Tag is a portal to exactly one Destination. Resolving one answers three
-// questions: does this code exist, is its tag live, and where does it go.
+// questions: does this code exist, is its tag live, and where does it go. A
+// blank Physical Tag answers the third with "nowhere yet" (ONE-135).
 
 import type { ProfileId } from '../../types';
 
@@ -29,6 +30,12 @@ export type TagResolution =
    * cannot route: its target is gone, or is a kind this build doesn't know.
    */
   | { status: 'active'; tagId: string; destination: TagDestination | null }
+  /**
+   * A blank Physical Tag: printed, live, and not yet Linked to anything
+   * (ONE-135). Its owner may link it, once; `tagId` is theirs alone, and is
+   * null for anyone else.
+   */
+  | { status: 'unlinked'; tagId: string | null; ownedByCaller: boolean }
   /** The tag exists, but its owner paused or replaced it. */
   | { status: 'inactive' }
   /** No tag has this code — or it is not the shape of one. */
@@ -36,7 +43,7 @@ export type TagResolution =
 
 /** A row of `public.resolve_tag(p_short_code)`. */
 export interface ResolveTagRow {
-  /** Null unless the tag is active. */
+  /** Null unless the tag is active — and, for a blank tag, unless the caller owns it. */
   tag_id: string | null;
   active: boolean;
   dest_profile_id: string | null;
@@ -48,6 +55,10 @@ export interface ResolveTagRow {
   dest_post_id?: string | null;
   /** The post's author, which the web page names it by. */
   dest_post_username?: string | null;
+  /** False for an active blank tag; null unless the tag is active (ONE-135). */
+  linked?: boolean | null;
+  /** Whether the caller's account owns the tag; null unless the tag is active. */
+  owned_by_caller?: boolean | null;
 }
 
 /** Why a resolution could not be read, in terms a screen can say something about. */

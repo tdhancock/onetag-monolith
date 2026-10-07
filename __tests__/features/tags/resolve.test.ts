@@ -58,6 +58,23 @@ const PROJECT_TAG: ResolveTagRow = {
   dest_project_id: 'pj-1',
 };
 
+/** A blank Physical Tag, printed and not yet linked, as its owner resolves it (ONE-135). */
+const BLANK_FOR_OWNER: ResolveTagRow = {
+  tag_id: 'tag-blank',
+  active: true,
+  dest_profile_id: null,
+  dest_profile_username: null,
+  dest_product_id: null,
+  dest_project_id: null,
+  dest_post_id: null,
+  dest_post_username: null,
+  linked: false,
+  owned_by_caller: true,
+};
+
+/** The same tag as anyone else resolves it: no id, and not theirs. */
+const BLANK_FOR_OTHERS: ResolveTagRow = { ...BLANK_FOR_OWNER, tag_id: null, owned_by_caller: false };
+
 /** A fake `supabase.rpc(...).maybeSingle()` answering with one result. */
 function answer(result: { data: unknown; error: unknown; status: number }) {
   const maybeSingle = jest.fn(() => Promise.resolve(result));
@@ -162,6 +179,27 @@ describe('mapResolveTagRow', () => {
     expect(mapResolveTagRow(PRODUCT_TAG)).toEqual({
       status: 'active',
       tagId: 'tag-1',
+      destination: { kind: 'product', productId: 'pd-1' },
+    });
+  });
+
+  it('reads a blank tag, for its owner, as unlinked with the id to link it by (ONE-135)', () => {
+    expect(mapResolveTagRow(BLANK_FOR_OWNER)).toEqual({ status: 'unlinked', tagId: 'tag-blank', ownedByCaller: true });
+  });
+
+  it('reads a blank tag, for anyone else, as unlinked — not paused, though it carries no id', () => {
+    expect(mapResolveTagRow(BLANK_FOR_OTHERS)).toEqual({ status: 'unlinked', tagId: null, ownedByCaller: false });
+  });
+
+  it('reads a paused blank tag as paused: resolve_tag says nothing of where it points', () => {
+    expect(mapResolveTagRow({ ...BLANK_FOR_OTHERS, active: false, linked: null, owned_by_caller: null })).toEqual({
+      status: 'inactive',
+    });
+  });
+
+  it('reads a linked tag that says so as before', () => {
+    expect(mapResolveTagRow({ ...PRODUCT_TAG, linked: true, owned_by_caller: false })).toMatchObject({
+      status: 'active',
       destination: { kind: 'product', productId: 'pd-1' },
     });
   });
@@ -270,6 +308,9 @@ describe('tagScreenFor', () => {
   it.each([
     [{ status: 'not-found' } as const, 'not-found'],
     [{ status: 'inactive' } as const, 'inactive'],
+    // Until the owner can link a blank tag from the scan (ONE-139), it has nowhere to go.
+    [{ status: 'unlinked', tagId: 'tag-blank', ownedByCaller: true } as const, 'not-found'],
+    [{ status: 'unlinked', tagId: null, ownedByCaller: false } as const, 'not-found'],
     [{ status: 'active', tagId: 'tag-1', destination: null } as const, 'destination-missing'],
   ])('shows %j as %s', (data, kind) => {
     expect(tagScreenFor({ ...settled, data })).toEqual({ kind });

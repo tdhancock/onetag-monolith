@@ -73,7 +73,11 @@ export const tagScreenFor = (query: TagQueryState): TagScreen => {
   if (query.error) return { kind: isOffline(query.error) ? 'offline' : 'failed' };
 
   const resolution = query.data;
-  if (!resolution || resolution.status === 'not-found') return { kind: 'not-found' };
+  // A blank tag has nowhere to go yet. Until its owner can link it from here,
+  // it reads as not found, which is true of where it points.
+  if (!resolution || resolution.status === 'not-found' || resolution.status === 'unlinked') {
+    return { kind: 'not-found' };
+  }
   if (resolution.status === 'inactive') return { kind: 'inactive' };
 
   const route = resolution.destination ? routeForDestination(resolution.destination) : null;

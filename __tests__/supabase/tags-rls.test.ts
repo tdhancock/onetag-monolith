@@ -248,7 +248,7 @@ describe('the behavioural suite', () => {
     'an unrelated user cannot see scans of the tag',
     'nobody can forge a scan attributed to another profile',
     'a scan is stamped when it is recorded — never backdated',
-    'the destination check rejects zero destinations',
+    'the destination check rejects a Digital Tag with zero destinations',
     '10,000 generated codes are all 8 characters',
     '10,000 generated codes contain none of 0, O, 1, I or l',
     '10,000 generated codes produce no duplicates',

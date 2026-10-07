@@ -143,6 +143,10 @@ export interface ResolveTagRow {
   /** A post, and its author's handle: a stranger can't read the post itself. */
   dest_post_id?: string | null;
   dest_post_username?: string | null;
+  /** False for an active blank tag, printed and not yet linked (ONE-135). */
+  linked?: boolean | null;
+  /** Whether the caller owns the tag; the page reads as anon, so never true here. */
+  owned_by_caller?: boolean | null;
 }
 
 /** A name to show for a profile: the full name, or the handle. */
