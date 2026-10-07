@@ -45,11 +45,11 @@ load it again.
 | **Businesses** | `timberline.homes` (custom homes), `ridgeline.overland` (vehicle outfitter), `ironform.supply` (outdoor gear), `lumen.works` (lighting studio), each a Business Profile on its owner's account |
 | **Posts** | 34: 31 photo posts across the six interests, and 3 text posts, dated over the last four weeks |
 | **Products** | 12, three for each business, each with a photo |
-| **Projects** | 6, with Contributors and Linked products |
-| **Tags** | 6 Physical Tags with fixed codes (below), and 13 embedded tags on photo posts, one of which points to another post |
+| **Projects** | 6, with Contributors and Linked products, and a home record: Maya's Unlisted *Maple Street House*, with a furnace and a water heater inside it, their details and a log. Timberline Homes is the furnace's Contributor and logs its service; Lumen Works scanned the house's tag and proposed an entry, waiting for Maya |
+| **Tags** | 8 Physical Tags with fixed codes (below), and 13 embedded tags on photo posts, one of which points to another post |
 | **Around them** | 45 follows among the seed profiles, 15 comments with replies, likes, reposts and saves |
 
-The six Physical Tags use fixed codes, so their links are known without printing anything.
+The eight Physical Tags use fixed codes, so their links are known without printing anything.
 Open `<tag host>/t/<code>`, or scan a QR code of it:
 
 | Code | Points to |
@@ -60,6 +60,8 @@ Open `<tag host>/t/<code>`, or scan a QR code of it:
 | `SeedLamp` | Festoon light string, a Product |
 | `SeedCabn` | Lakeside Cabin, a Project |
 | `SeedPost` | Lumen Works' night market post, a Post |
+| `SeedHaus` | Maple Street House, an Unlisted Project: opening it lets you read the house and what's in it |
+| `SeedFurn` | The house's furnace, an Unlisted Project inside it |
 
 There are no OneSnaps, because a OneSnap expires after a day.
 
@@ -98,7 +100,8 @@ Follows your own account made with `--follow` go with them.
 
 Ids are fixed, with one prefix for each kind: `5eed0a00-` accounts, `5eed0b00-` business
 profiles, `5eed0c00-` posts, `5eed0d00-` products, `5eed0600-` product photos, `5eed0e00-`
-projects, `5eed0f00-` comments and `5eed0700-` tags. The last twelve digits are the row's
+projects, `5eed0f00-` comments, `5eed0700-` tags, `5eed0800-` project details and `5eed0900-`
+log entries. The last twelve digits are the row's
 number in the file. Give a new row the next free number.
 
 The file is a single `do` block, because `supabase db query` runs a file as one prepared

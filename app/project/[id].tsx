@@ -19,7 +19,8 @@ import {
   type Project,
   type ProjectProduct,
 } from '../../features/projects';
-import { useDestinationScanCountQuery } from '../../features/tags';
+import { useCreateTag, useDestinationScanCountQuery, useMyTagsQuery } from '../../features/tags';
+import { shareTagLink } from '../../services/tagSharing';
 import DestinationActions from '../../components/native/DestinationActions';
 import DetailSection from '../../components/native/DetailSection';
 import ProjectContributors from '../../components/native/ProjectContributors';
@@ -48,7 +49,10 @@ import {
   projectKindLabel,
   projectLinkProductRoute,
   projectRoute,
+  projectShareFor,
   projectStats,
+  shareableTagFor,
+  shareTagFor,
   unlinkProductConfirm,
   visibilityBadge,
 } from '../../lib/screens/projects';
@@ -157,6 +161,7 @@ function ProjectDetail({
   onLeave: () => void;
 }) {
   const router = useRouter();
+  const { addToast } = useApp();
   const { profileId } = useCurrentProfile();
   const contributors = useContributorsQuery(project.id);
   const products = useProjectProductsQuery(project.id);
@@ -172,6 +177,20 @@ function ProjectDetail({
   // Only the owner sees how often their tags pointing here were scanned.
   const scans = useDestinationScanCountQuery(profileId, { kind: 'project', id: project.id }, isOwner);
   const owner = project.owner;
+
+  // An unlisted project is shared through one of its owner's Digital Tags (ONE-137).
+  const shareMode = projectShareFor(project, isOwner);
+  const myTags = useMyTagsQuery(shareMode === 'tag-link' ? profileId : undefined);
+  const createTag = useCreateTag();
+  const shareThroughTag = async () => {
+    if (!profileId) return;
+    try {
+      const tag = shareableTagFor(myTags.data, project.id) ?? (await createTag.mutateAsync(shareTagFor(profileId, project.id)));
+      await shareTagLink(tag.shortCode);
+    } catch {
+      addToast("Couldn't make a link to share. Try again.", 'error');
+    }
+  };
 
   const openProfile = (username: string) => router.push(`/user/${encodeURIComponent(username)}`);
   const addContributor = () => router.push(projectAddContributorRoute(project.id));
@@ -272,6 +291,7 @@ function ProjectDetail({
             target={{ kind: 'project', id: project.id }}
             title={project.name}
             route={projectRoute(project.id)}
+            onShare={shareMode === 'app-link' ? undefined : shareMode === 'tag-link' ? () => void shareThroughTag() : null}
           />
         </View>
         {project.description ? <Text style={styles.description}>{project.description}</Text> : null}

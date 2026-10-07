@@ -14,6 +14,12 @@ export interface DestinationActionsProps {
   title: string;
   /** Its route in the app, which the shared link opens. */
   route: string;
+  /**
+   * How Share works. Left out, it shares the route's app link. An unlisted
+   * project's page passes its own: its owner shares a Digital Tag, and anyone
+   * else, given null, no Share at all.
+   */
+  onShare?: (() => void) | null;
 }
 
 /**
@@ -24,13 +30,13 @@ export interface DestinationActionsProps {
  * scanned a tag — is offered a way in instead of a Save that can only fail.
  * Share needs no account: anyone can pass a page on.
  */
-const DestinationActions: React.FC<DestinationActionsProps> = ({ target, title, route }) => {
+const DestinationActions: React.FC<DestinationActionsProps> = ({ target, title, route, onShare }) => {
   const router = useRouter();
   const { profileId, status } = useCurrentProfile();
   const saved = useIsSaved(profileId, target);
   const save = useToggleSave(profileId);
 
-  const share = () => void shareDestination({ title, route }).catch(() => undefined);
+  const share = onShare ?? (() => void shareDestination({ title, route }).catch(() => undefined));
 
   return (
     <View style={styles.row}>
@@ -50,9 +56,11 @@ const DestinationActions: React.FC<DestinationActionsProps> = ({ target, title, 
           {saved ? 'Saved' : 'Save'}
         </Button>
       )}
-      <Button variant="outline" size="sm" onPress={share} accessibilityLabel={`Share ${title}`} style={styles.action}>
-        Share
-      </Button>
+      {onShare === null ? null : (
+        <Button variant="outline" size="sm" onPress={share} accessibilityLabel={`Share ${title}`} style={styles.action}>
+          Share
+        </Button>
+      )}
     </View>
   );
 };

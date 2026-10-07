@@ -96,6 +96,8 @@ const mockAuth = { status: 'signed-in' };
 jest.mock('../../../features/auth', () => ({ useAuthStatus: () => mockAuth.status, useAuthUserId: () => undefined }));
 
 jest.mock('../../../services/destinationSharing', () => ({ shareDestination: jest.fn(() => Promise.resolve()) }));
+// An unlisted project is shared through a tag (ONE-137); none is here.
+jest.mock('../../../services/tagSharing', () => ({ shareTagLink: jest.fn(() => Promise.resolve()) }));
 jest.mock('../../../services/supabase.native', () => require('../../support/mockSupabaseDb').supabaseModule());
 
 import { Alert } from 'react-native';

@@ -37,7 +37,7 @@ begin
       '5eed0' || case kind
         when 'account' then 'a' when 'business' then 'b' when 'post' then 'c'
         when 'product' then 'd' when 'project' then 'e' when 'comment' then 'f'
-        when 'media' then '6' when 'tag' then '7'
+        when 'media' then '6' when 'tag' then '7' when 'detail' then '8' when 'log' then '9'
       end || '00-0000-4000-8000-' || lpad(n::text, 12, '0')
     )::uuid
   $fn$;
@@ -331,6 +331,73 @@ begin
     perform pg_temp.seed_physical_tag(4, lumen, 'SeedLamp', 'Display tag', dest_product => 10);
     perform pg_temp.seed_physical_tag(5, timberline, 'SeedCabn', 'Job site board', dest_project => 1);
     perform pg_temp.seed_physical_tag(6, lumen, 'SeedPost', 'Market poster', dest_post => 19);
+
+    -- A home record (ONE-134, 137, 140, 141, 143): Maya's house, Unlisted,
+    -- with the furnace and water heater inside it, their details, a log, and
+    -- tags to open them by. Timberline installed the furnace and services
+    -- it; Lumen Works scanned the house's tag and proposed an entry, which
+    -- waits for Maya.
+    insert into public.projects (id, owner_profile_id, name, project_type, description, cover_url, year,
+                                 is_public, unlisted, parent_project_id, interest_slug, created_at, updated_at)
+    values
+      (pg_temp.seed_id('project', 7), maya, 'Maple Street House', 'Home',
+       'Our house: what''s in it, and everything done to it.', pg_temp.photo(305, 4.0 / 3), '1962',
+       false, true, null, 'custom-homes', pg_temp.days_ago(40), pg_temp.days_ago(40))
+    on conflict (id) do nothing;
+    insert into public.projects (id, owner_profile_id, name, project_type, description, cover_url, year,
+                                 is_public, unlisted, parent_project_id, interest_slug, created_at, updated_at)
+    values
+      (pg_temp.seed_id('project', 8), maya, 'Furnace', 'HVAC', null, null, '2023',
+       false, true, pg_temp.seed_id('project', 7), null, pg_temp.days_ago(39), pg_temp.days_ago(39)),
+      (pg_temp.seed_id('project', 9), maya, 'Water heater', 'Plumbing', null, null, '2019',
+       false, true, pg_temp.seed_id('project', 7), null, pg_temp.days_ago(39), pg_temp.days_ago(39))
+    on conflict (id) do nothing;
+
+    insert into public.contributors (project_id, contributor_profile_id, role)
+    values (pg_temp.seed_id('project', 8), timberline, 'Installed it')
+    on conflict do nothing;
+
+    insert into public.project_details (id, project_id, label, kind, value, sort_order)
+    select pg_temp.seed_id('detail', d.n), pg_temp.seed_id('project', d.project), d.label, d.kind, d.value, d.sort_order
+    from (values
+      (1, 7, 'Year built', 'number', '1962', 0),
+      (2, 7, 'Square feet', 'number', '1840', 1),
+      (3, 8, 'Make', 'text', 'Northwind', 0),
+      (4, 8, 'Model number', 'text', 'NW-80E', 1),
+      (5, 8, 'Filter size', 'text', '16x25x1', 2),
+      (6, 8, 'Installed', 'date', '2023-11-14', 3),
+      (7, 8, 'Warranty until', 'date', '2033-11-14', 4),
+      (8, 8, 'Manual', 'link', 'https://example.com/manuals/nw-80e', 5),
+      (9, 9, 'Capacity (gal)', 'number', '50', 0),
+      (10, 9, 'Last flushed', 'date', '2026-06-02', 1)
+    ) as d(n, project, label, kind, value, sort_order)
+    on conflict (id) do nothing;
+
+    perform pg_temp.seed_physical_tag(7, maya, 'SeedHaus', 'Front door', dest_project => 7);
+    perform pg_temp.seed_physical_tag(8, maya, 'SeedFurn', 'Furnace sticker', dest_project => 8);
+
+    -- Lumen Works opened the house's tag, which let it read the house and propose.
+    insert into public.scans (tag_id, scanner_profile_id, scanned_at)
+    select pg_temp.seed_id('tag', 7), lumen, pg_temp.days_ago(2)
+    where not exists (
+      select 1 from public.scans where tag_id = pg_temp.seed_id('tag', 7) and scanner_profile_id = lumen
+    );
+    insert into public.project_tag_grants (tag_id, profile_id, granted_at)
+    values (pg_temp.seed_id('tag', 7), lumen, pg_temp.days_ago(2))
+    on conflict do nothing;
+
+    insert into public.project_log_entries (id, project_id, occurred_on, title, notes, cost_cents, currency,
+                                            performed_by_profile_id, author_profile_id, status, created_at, updated_at)
+    select pg_temp.seed_id('log', l.n), pg_temp.seed_id('project', l.project), pg_temp.days_ago(l.days)::date,
+           l.title, l.notes, l.cost_cents, 'USD', l.who, l.who, l.status, pg_temp.days_ago(l.days), pg_temp.days_ago(l.days)
+    from (values
+      (1, 8, 330, 'Installed the furnace', 'Replaced the old unit. Ten years on parts.', 640000, timberline, 'published'),
+      (2, 8, 35, 'Annual service', 'Cleaned the burners and checked the igniter.', 18000, timberline, 'published'),
+      (3, 8, 10, 'Changed the filter', null, 2400, maya, 'published'),
+      (4, 9, 126, 'Flushed the tank', null, null, maya, 'published'),
+      (5, 7, 2, 'Installed under-cabinet lights', 'Warm white, on a dimmer.', 42000, lumen, 'proposed')
+    ) as l(n, project, days, title, notes, cost_cents, who, status)
+    on conflict (id) do nothing;
 
     -- Embedded tags on photo posts
     perform pg_temp.seed_embedded_tag(101, 1, 55, 28, dest_product => 1);

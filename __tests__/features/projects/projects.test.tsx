@@ -25,7 +25,8 @@
 //      lists what it includes, each names the house it is part of — to those
 //      who may see the house — and deleting the house says what goes with it.
 //   7. A project is Public, Unlisted or Private (ONE-137): the form writes the
-//      choice, the page badges it, and Make public lifts Unlisted too.
+//      choice, the page badges it, Make public lifts Unlisted too, and its
+//      owner shares it through a Digital Tag.
 //   8. A project keeps details its owner defines (ONE-140): the form adds them,
 //      from a template or one by one, saves only those with a value, in order,
 //      and the page shows them, a date in the device's locale and a link that
@@ -154,6 +155,8 @@ const mockAuth = { status: 'signed-in' };
 jest.mock('../../../features/auth', () => ({ useAuthStatus: () => mockAuth.status }));
 
 jest.mock('../../../services/destinationSharing', () => ({ shareDestination: jest.fn(() => Promise.resolve()) }));
+const mockShareTagLink = jest.fn((_shortCode: string) => Promise.resolve());
+jest.mock('../../../services/tagSharing', () => ({ shareTagLink: (shortCode: string) => mockShareTagLink(shortCode) }));
 const mockPick = jest.fn();
 jest.mock('../../../services/mediaPicker', () => ({ pickImageFromLibrary: (...a: unknown[]) => mockPick(...a) }));
 jest.mock('../../../services/localFile', () => ({
@@ -802,6 +805,53 @@ describe('an unlisted project', () => {
     Object.assign(db.tables.projects![0]!, { is_public: false, unlisted: true });
     const el = await mount(<ProjectScreen />);
     expect(byLabel(el, 'Unlisted')!.textContent).toBe('Unlisted');
+  });
+
+  describe('shared', () => {
+    beforeEach(() => {
+      Object.assign(db.tables.projects![0]!, { is_public: false, unlisted: true });
+      mockShareTagLink.mockClear();
+      // A tag as TAG_SELECT reads it: the code the database issued, and its project.
+      db.embeds.tags = (row) => ({
+        ...row,
+        short_code: row.short_code ?? 'SHRD2345',
+        dest_project: row.dest_project_id ? { id: row.dest_project_id, name: 'Barn conversion' } : null,
+      });
+    });
+
+    it('by its owner, through a Digital Tag made for it, whose link opens it for whoever holds it', async () => {
+      const el = await mount(<ProjectScreen />);
+      await click(byLabel(el, 'Share Barn conversion'));
+      expect(db.tables.tags!.find((t) => t.tag_type === 'digital')).toMatchObject({
+        owner_profile_id: 'p-builder',
+        dest_project_id: 'pj-barn',
+        name: 'Shared link',
+      });
+      expect(mockShareTagLink).toHaveBeenCalledWith('SHRD2345');
+    });
+
+    it('through the Digital Tag already made, not another', async () => {
+      db.tables.tags!.push({
+        id: 't-digital',
+        owner_profile_id: 'p-builder',
+        tag_type: 'digital',
+        active: true,
+        short_code: 'DGTL2345',
+        dest_project_id: 'pj-barn',
+        created_at: '2026-02-01T00:00:00Z',
+      });
+      const el = await mount(<ProjectScreen />);
+      await click(byLabel(el, 'Share Barn conversion'));
+      expect(db.tables.tags!.filter((t) => t.tag_type === 'digital')).toHaveLength(1);
+      expect(mockShareTagLink).toHaveBeenCalledWith('DGTL2345');
+    });
+
+    it("not at all by someone holding its tag, since a link would open nothing for whoever they sent it to", async () => {
+      actAs('p-tiles');
+      const el = await mount(<ProjectScreen />);
+      expect(el.textContent).toContain('Barn conversion');
+      expect(byLabel(el, 'Share Barn conversion')).toBeNull();
+    });
   });
 
   it('is made public from the menu, and no longer unlisted', async () => {

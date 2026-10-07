@@ -3,6 +3,8 @@
 // out of the screens so it is tested without mounting anything.
 
 import type { Contributor, Project, ProjectEdits, ProjectFields, ProjectSummary } from '../../features/projects';
+import type { NewTag, OwnedTag } from '../../features/tags';
+import type { ProfileId } from '../../types';
 import {
   detailDraftErrors,
   detailDraftsFrom,
@@ -188,6 +190,39 @@ export const visibilityBadge = (project: { isPublic: boolean; unlisted?: boolean
   const visibility = visibilityOf(project);
   return visibility === 'public' ? null : visibility === 'unlisted' ? UNLISTED_LABEL : PRIVATE_LABEL;
 };
+
+/**
+ * How a project's Share works. A public or private one shares the app's link
+ * to its page. An unlisted one's page opens only for someone holding its tag,
+ * so its owner shares a Digital Tag's link instead, which grants whoever
+ * opens it; anyone else gets no Share at all.
+ */
+export const projectShareFor = (
+  project: { isPublic: boolean; unlisted?: boolean },
+  isOwner: boolean,
+): 'app-link' | 'tag-link' | null => (!project.unlisted ? 'app-link' : isOwner ? 'tag-link' : null);
+
+/** What the owner's Tags list calls a Digital Tag made by sharing an unlisted project. */
+export const SHARED_LINK_TAG_NAME = 'Shared link';
+
+/** The owner's Digital Tag an unlisted project is shared through: an active one pointing at it. */
+export const shareableTagFor = (tags: OwnedTag[] | undefined, projectId: string): OwnedTag | null =>
+  tags?.find(
+    (tag) =>
+      tag.tagType === 'digital' &&
+      tag.active &&
+      tag.destination?.kind === 'project' &&
+      tag.destination.projectId === projectId,
+  ) ?? null;
+
+/** The Digital Tag made when there isn't one to share an unlisted project through. */
+export const shareTagFor = (ownerProfileId: ProfileId, projectId: string): NewTag => ({
+  ownerProfileId,
+  tagType: 'digital',
+  destination: { kind: 'project', id: projectId },
+  name: SHARED_LINK_TAG_NAME,
+  note: null,
+});
 
 /**
  * Projects as a list shows them to a viewer (ONE-137): an unlisted one is
