@@ -114,7 +114,7 @@ export default function NotificationsScreen() {
       <Pressable
         onPress={() => handlePress(item)}
         accessibilityRole="button"
-        accessibilityLabel={`${unread ? 'New. ' : ''}${item.sender.username} ${notificationSentence(item.type)} ${time}`}
+        accessibilityLabel={`${unread ? 'New. ' : ''}${item.sender.username} ${notificationSentence(item.type, item.project?.name)} ${time}`}
         style={({ pressed }) => [styles.row, pressed && styles.pressed]}
       >
         {/* Leading edge: a dot for rows that arrived since the last visit. */}
@@ -124,7 +124,7 @@ export default function NotificationsScreen() {
           <Text style={styles.sentence}>
             <Text style={styles.sender}>{item.sender.username}</Text>
             {' '}
-            {notificationSentence(item.type)}
+            {notificationSentence(item.type, item.project?.name)}
             {time ? <Text style={styles.time}>{` ${time}`}</Text> : null}
           </Text>
         </View>

@@ -11,7 +11,9 @@
 // Decided 2026-09-27 (ONE-103):
 //   - these push: follow, follow_request, comment, mention, and messages.
 //     Likes, reposts, comment likes and OneSnap likes don't. A reply to a
-//     comment pushes too, as a comment does (20260928234000_comment_replies).
+//     comment pushes too, as a comment does (20260928234000_comment_replies),
+//     and so does someone else writing to a project's log, which opens the
+//     project (ONE-143, 20261007140000_project_log_contributions).
 //   - a message's push says who it's from, never what it says.
 //   - a token Expo reports as DeviceNotRegistered is deleted.
 //
@@ -19,16 +21,35 @@
 // (lib/screens/notifications.ts). Deno can't import the app, so the sentences
 // are mirrored here, and __tests__/supabase/sendPush.test.ts keeps them in step.
 
-export const PUSH_NOTIFICATION_TYPES = ['follow', 'follow_request', 'comment', 'reply', 'mention'] as const;
+export const PUSH_NOTIFICATION_TYPES = [
+  'follow',
+  'follow_request',
+  'comment',
+  'reply',
+  'mention',
+  'log_entry_added',
+  'log_entry_proposed',
+] as const;
 export type PushNotificationType = (typeof PUSH_NOTIFICATION_TYPES)[number];
 
-/** Mirrors notificationSentence in lib/screens/notifications.ts. */
-export const PUSH_SENTENCES: Record<PushNotificationType, string> = {
-  follow: 'started following you.',
-  follow_request: 'asked to follow you.',
-  comment: 'commented on your post.',
-  reply: 'replied to your comment.',
-  mention: 'mentioned you.',
+/** Mirrors notificationSentence in lib/screens/notifications.ts. A log push names its project. */
+export const pushSentence = (type: PushNotificationType, projectName?: string | null): string => {
+  switch (type) {
+    case 'follow':
+      return 'started following you.';
+    case 'follow_request':
+      return 'asked to follow you.';
+    case 'comment':
+      return 'commented on your post.';
+    case 'reply':
+      return 'replied to your comment.';
+    case 'mention':
+      return 'mentioned you.';
+    case 'log_entry_added':
+      return `added to ${projectName ?? 'your project'}'s log.`;
+    case 'log_entry_proposed':
+      return `wants to add to ${projectName ?? 'your project'}'s log.`;
+  }
 };
 
 export const MESSAGE_SENTENCE = 'sent you a message.';
@@ -49,6 +70,9 @@ export type PushEvent =
       postId: string | null;
       /** The comment it's about, which a tap opens on. */
       commentId?: string | null;
+      /** The project whose log was written to (ONE-143), which a tap opens. */
+      projectId?: string | null;
+      projectName?: string | null;
     }
   | {
       kind: 'message';
@@ -101,7 +125,7 @@ export const buildPush = (event: PushEvent): Omit<ExpoMessage, 'to'> | null => {
 
   if (!(PUSH_NOTIFICATION_TYPES as readonly string[]).includes(event.type)) return null;
   const type = event.type as PushNotificationType;
-  const body = `${sender} ${PUSH_SENTENCES[type]}`;
+  const body = `${sender} ${pushSentence(type, event.projectName)}`;
 
   switch (type) {
     case 'follow':
@@ -114,6 +138,12 @@ export const buildPush = (event: PushEvent): Omit<ExpoMessage, 'to'> | null => {
       const data: Record<string, string> = { type };
       if (event.postId) data.postId = event.postId;
       if (event.postId && event.commentId) data.commentId = event.commentId;
+      return { title, body, data, sound: 'default' };
+    }
+    case 'log_entry_added':
+    case 'log_entry_proposed': {
+      const data: Record<string, string> = { type };
+      if (event.projectId) data.projectId = event.projectId;
       return { title, body, data, sound: 'default' };
     }
   }

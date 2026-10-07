@@ -7,21 +7,28 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   addContributor,
+  approveLogEntry,
+  createLogEntry,
   createProject,
+  deleteLogEntry,
   deleteProject,
   linkProduct,
   removeContributor,
+  removeMeFromLogEntry,
+  saveLogEntryEdits,
   saveProjectEdits,
   unlinkProduct,
   updateContributor,
   updateProject,
+  type LogEntryEdits,
   type NewContributor,
+  type NewLogEntryInput,
   type NewProjectInput,
   type ProjectEdits,
 } from './api';
 import { projectKeys } from './keys';
 import { saveKeys } from '../saves';
-import type { Contributor, Project } from './types';
+import type { Contributor, Project, ProjectLogEntry } from './types';
 import type { AuthUserId } from '../../types';
 
 const signedIn = (authUserId: AuthUserId | undefined): AuthUserId => {
@@ -37,13 +44,14 @@ export const useCreateProject = (authUserId: AuthUserId | undefined) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: NewProjectInput) => createProject(signedIn(authUserId), input),
-    onSuccess: (_projectId, input) =>
-      queryClient.invalidateQueries({ queryKey: projectKeys.owned(input.ownerProfileId) }),
+    // Every list: the owner's projects, and the projects inside its parent (ONE-134).
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: projectKeys.lists() }),
   });
 };
 
 export interface UpdateProjectInput {
-  projectId: string;
+  /** The project as stored: its details are what the edit's are saved against. */
+  project: Pick<Project, 'id' | 'details'>;
   edits: ProjectEdits;
 }
 
@@ -51,10 +59,10 @@ export interface UpdateProjectInput {
 export const useUpdateProject = (authUserId: AuthUserId | undefined) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, edits }: UpdateProjectInput) => saveProjectEdits(signedIn(authUserId), projectId, edits),
-    onSettled: (_data, _error, { projectId }) =>
+    mutationFn: ({ project, edits }: UpdateProjectInput) => saveProjectEdits(signedIn(authUserId), project, edits),
+    onSettled: (_data, _error, { project }) =>
       Promise.all([
-        queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) }),
+        queryClient.invalidateQueries({ queryKey: projectKeys.detail(project.id) }),
         queryClient.invalidateQueries({ queryKey: projectKeys.lists() }),
       ]),
   });
@@ -67,12 +75,13 @@ export interface ProjectVisibilityInput {
 
 /**
  * Make a project private, or public again: the softer alternative to
- * deleting it, which keeps its contributors, products, saves and tags.
+ * deleting it, which keeps its contributors, products, saves and tags. Either
+ * way it is no longer Unlisted (ONE-137), which the edit form chooses.
  */
 export const useSetProjectPublic = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ project, isPublic }: ProjectVisibilityInput) => updateProject(project.id, { isPublic }),
+    mutationFn: ({ project, isPublic }: ProjectVisibilityInput) => updateProject(project.id, { isPublic, unlisted: false }),
     onSettled: (_data, _error, { project }) =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: projectKeys.detail(project.id) }),
@@ -144,6 +153,8 @@ const invalidateContributor = (
     queryClient.invalidateQueries({ queryKey: projectKeys.contributors(projectId) }),
     queryClient.invalidateQueries({ queryKey: projectKeys.contributed(profileId) }),
     queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) }),
+    // Being Linked, or not, changes what a profile may write to the log (ONE-143).
+    queryClient.invalidateQueries({ queryKey: projectKeys.logAccess(projectId) }),
   ]);
 
 /** Link a profile to a project as a Contributor, with an optional role. */
@@ -196,5 +207,71 @@ export const useSetContributorPublic = () => {
     mutationFn: ({ contributor, isPublic }: ContributorVisibilityInput) =>
       updateContributor(contributor.id, { isPublic }),
     onSettled: (_data, _error, { contributor }) => invalidateContributor(queryClient, contributor),
+  });
+};
+
+// ─── The log (ONE-141) ──────────────────────────────────────────────────
+
+/** An entry, as a write to it names it: which entry, on which project's log. */
+type LogEntryRef = Pick<ProjectLogEntry, 'id' | 'projectId'>;
+
+/** Log an entry on a project. Resolves to its id; the photos are filed under the account. */
+export const useCreateLogEntry = (authUserId: AuthUserId | undefined) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: NewLogEntryInput) => createLogEntry(signedIn(authUserId), input),
+    onSettled: (_data, _error, { projectId }) => queryClient.invalidateQueries({ queryKey: projectKeys.log(projectId) }),
+  });
+};
+
+export interface UpdateLogEntryInput {
+  /** The entry as stored: its photos are what the edit's are saved against. */
+  entry: LogEntryRef & Pick<ProjectLogEntry, 'photos'>;
+  edits: LogEntryEdits;
+}
+
+/** Save an edit to a log entry. Re-reads the log whether or not it went through. */
+export const useUpdateLogEntry = (authUserId: AuthUserId | undefined) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ entry, edits }: UpdateLogEntryInput) => saveLogEntryEdits(signedIn(authUserId), entry, edits),
+    onSettled: (_data, _error, { entry }) => queryClient.invalidateQueries({ queryKey: projectKeys.log(entry.projectId) }),
+  });
+};
+
+/** Delete a log entry and its photos. */
+export const useDeleteLogEntry = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (entry: LogEntryRef) => deleteLogEntry(entry.id),
+    onSettled: (_data, _error, entry) => queryClient.invalidateQueries({ queryKey: projectKeys.log(entry.projectId) }),
+  });
+};
+
+/** Take the active profile's name off an entry naming it as who did the work ("Remove me"). */
+export const useRemoveMeFromLogEntry = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (entry: LogEntryRef) => removeMeFromLogEntry(entry.id),
+    onSettled: (_data, _error, entry) => queryClient.invalidateQueries({ queryKey: projectKeys.log(entry.projectId) }),
+  });
+};
+
+/**
+ * Approve a proposed entry (ONE-143): it is published, and its author Linked
+ * as a Contributor, so the log, the contributors and the author's projects are
+ * all read again.
+ */
+export const useApproveLogEntry = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (entry: LogEntryRef & Pick<ProjectLogEntry, 'authorProfileId'>) => approveLogEntry(entry.id),
+    onSettled: (_data, _error, entry) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: projectKeys.log(entry.projectId) }),
+        entry.authorProfileId
+          ? invalidateContributor(queryClient, { projectId: entry.projectId, profileId: entry.authorProfileId })
+          : undefined,
+      ]),
   });
 };

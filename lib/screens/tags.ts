@@ -292,6 +292,8 @@ export interface OwnedProjectChoice {
   projectType?: string | null;
   coverUrl?: string | null;
   isPublic?: boolean;
+  /** The project it sits inside (ONE-134): the furnace is offered as "in House". */
+  parentProjectId?: string | null;
 }
 
 /** A post, as much of one as the picker shows. */
@@ -315,6 +317,12 @@ export const postChoices = <T extends { id: string }>(posts: readonly T[], wante
   const newest = posts.slice(0, POST_CHOICES_SHOWN);
   const extra = wanted && !newest.some((p) => p.id === wanted) ? posts.find((p) => p.id === wanted) : undefined;
   return extra ? [extra, ...newest] : newest;
+};
+
+/** "in House": where a project inside another sits, when its parent is among those offered. */
+const parentNameIn = (projects: OwnedProjectChoice[], parentProjectId: string): string | null => {
+  const parent = projects.find((project) => project.id === parentProjectId);
+  return parent ? `in ${parent.name}` : null;
 };
 
 /**
@@ -356,7 +364,12 @@ export const destinationSections = (
       options: ownedProjects.map((project) => ({
         destination: { kind: 'project' as const, id: project.id },
         title: project.name,
-        subtitle: ['Project', project.projectType, project.isPublic === false ? 'Private' : null]
+        subtitle: [
+          'Project',
+          project.parentProjectId ? parentNameIn(ownedProjects, project.parentProjectId) : null,
+          project.projectType,
+          project.isPublic === false ? 'Private' : null,
+        ]
           .filter(Boolean)
           .join(' · '),
         imageUri: project.coverUrl ?? null,

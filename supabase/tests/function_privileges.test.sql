@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(50);
+SELECT plan(62);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -132,6 +132,42 @@ SELECT ok(NOT has_function_privilege('anon', 'public.register_push_token(text, t
 
 SELECT ok(NOT has_function_privilege('anon', 'public.feed_candidates(uuid, timestamptz, uuid, text, integer)', 'EXECUTE'),
   'anon cannot execute feed_candidates() (ONE-116)');
+
+-- ─── Unlisted projects (ONE-137) ──────────────────────────────────────
+
+SELECT ok(NOT has_function_privilege('anon', 'public.grant_project_tag_access(text, uuid)', 'EXECUTE'),
+  'anon cannot execute grant_project_tag_access(): a grant is a signed-in profile''s');
+SELECT ok(has_function_privilege('authenticated', 'public.grant_project_tag_access(text, uuid)', 'EXECUTE'),
+  'authenticated can execute grant_project_tag_access(): opening an unlisted project''s tag');
+SELECT ok(NOT has_function_privilege('anon', 'public.can_read_unlisted_project(uuid)', 'EXECUTE'),
+  'anon cannot execute can_read_unlisted_project()');
+SELECT ok(has_function_privilege('authenticated', 'public.can_read_unlisted_project(uuid)', 'EXECUTE'),
+  'authenticated can execute can_read_unlisted_project(): the unlisted read policy calls it');
+
+-- ─── Project details (ONE-140) ────────────────────────────────────────
+
+SELECT ok(NOT has_function_privilege('anon', 'public.is_calendar_date(text)', 'EXECUTE'),
+  'anon cannot execute is_calendar_date(): only the signed-in write details');
+SELECT ok(has_function_privilege('authenticated', 'public.is_calendar_date(text)', 'EXECUTE'),
+  'authenticated can execute is_calendar_date(): the date check on project_details calls it');
+
+-- ─── Project log (ONE-141) ────────────────────────────────────────────
+
+SELECT ok(NOT has_function_privilege('anon', 'public.remove_me_from_log_entry(uuid)', 'EXECUTE'),
+  'anon cannot execute remove_me_from_log_entry(): a name is a signed-in profile''s to remove');
+SELECT ok(has_function_privilege('authenticated', 'public.remove_me_from_log_entry(uuid)', 'EXECUTE'),
+  'authenticated can execute remove_me_from_log_entry(): the profile named on an entry takes its name off');
+
+-- ─── Writing to someone else's log (ONE-143) ──────────────────────────
+
+SELECT ok(NOT has_function_privilege('anon', 'public.log_entry_status_for(uuid, uuid)', 'EXECUTE'),
+  'anon cannot execute log_entry_status_for(): it answers only about the caller''s own profiles');
+SELECT ok(has_function_privilege('authenticated', 'public.log_entry_status_for(uuid, uuid)', 'EXECUTE'),
+  'authenticated can execute log_entry_status_for(): the log insert policy calls it, and the app asks it what to offer');
+SELECT ok(NOT has_function_privilege('anon', 'public.approve_log_entry(uuid)', 'EXECUTE'),
+  'anon cannot execute approve_log_entry()');
+SELECT ok(has_function_privilege('authenticated', 'public.approve_log_entry(uuid)', 'EXECUTE'),
+  'authenticated can execute approve_log_entry(): the project''s owner publishes a proposal');
 
 SELECT * FROM finish();
 ROLLBACK;

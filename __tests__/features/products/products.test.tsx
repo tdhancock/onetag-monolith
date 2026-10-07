@@ -461,6 +461,23 @@ describe('the product page', () => {
     expect(mockRouter.push).toHaveBeenCalledWith('/project/pj-loft');
   });
 
+  it("leaves out an Unlisted project that uses it, for anyone but the project's owner (ONE-137)", async () => {
+    db.tables.projects!.push({
+      id: 'pj-heater', owner_profile_id: 'p-builder', name: 'Water heater', project_type: null, year: null,
+      cover_url: null, is_public: false, unlisted: true, created_at: '2026-07-01T00:00:00Z',
+    });
+    db.tables.project_products!.push({ id: 'pp-3', project_id: 'pj-heater', product_id: 'pd-door' });
+    const visitor = await mount(<ProductScreen />);
+    expect(byLabel(visitor, 'Used in projects')!.textContent).not.toContain('Water heater');
+
+    act(() => root!.unmount());
+    container?.remove();
+    client.clear();
+    mockActing.profileId = 'p-builder';
+    const owner = await mount(<ProductScreen />);
+    expect(byLabel(owner, 'Used in projects')!.textContent).toContain('Water heater');
+  });
+
   it('routes to the business that lists it', async () => {
     const el = await mount(<ProductScreen />);
     await click(buttons(byLabel(el, 'Listed by')!).find((b) => b.textContent?.includes('Oak Studio')));

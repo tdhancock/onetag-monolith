@@ -10,6 +10,7 @@
 
 import { supabase } from '../../services/supabase.native';
 import { uploadDeviceImages } from '../../services/destinationMedia';
+import { orderedRowChanges, saveOrderedRows, type OrderedRowChanges } from '../../services/orderedRows';
 import {
   mapProductSummaryRow,
   PRODUCT_SUMMARY_SELECT,
@@ -245,33 +246,14 @@ export const mediaChanges = (current: ProductMedia[], urls: string[]): MediaChan
 /** A spec as edit saves it: `id` when it is already stored. */
 export type SpecEdit = SpecInput & { id?: string };
 
-export interface SpecChanges {
-  inserts: (SpecInput & { sortOrder: number })[];
-  updates: (SpecInput & { id: string; sortOrder: number })[];
-  removals: string[];
-}
+export type SpecChanges = OrderedRowChanges<SpecInput>;
+
+/** What a spec holds besides its place, each also its column. */
+const SPEC_FIELDS = ['label', 'value'] as const;
 
 /** The writes that turn a product's stored specs into `specs`, in that order. Pure. */
-export const specChanges = (current: ProductSpec[], specs: SpecEdit[]): SpecChanges => {
-  const stored = new Map(current.map((spec) => [spec.id, spec]));
-  const changes: SpecChanges = { inserts: [], updates: [], removals: [] };
-  const kept = new Set<string>();
-
-  specs.forEach(({ id, label, value }, sortOrder) => {
-    const before = id ? stored.get(id) : undefined;
-    if (!before) {
-      changes.inserts.push({ label, value, sortOrder });
-      return;
-    }
-    kept.add(before.id);
-    if (before.label !== label || before.value !== value || before.sortOrder !== sortOrder) {
-      changes.updates.push({ id: before.id, label, value, sortOrder });
-    }
-  });
-
-  changes.removals = current.filter((spec) => !kept.has(spec.id)).map((spec) => spec.id);
-  return changes;
-};
+export const specChanges = (current: ProductSpec[], specs: SpecEdit[]): SpecChanges =>
+  orderedRowChanges<SpecInput>(current, specs, SPEC_FIELDS);
 
 const throwIfError = async (request: PromiseLike<{ error: unknown }>): Promise<void> => {
   const { error } = await request;
@@ -297,22 +279,8 @@ export const saveProductMedia = async (productId: string, current: ProductMedia[
 };
 
 /** Write a product's specs in the order given. Additions first, removals last. */
-export const saveProductSpecs = async (productId: string, current: ProductSpec[], specs: SpecEdit[]): Promise<void> => {
-  const { inserts, updates, removals } = specChanges(current, specs);
-  if (inserts.length > 0) {
-    await throwIfError(
-      supabase.from('product_specs').insert(
-        inserts.map(({ label, value, sortOrder }) => ({ product_id: productId, label, value, sort_order: sortOrder })),
-      ),
-    );
-  }
-  await Promise.all(
-    updates.map(({ id, label, value, sortOrder }) =>
-      throwIfError(supabase.from('product_specs').update({ label, value, sort_order: sortOrder }).eq('id', id)),
-    ),
-  );
-  if (removals.length > 0) await throwIfError(supabase.from('product_specs').delete().in('id', removals));
-};
+export const saveProductSpecs = (productId: string, current: ProductSpec[], specs: SpecEdit[]): Promise<void> =>
+  saveOrderedRows<SpecInput>({ table: 'product_specs', parentColumn: 'product_id' }, productId, current, specs, SPEC_FIELDS);
 
 /** An edit to a product: its fields, its images in order, and its specs in order. */
 export interface ProductEdits {

@@ -2,7 +2,16 @@
 // who may do what, the create and edit form, and what each screen says. Kept
 // out of the screens so it is tested without mounting anything.
 
-import type { Contributor, Project, ProjectEdits, ProjectFields } from '../../features/projects';
+import type { Contributor, Project, ProjectEdits, ProjectFields, ProjectSummary } from '../../features/projects';
+import type { NewTag, OwnedTag } from '../../features/tags';
+import type { ProfileId } from '../../types';
+import {
+  detailDraftErrors,
+  detailDraftsFrom,
+  detailEditsFrom,
+  detailInputsFrom,
+  type ProjectDetailDraft,
+} from './projectDetails';
 
 // ─── Routes ─────────────────────────────────────────────────────────────
 
@@ -19,6 +28,15 @@ export const projectAddContributorRoute = (projectId: string): string =>
   `/project/${encodeURIComponent(projectId)}/add-contributor`;
 
 export const PROJECT_CREATE_ROUTE = '/project/create';
+
+/**
+ * Project create, starting inside another project (ONE-134) when one is
+ * given: "Add a project" on a house's page.
+ */
+export const projectCreateRoute = (parentProjectId?: string) => ({
+  pathname: PROJECT_CREATE_ROUTE,
+  params: parentProjectId ? { parent: parentProjectId } : ({} as Record<string, string>),
+});
 
 // ─── Who may do what ────────────────────────────────────────────────────
 
@@ -46,9 +64,14 @@ export interface ProjectDraft {
   description: string;
   /** A stored URL, a photo just picked from the device, or none. */
   coverUri: string | null;
-  isPublic: boolean;
+  /** Public, Unlisted (ONE-137) or Private. */
+  visibility: ProjectVisibility;
   /** Optional: an interest slug, or null (ONE-49). */
   interestSlug: string | null;
+  /** The project this one sits inside (ONE-134), or null at the top level. */
+  parentProjectId: string | null;
+  /** Its details (ONE-140), in order. Any left without a value are not saved. */
+  details: ProjectDetailDraft[];
 }
 
 /** New projects are public: a project is a discovery surface unless its owner says otherwise. */
@@ -58,8 +81,10 @@ export const EMPTY_PROJECT_DRAFT: ProjectDraft = {
   year: '',
   description: '',
   coverUri: null,
-  isPublic: true,
+  visibility: 'public',
   interestSlug: null,
+  parentProjectId: null,
+  details: [],
 };
 
 /** A stored project as the edit form starts. */
@@ -69,17 +94,26 @@ export const projectDraftFrom = (project: Project): ProjectDraft => ({
   year: project.year ?? '',
   description: project.description ?? '',
   coverUri: project.coverUrl,
-  isPublic: project.isPublic,
+  visibility: visibilityOf(project),
   interestSlug: project.interestSlug ?? null,
+  parentProjectId: project.parentProjectId ?? null,
+  details: detailDraftsFrom(project.details),
 });
 
 export const projectNameError = (draft: Pick<ProjectDraft, 'name'>): string | null =>
   draft.name.trim() === '' ? 'Give the project a name.' : null;
 
-/** What is wrong with a draft, field by field: only a name is required. */
-export const projectDraftErrors = (draft: ProjectDraft): { name: string | null } => ({ name: projectNameError(draft) });
+/**
+ * What is wrong with a draft, field by field: a name is required, and each
+ * detail's value must suit its kind (ONE-140), keyed `details[0].value`.
+ */
+export const projectDraftErrors = (draft: ProjectDraft): { name: string | null } & Record<string, string | null> => ({
+  ...detailDraftErrors(draft.details),
+  name: projectNameError(draft),
+});
 
-export const projectDraftValid = (draft: ProjectDraft): boolean => projectNameError(draft) === null;
+export const projectDraftValid = (draft: ProjectDraft): boolean =>
+  Object.values(projectDraftErrors(draft)).every((error) => error === null);
 
 const textOrNull = (value: string): string | null => value.trim() || null;
 
@@ -88,8 +122,10 @@ export const projectFieldsFrom = (draft: ProjectDraft): ProjectFields => ({
   projectType: textOrNull(draft.projectType),
   year: textOrNull(draft.year),
   description: textOrNull(draft.description),
-  isPublic: draft.isPublic,
+  isPublic: draft.visibility === 'public',
+  unlisted: draft.visibility === 'unlisted',
   interestSlug: draft.interestSlug,
+  parentProjectId: draft.parentProjectId,
 });
 
 /** What creating a project from a draft writes. */
@@ -97,22 +133,44 @@ export const newProjectInputFrom = (draft: ProjectDraft, ownerProfileId: string)
   ownerProfileId,
   fields: projectFieldsFrom(draft),
   coverUri: draft.coverUri,
+  details: detailInputsFrom(draft.details),
 });
 
 export const projectEditsFrom = (draft: ProjectDraft): ProjectEdits => ({
   fields: projectFieldsFrom(draft),
   coverUri: draft.coverUri,
+  details: detailEditsFrom(draft.details),
 });
 
 /** Whether an edit would save anything different from what is stored. */
 export const projectDraftChanged = (draft: ProjectDraft, project: Project): boolean =>
   JSON.stringify(projectEditsFrom(draft)) !== JSON.stringify(projectEditsFrom(projectDraftFrom(project)));
 
-/** What the visibility switch says, either way. */
-export const projectVisibilityDescription = (isPublic: boolean): string =>
-  isPublic
-    ? 'Anyone can see it, including someone without the app who scans a tag.'
-    : 'Only you and its contributors can see it. To everyone else it does not exist.';
+/** Who can see a project (ONE-137). Stored as is_public and unlisted, never both. */
+export type ProjectVisibility = 'public' | 'unlisted' | 'private';
+
+/** A stored project's visibility, from its two columns. */
+export const visibilityOf = (project: { isPublic: boolean; unlisted?: boolean }): ProjectVisibility =>
+  project.isPublic ? 'public' : project.unlisted ? 'unlisted' : 'private';
+
+/** The three choices the project form offers, in order. */
+export const PROJECT_VISIBILITIES: { value: ProjectVisibility; label: string }[] = [
+  { value: 'public', label: 'Public' },
+  { value: 'unlisted', label: 'Unlisted' },
+  { value: 'private', label: 'Private' },
+];
+
+/** What each visibility means, said under its choice. */
+export const projectVisibilityDescription = (visibility: ProjectVisibility): string => {
+  switch (visibility) {
+    case 'public':
+      return 'Anyone can see it, in Explore and search, including someone without the app who scans a tag.';
+    case 'unlisted':
+      return "Anyone with its tag can see it, but it isn't listed anywhere: not in Explore, search or on your profile.";
+    case 'private':
+      return 'Only you and its contributors can see it. To everyone else it does not exist.';
+  }
+};
 
 // ─── What the screens say ───────────────────────────────────────────────
 
@@ -125,6 +183,55 @@ export const projectRowSubtitle = (project: Pick<Project, 'projectType' | 'year'
   [project.projectType, project.year].filter(Boolean).join(' · ') || 'Project';
 
 export const PRIVATE_LABEL = 'Private';
+export const UNLISTED_LABEL = 'Unlisted';
+
+/** The badge a project's rows and page carry: nothing for a public one. */
+export const visibilityBadge = (project: { isPublic: boolean; unlisted?: boolean }): string | null => {
+  const visibility = visibilityOf(project);
+  return visibility === 'public' ? null : visibility === 'unlisted' ? UNLISTED_LABEL : PRIVATE_LABEL;
+};
+
+/**
+ * How a project's Share works. A public or private one shares the app's link
+ * to its page. An unlisted one's page opens only for someone holding its tag,
+ * so its owner shares a Digital Tag's link instead, which grants whoever
+ * opens it; anyone else gets no Share at all.
+ */
+export const projectShareFor = (
+  project: { isPublic: boolean; unlisted?: boolean },
+  isOwner: boolean,
+): 'app-link' | 'tag-link' | null => (!project.unlisted ? 'app-link' : isOwner ? 'tag-link' : null);
+
+/** What the owner's Tags list calls a Digital Tag made by sharing an unlisted project. */
+export const SHARED_LINK_TAG_NAME = 'Shared link';
+
+/** The owner's Digital Tag an unlisted project is shared through: an active one pointing at it. */
+export const shareableTagFor = (tags: OwnedTag[] | undefined, projectId: string): OwnedTag | null =>
+  tags?.find(
+    (tag) =>
+      tag.tagType === 'digital' &&
+      tag.active &&
+      tag.destination?.kind === 'project' &&
+      tag.destination.projectId === projectId,
+  ) ?? null;
+
+/** The Digital Tag made when there isn't one to share an unlisted project through. */
+export const shareTagFor = (ownerProfileId: ProfileId, projectId: string): NewTag => ({
+  ownerProfileId,
+  tagType: 'digital',
+  destination: { kind: 'project', id: projectId },
+  name: SHARED_LINK_TAG_NAME,
+  note: null,
+});
+
+/**
+ * Projects as a list shows them to a viewer (ONE-137): an unlisted one is
+ * listed nowhere but to its owner, even to someone who holds its tag.
+ */
+export const listedFor = <T extends Pick<ProjectSummary, 'unlisted' | 'ownerProfileId'>>(
+  projects: T[],
+  viewerProfileId: string | undefined,
+): T[] => projects.filter((project) => !project.unlisted || project.ownerProfileId === viewerProfileId);
 
 const counted = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
 
@@ -174,11 +281,13 @@ export const PROJECT_NOT_FOUND = {
 /**
  * What deleting a project means, said before anything is removed (ONE-41):
  * its contributors lose the link, and a Tag pointing at it may already be
- * printed. Making it private is the reversible alternative.
+ * printed. Making it private is the reversible alternative. The projects
+ * inside it go with it (ONE-134), and it says how many.
  */
-export const deleteProjectConfirm = (project: Pick<Project, 'name'>) => ({
+export const deleteProjectConfirm = (project: Pick<Project, 'name'>, inside = 0) => ({
   title: `Delete ${project.name}?`,
   body:
+    (inside > 0 ? `This also deletes the ${counted(inside, 'project', 'projects')} inside it. ` : '') +
     'Its contributors lose the link to it, and its product links and saves are deleted with it. ' +
     'Any tag pointing at it stops working for good, including one already printed. ' +
     'To hide it for now, make it private instead: that can be undone.',
@@ -266,3 +375,45 @@ export const contributorVisibilityAction = (isPublic: boolean) =>
   isPublic
     ? { label: 'Hide from visitors', hint: 'Only you and they will see them listed.' }
     : { label: 'Show to visitors', hint: 'Everyone who can see the project will see them listed.' };
+
+// ─── Projects inside a project (ONE-134) ────────────────────────────────
+
+/** A project another can go inside: one of the owner's, at the top level. */
+export interface ProjectParentChoice {
+  id: string;
+  name: string;
+}
+
+/**
+ * What "Part of" offers: the profile's own top-level projects, newest first,
+ * never the project itself. One level only, so a project inside another is
+ * never offered as a parent.
+ */
+export const parentChoices = (
+  owned: Pick<ProjectSummary, 'id' | 'name' | 'parentProjectId'>[],
+  projectId?: string,
+): ProjectParentChoice[] =>
+  owned.filter((p) => !p.parentProjectId && p.id !== projectId).map(({ id, name }) => ({ id, name }));
+
+/** What "Part of" reads when a project sits inside nothing. */
+export const NOT_PART_OF_ANYTHING = 'None';
+
+/** The name "Part of" shows for a parent, or None. */
+export const partOfLabel = (choices: ProjectParentChoice[], parentProjectId: string | null): string =>
+  (parentProjectId && choices.find((choice) => choice.id === parentProjectId)?.name) || NOT_PART_OF_ANYTHING;
+
+/** Top-level projects only: what a profile's Projects tab lists (ONE-134). */
+export const topLevelProjects = <T extends Pick<ProjectSummary, 'parentProjectId'>>(projects: T[]): T[] =>
+  projects.filter((project) => !project.parentProjectId);
+
+/** The section on a project's page listing the projects inside it. */
+export const INCLUDES_TITLE = 'Includes';
+
+/** An empty Includes section, which only its owner sees. */
+export const INCLUDES_EMPTY = {
+  title: 'Nothing inside it yet',
+  body: 'Add the things this project holds, like the furnace in a house. Each gets its own page and its own tag.',
+} as const;
+
+/** "Part of House" — how a project inside another names it. */
+export const partOfText = (parentName: string): string => `Part of ${parentName}`;

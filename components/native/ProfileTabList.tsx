@@ -24,7 +24,7 @@ import {
   type SavesFilter,
 } from '../../lib/screens/profile';
 import { productKindLabel, productRoute } from '../../lib/screens/products';
-import { PRIVATE_LABEL, projectKindLabel, projectRoute, projectRowSubtitle } from '../../lib/screens/projects';
+import { projectKindLabel, projectRoute, projectRowSubtitle, topLevelProjects, visibilityBadge } from '../../lib/screens/projects';
 import {
   publicScanHistoryDescription,
   routeForEntry,
@@ -213,7 +213,11 @@ function ProjectsList({
 }: ProfileTabListProps & { query: TabQuery & { data?: ProjectSummary[] }; view: ProfileProjectsView }) {
   const router = useRouter();
   const refreshControl = useTabRefresh(onRefreshHeader, query);
-  const projects = query.data ?? [];
+  // A profile's own projects are its top-level ones; what sits inside a house
+  // is reached through the house (ONE-134). An unlisted project is listed to
+  // its own profile alone, even to someone who holds its tag (ONE-137).
+  const read = view === 'owned' ? topLevelProjects(query.data ?? []) : query.data ?? [];
+  const projects = isOwnProfile ? read : read.filter((project) => !project.unlisted);
 
   return (
     <FlatList
@@ -221,7 +225,7 @@ function ProjectsList({
       keyExtractor={(project) => project.id}
       renderItem={({ item, index }) => {
         // Only someone who may see a private project is ever shown one.
-        const subtitle = [item.isPublic ? null : PRIVATE_LABEL, projectRowSubtitle(item)].filter(Boolean).join(' · ');
+        const subtitle = [visibilityBadge(item), projectRowSubtitle(item)].filter(Boolean).join(' · ');
         return (
           <ListRow
             title={item.name}

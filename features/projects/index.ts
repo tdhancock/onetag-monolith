@@ -6,35 +6,57 @@
 export {
   fetchProject,
   fetchOwnedProjects,
+  fetchChildProjects,
   fetchContributedProjects,
   fetchProjectsUsingProduct,
   fetchContributors,
   fetchProjectProducts,
+  fetchProjectLog,
   createProject,
   updateProject,
   saveProjectEdits,
+  saveProjectDetails,
   deleteProject,
   linkProduct,
   unlinkProduct,
   addContributor,
   removeContributor,
   updateContributor,
+  createLogEntry,
+  saveLogEntryEdits,
+  deleteLogEntry,
+  removeMeFromLogEntry,
+  logEntryStatusFor,
+  approveLogEntry,
   mapProjectRow,
   mapContributorRow,
+  mapLogEntryRow,
   PROJECT_SELECT,
   CONTRIBUTOR_SELECT,
+  LOG_ENTRY_SELECT,
 } from './api';
 // A project as a list shows it, shared with other features through services/.
 export { mapProjectSummaryRow, PROJECT_SUMMARY_SELECT } from '../../services/projectRows';
-export type { NewProjectInput, ProjectEdits, NewContributor, ContributorChanges } from './api';
+export type {
+  NewProjectInput,
+  ProjectEdits,
+  ProjectDetailEdit,
+  NewContributor,
+  ContributorChanges,
+  NewLogEntryInput,
+  LogEntryEdits,
+} from './api';
 export { projectKeys } from './keys';
 export {
   useProjectQuery,
   useOwnedProjectsQuery,
+  useChildProjectsQuery,
   useContributedProjectsQuery,
   useProjectsUsingProductQuery,
   useContributorsQuery,
   useProjectProductsQuery,
+  useProjectLogQuery,
+  useLogEntryStatusQuery,
 } from './queries';
 export {
   useCreateProject,
@@ -47,6 +69,11 @@ export {
   useRemoveContributor,
   useUpdateContributorRole,
   useSetContributorPublic,
+  useCreateLogEntry,
+  useUpdateLogEntry,
+  useDeleteLogEntry,
+  useRemoveMeFromLogEntry,
+  useApproveLogEntry,
 } from './mutations';
 export type {
   UpdateProjectInput,
@@ -54,9 +81,18 @@ export type {
   ProductLinkInput,
   ContributorRoleInput,
   ContributorVisibilityInput,
+  UpdateLogEntryInput,
 } from './mutations';
 export type {
   Project,
+  ProjectParent,
+  ProjectDetail,
+  ProjectDetailInput,
+  ProjectDetailKind,
+  ProjectLogEntry,
+  LogEntryStatus,
+  ProjectLogEntryFields,
+  ProjectLogPhoto,
   ProjectSummary,
   ProjectSummaryRow,
   ProjectProfile,

@@ -371,3 +371,62 @@ describe('a blank tag', () => {
     expect(takeReturnAfterSignIn()).toBeNull();
   });
 });
+
+// ─── A tag to an Unlisted project (ONE-137) ─────────────────────────────
+
+describe('a tag to an Unlisted project', () => {
+  const UNLISTED = {
+    tag_id: 'tag-u',
+    active: true,
+    dest_profile_id: null,
+    dest_profile_username: null,
+    dest_product_id: null,
+    dest_project_id: 'pj-heater',
+    linked: true,
+    owned_by_caller: false,
+    dest_project_unlisted: true,
+  };
+
+  /** resolve_tag answers with the unlisted tag; the grant, when the test lets it. */
+  function resolveUnlisted(grant: () => Promise<{ data: unknown; error: unknown }>) {
+    mockRpc.mockImplementation((name: string) =>
+      name === 'resolve_tag'
+        ? { maybeSingle: () => Promise.resolve({ data: UNLISTED, error: null, status: 200 }) }
+        : grant(),
+    );
+  }
+
+  it("records the scanner's access through the tag, then opens the project", async () => {
+    let release: () => void = () => undefined;
+    resolveUnlisted(() => new Promise((resolve) => (release = () => resolve({ data: true, error: null }))));
+    mount();
+    await settle();
+    expect(mockRpc).toHaveBeenCalledWith('grant_project_tag_access', { p_short_code: CODE, p_profile_id: 'p-biz' });
+    // Not before the grant is in: the project reads through it.
+    expect(mockReplace).not.toHaveBeenCalled();
+    await act(async () => release());
+    await settle();
+    expect(mockReplace).toHaveBeenCalledWith('/project/pj-heater');
+    expect(mockInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('still opens the project when the grant fails, where its page says not found', async () => {
+    resolveUnlisted(() => Promise.resolve({ data: null, error: new Error('nope') }));
+    mount();
+    await settle();
+    expect(mockReplace).toHaveBeenCalledWith('/project/pj-heater');
+  });
+
+  it('asks someone signed out to sign in, and comes back to the tag', async () => {
+    mockWho.auth = 'signed-out';
+    mockWho.profile = { status: 'signed-out', profileId: undefined };
+    resolveUnlisted(() => Promise.resolve({ data: true, error: null }));
+    const el = mount();
+    await settle();
+    expect(el.textContent).toContain('This is for people who scan its tag.');
+    expect(mockRpc).not.toHaveBeenCalledWith('grant_project_tag_access', expect.anything());
+    act(() => button(el, 'Sign in')!.click());
+    expect(mockReplace).toHaveBeenCalledWith('/(auth)/login');
+    expect(takeReturnAfterSignIn()).toBe(`/t/${CODE}`);
+  });
+});

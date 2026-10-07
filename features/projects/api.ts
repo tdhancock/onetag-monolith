@@ -13,6 +13,7 @@
 import { supabase } from '../../services/supabase.native';
 import { uploadDeviceImages } from '../../services/destinationMedia';
 import { mapProductSummaryRow, PRODUCT_SUMMARY_SELECT, type ProductSummaryRow } from '../../services/productRows';
+import { saveOrderedRows } from '../../services/orderedRows';
 import {
   mapProjectSummaryRow,
   newestProjectFirst,
@@ -25,7 +26,14 @@ import type {
   Contributor,
   ContributorRow,
   Project,
+  ProjectDetail,
+  ProjectDetailInput,
+  ProjectDetailRow,
+  LogEntryStatus,
   ProjectFields,
+  ProjectLogEntry,
+  ProjectLogEntryFields,
+  ProjectLogEntryRow,
   ProjectProduct,
   ProjectProfile,
   ProjectProfileRow,
@@ -34,8 +42,18 @@ import type {
 
 const PROFILE_COLUMNS = 'id, username, full_name, avatar_url, is_verified, profile_type';
 
-/** Everything a project page shows of the project, with its owner embedded. */
-export const PROJECT_SELECT = `${PROJECT_SUMMARY_SELECT}, description, owner:profiles!owner_profile_id(${PROFILE_COLUMNS})`;
+/**
+ * Everything a project page shows of the project, with its owner embedded, the
+ * project it sits inside (ONE-134) and its details (ONE-140) — read under the
+ * viewer's own RLS, so a parent they may not see comes back null.
+ *
+ * The parent is embedded through its column, `parent_project_id(…)`. The
+ * table refers to itself, and `projects!parent_project_id(…)` reads the other
+ * way: the projects inside this one.
+ */
+export const PROJECT_SELECT =
+  `${PROJECT_SUMMARY_SELECT}, description, owner:profiles!owner_profile_id(${PROFILE_COLUMNS}), ` +
+  'parent:parent_project_id(id, name), details:project_details(id, label, kind, value, sort_order)';
 
 /** A contributor link with the profile it names. */
 export const CONTRIBUTOR_SELECT =
@@ -53,12 +71,56 @@ const mapProfileRow = (row: ProjectProfileRow): ProjectProfile => ({
   profileType: row.profile_type,
 });
 
+const mapDetailRow = (row: ProjectDetailRow): ProjectDetail => ({
+  id: row.id,
+  label: row.label,
+  kind: row.kind,
+  value: row.value,
+  sortOrder: row.sort_order,
+});
+
+const bySortOrder = (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order;
+
+/** An entry in a project's log (ONE-141), with who did it, who wrote it (ONE-143) and its photos. */
+export const LOG_ENTRY_SELECT =
+  'id, project_id, occurred_on, title, notes, cost_cents, currency, performed_by_profile_id, author_profile_id, ' +
+  'status, created_at, updated_at, ' +
+  `performed_by:profiles!performed_by_profile_id(${PROFILE_COLUMNS}), ` +
+  `author:profiles!author_profile_id(${PROFILE_COLUMNS}), photos:project_log_media(id, url, sort_order)`;
+
+export const mapLogEntryRow = (row: ProjectLogEntryRow): ProjectLogEntry => {
+  const performedBy = one(row.performed_by);
+  const author = one(row.author);
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    authorProfileId: row.author_profile_id ?? null,
+    author: author ? mapProfileRow(author) : null,
+    status: row.status ?? 'published',
+    occurredOn: row.occurred_on,
+    title: row.title,
+    notes: row.notes,
+    costCents: row.cost_cents,
+    currency: row.currency,
+    performedByProfileId: row.performed_by_profile_id,
+    performedBy: performedBy ? mapProfileRow(performedBy) : null,
+    photos: [...(row.photos ?? [])]
+      .sort(bySortOrder)
+      .map((photo) => ({ id: photo.id, url: photo.url, sortOrder: photo.sort_order })),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
+
 export const mapProjectRow = (row: ProjectRow): Project => {
   const owner = one(row.owner);
+  const parent = one(row.parent);
   return {
     ...mapProjectSummaryRow(row),
     description: row.description,
     owner: owner ? mapProfileRow(owner) : null,
+    parent: parent ? { id: parent.id, name: parent.name } : null,
+    details: [...(row.details ?? [])].sort(bySortOrder).map(mapDetailRow),
   };
 };
 
@@ -108,6 +170,20 @@ export const fetchOwnedProjects = async (ownerProfileId: string): Promise<Projec
 };
 
 /**
+ * The projects inside one (ONE-134) that the viewer may see, newest first: a
+ * house's furnace, AC and water heater. Each keeps its own visibility.
+ */
+export const fetchChildProjects = async (parentProjectId: string): Promise<ProjectSummary[]> => {
+  const { data, error } = await supabase
+    .from('projects')
+    .select(PROJECT_SUMMARY_SELECT)
+    .eq('parent_project_id', parentProjectId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as unknown as ProjectSummaryRow[]).map(mapProjectSummaryRow);
+};
+
+/**
  * The projects a profile contributed to, newest first — the other direction
  * of discovery, from a profile to its projects.
  *
@@ -149,6 +225,21 @@ export const fetchContributors = async (projectId: string): Promise<Contributor[
   return ((data ?? []) as unknown as ContributorRow[]).map(mapContributorRow);
 };
 
+/**
+ * A project's log the viewer may see (ONE-141), newest first: by the day the
+ * work was done, then by when it was written.
+ */
+export const fetchProjectLog = async (projectId: string): Promise<ProjectLogEntry[]> => {
+  const { data, error } = await supabase
+    .from('project_log_entries')
+    .select(LOG_ENTRY_SELECT)
+    .eq('project_id', projectId)
+    .order('occurred_on', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as unknown as ProjectLogEntryRow[]).map(mapLogEntryRow);
+};
+
 /** The products a project Links, whoever lists them. */
 export const fetchProjectProducts = async (projectId: string): Promise<ProjectProduct[]> => {
   const { data, error } = await supabase
@@ -172,7 +263,9 @@ const fieldsToRow = (fields: Partial<ProjectFields>): Record<string, unknown> =>
   if (fields.description !== undefined) row.description = fields.description;
   if (fields.year !== undefined) row.year = fields.year;
   if (fields.isPublic !== undefined) row.is_public = fields.isPublic;
+  if (fields.unlisted !== undefined) row.unlisted = fields.unlisted;
   if (fields.interestSlug !== undefined) row.interest_slug = fields.interestSlug;
+  if (fields.parentProjectId !== undefined) row.parent_project_id = fields.parentProjectId;
   return row;
 };
 
@@ -187,11 +280,22 @@ export interface NewProjectInput {
   fields: ProjectFields;
   /** A device URI, or null for no cover. */
   coverUri: string | null;
+  /** Its details (ONE-140) in order, each with a value. None when left out. */
+  details?: ProjectDetailInput[];
 }
 
+/** A detail as an edit saves it: `id` when it is already stored. */
+export type ProjectDetailEdit = ProjectDetailInput & { id?: string };
+
+/** Where a project's details live, and what each holds besides its place. */
+const DETAILS = { table: 'project_details', parentColumn: 'project_id' } as const;
+const DETAIL_FIELDS = ['label', 'kind', 'value'] as const;
+
 /**
- * Create a project and return its id. The cover goes up first, keyed by the
- * account, so a failed upload writes nothing.
+ * Create a project with its details, and return its id. The cover goes up
+ * first, keyed by the account, so a failed upload writes nothing. The project
+ * and its details are two inserts; if the second is refused, the project is
+ * deleted again, so a half-made one is never left behind.
  */
 export const createProject = async (authUserId: AuthUserId, input: NewProjectInput): Promise<string> => {
   const coverUrl = await storedCover(authUserId, input.coverUri);
@@ -201,8 +305,25 @@ export const createProject = async (authUserId: AuthUserId, input: NewProjectInp
     .select('id')
     .single();
   if (error) throw error;
-  return (data as { id: string }).id;
+  const projectId = (data as { id: string }).id;
+
+  if (input.details && input.details.length > 0) {
+    try {
+      await saveProjectDetails(projectId, [], input.details);
+    } catch (detailsError) {
+      await supabase.from('projects').delete().eq('id', projectId);
+      throw detailsError;
+    }
+  }
+  return projectId;
 };
+
+/** Write a project's details in the order given (ONE-140). Additions first, removals last. */
+export const saveProjectDetails = (
+  projectId: string,
+  current: ProjectDetail[],
+  details: ProjectDetailEdit[],
+): Promise<void> => saveOrderedRows<ProjectDetailInput>(DETAILS, projectId, current, details, DETAIL_FIELDS);
 
 /**
  * Change a project's fields. RLS filters a project the caller does not own
@@ -220,16 +341,28 @@ export const updateProject = async (
   if (!data || data.length === 0) throw new Error('Project not found.');
 };
 
-/** An edit to a project: its fields and its cover, a device URI, a stored URL, or none. */
+/**
+ * An edit to a project: its fields, its cover (a device URI, a stored URL, or
+ * none) and its details in order.
+ */
 export interface ProjectEdits {
   fields: ProjectFields;
   coverUri: string | null;
+  details: ProjectDetailEdit[];
 }
 
-/** Save an edit: a new cover uploaded first, keyed by the account, then the row. */
-export const saveProjectEdits = async (authUserId: AuthUserId, projectId: string, edits: ProjectEdits): Promise<void> => {
+/**
+ * Save an edit: a new cover uploaded first, keyed by the account, then the
+ * row, then the details against those stored.
+ */
+export const saveProjectEdits = async (
+  authUserId: AuthUserId,
+  project: Pick<Project, 'id' | 'details'>,
+  edits: ProjectEdits,
+): Promise<void> => {
   const coverUrl = await storedCover(authUserId, edits.coverUri);
-  await updateProject(projectId, { ...edits.fields, coverUrl });
+  await updateProject(project.id, { ...edits.fields, coverUrl });
+  await saveProjectDetails(project.id, project.details, edits.details);
 };
 
 /**
@@ -241,6 +374,145 @@ export const deleteProject = async (projectId: string): Promise<void> => {
   const { data, error } = await supabase.from('projects').delete().eq('id', projectId).select('id');
   if (error) throw error;
   if (!data || data.length === 0) throw new Error('Project not found.');
+};
+
+// ─── The log (ONE-141) ──────────────────────────────────────────────────
+//
+// A record of work, kept by the project's owner. Its cost is a record only,
+// never a payment. Photos are filed under the account, as covers are.
+
+const logFieldsToRow = (fields: ProjectLogEntryFields): Record<string, unknown> => ({
+  occurred_on: fields.occurredOn,
+  title: fields.title,
+  notes: fields.notes,
+  cost_cents: fields.costCents,
+  currency: fields.currency,
+  performed_by_profile_id: fields.performedByProfileId,
+});
+
+/** Where an entry's photos live: four at most, so a save removes before it adds. */
+const LOG_PHOTOS = { table: 'project_log_media', parentColumn: 'entry_id', removalsFirst: true } as const;
+const LOG_PHOTO_FIELDS = ['url'] as const;
+
+/** Write an entry's photos in the order given, against those stored. */
+const saveLogPhotos = (entryId: string, current: ProjectLogEntry['photos'], urls: string[]): Promise<void> => {
+  const stored = new Map(current.map((photo) => [photo.url, photo.id]));
+  return saveOrderedRows<{ url: string }>(
+    LOG_PHOTOS,
+    entryId,
+    current,
+    urls.map((url) => ({ url, ...(stored.has(url) ? { id: stored.get(url) } : {}) })),
+    LOG_PHOTO_FIELDS,
+  );
+};
+
+/** What logging an entry takes. */
+export interface NewLogEntryInput {
+  projectId: string;
+  /** The active profile: the owner, a Contributor, or a business proposing it (ONE-143). */
+  authorProfileId: string;
+  /** What an entry by that profile is: logEntryStatusFor says. */
+  status: LogEntryStatus;
+  fields: ProjectLogEntryFields;
+  /** Device URIs, in order: four at most. */
+  photoUris: string[];
+}
+
+/**
+ * Log an entry with its photos, and return its id. The photos go up first,
+ * keyed by the account, so a failed upload writes nothing; if the photos'
+ * rows are then refused, the entry is deleted again.
+ */
+export const createLogEntry = async (authUserId: AuthUserId, input: NewLogEntryInput): Promise<string> => {
+  const urls = await uploadDeviceImages(input.photoUris, authUserId, 'projects');
+  const { data, error } = await supabase
+    .from('project_log_entries')
+    .insert({
+      project_id: input.projectId,
+      author_profile_id: input.authorProfileId,
+      status: input.status,
+      ...logFieldsToRow(input.fields),
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  const entryId = (data as { id: string }).id;
+  try {
+    await saveLogPhotos(entryId, [], urls);
+  } catch (photosError) {
+    await supabase.from('project_log_entries').delete().eq('id', entryId);
+    throw photosError;
+  }
+  return entryId;
+};
+
+/** An edit to an entry: its fields, and its photos in order, each a stored URL or a device URI. */
+export interface LogEntryEdits {
+  fields: ProjectLogEntryFields;
+  photoUris: string[];
+}
+
+/**
+ * Save an edit: new photos uploaded first, then the entry, then its photos
+ * against those stored. RLS filters an entry the caller may not change out of
+ * the update silently, so an empty result is an error here.
+ */
+export const saveLogEntryEdits = async (
+  authUserId: AuthUserId,
+  entry: Pick<ProjectLogEntry, 'id' | 'photos'>,
+  edits: LogEntryEdits,
+): Promise<void> => {
+  const urls = await uploadDeviceImages(edits.photoUris, authUserId, 'projects');
+  const { data, error } = await supabase
+    .from('project_log_entries')
+    .update(logFieldsToRow(edits.fields))
+    .eq('id', entry.id)
+    .select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Log entry not found.');
+  await saveLogPhotos(entry.id, entry.photos, urls);
+};
+
+/** Delete an entry, and its photos with it. */
+export const deleteLogEntry = async (entryId: string): Promise<void> => {
+  const { data, error } = await supabase.from('project_log_entries').delete().eq('id', entryId).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Log entry not found.');
+};
+
+/**
+ * Take the active profile's name off an entry that names it as who did the
+ * work. The entry stays. Resolves to whether a name was removed.
+ */
+export const removeMeFromLogEntry = async (entryId: string): Promise<boolean> => {
+  const { data, error } = await supabase.rpc('remove_me_from_log_entry', { p_entry_id: entryId });
+  if (error) throw error;
+  return data === true;
+};
+
+/**
+ * What an entry the active profile writes on a project would be (ONE-143):
+ * published for the owner or a Contributor, proposed for a business whose
+ * account scanned one of its tags, or null when it may not write at all.
+ */
+export const logEntryStatusFor = async (projectId: string, authorProfileId: string): Promise<LogEntryStatus | null> => {
+  const { data, error } = await supabase.rpc('log_entry_status_for', {
+    p_project_id: projectId,
+    p_author_profile_id: authorProfileId,
+  });
+  if (error) throw error;
+  return data === 'published' || data === 'proposed' ? data : null;
+};
+
+/**
+ * Publish a proposed entry, the owner's alone, and Link its author as a
+ * Contributor. Resolves to false when it was already published. Declining is
+ * deleting it.
+ */
+export const approveLogEntry = async (entryId: string): Promise<boolean> => {
+  const { data, error } = await supabase.rpc('approve_log_entry', { p_entry_id: entryId });
+  if (error) throw error;
+  return data === true;
 };
 
 /** Postgres' unique violation: already Linked, which is what was asked for. */

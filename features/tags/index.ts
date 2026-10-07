@@ -16,6 +16,7 @@ export {
   createBlankTags,
   MAX_BLANK_TAGS,
   linkTag,
+  grantProjectTagAccess,
   updateTag,
   setTagActive,
   deleteTag,
@@ -31,13 +32,14 @@ export {
   useCreateTag,
   useCreateBlankTags,
   useLinkTag,
+  useGrantProjectTagAccess,
   useUpdateTag,
   useDeleteTag,
   useTagActiveToggle,
   activeAfterFlip,
   embeddedTagWriter,
 } from './mutations';
-export type { RecordScanInput, UpdateTagInput, CreateEmbeddedTagsInput, CreateBlankTagsInput, LinkTagInput } from './mutations';
+export type { RecordScanInput, UpdateTagInput, CreateEmbeddedTagsInput, CreateBlankTagsInput, LinkTagInput, GrantProjectTagAccessInput } from './mutations';
 export type {
   TagDestination,
   TagDestinationKind,

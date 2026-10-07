@@ -24,7 +24,8 @@ export const NOTIFICATION_SELECT_QUERY = `
     sender:profiles!notifications_sender_id_fkey(id, username, avatar_url, is_private),
     post:posts!notifications_post_id_fkey(id, content, media:image_url, media_type),
     comment:comments!notifications_comment_id_fkey(id, text:content),
-    story:stories!notifications_story_id_fkey(id, media_url)
+    story:stories!notifications_story_id_fkey(id, media_url),
+    project:projects!notifications_project_id_fkey(id, name)
 `;
 
 /** Everything addressed to one user, newest first. */

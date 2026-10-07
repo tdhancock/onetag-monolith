@@ -61,6 +61,19 @@ They are printed on physical things and can never change.
   page naming the destination, with a way into the app. A post is named by its author's
   handle, since the page can't read the post itself.
 
+### An Unlisted project
+
+An Unlisted project (ONE-137) is listed nowhere, but whoever opens one of its tags can read it:
+the plumber scanning the water heater. Opening an active Physical or Digital Tag that points at
+it, signed in, records a grant for the acting profile (`grant_project_tag_access`), which reads
+it, and the unlisted projects inside it, while that tag stays active. Pausing the tag ends it.
+Signed out, the app asks the person to sign in and come back to the tag; the tag host page
+offers the app and names nothing.
+
+Its page's app link opens it only for someone already holding a grant, so its owner's Share
+shares a Digital Tag's link instead: an active one of theirs pointing at it, or a new one named
+"Shared link". Anyone else viewing it gets no Share.
+
 `docs/deep-links.md` covers how the link reaches the app, and how to check universal links.
 
 ## Scan History

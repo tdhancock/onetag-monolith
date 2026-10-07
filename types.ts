@@ -175,9 +175,18 @@ export interface NotificationStory {
     media_url: string | null;
 }
 
+/** A project a notification is about: enough to name it and open it. */
+export interface NotificationProject {
+    id: string;
+    name: string;
+}
+
 export interface Notification {
     id: string;
-    type: 'like' | 'comment' | 'reply' | 'follow' | 'follow_request' | 'comment_like' | 'repost' | 'mention' | 'story_like';
+    type:
+        | 'like' | 'comment' | 'reply' | 'follow' | 'follow_request' | 'comment_like' | 'repost' | 'mention' | 'story_like'
+        // Someone else wrote to a project's log (ONE-143): a Contributor's entry, or a business's proposal.
+        | 'log_entry_added' | 'log_entry_proposed';
     is_read: boolean;
     created_at: string;
     content?: string | null;
@@ -190,6 +199,8 @@ export interface Notification {
     comment_id?: string | null;
     comment?: NotificationComment | null;
     story?: NotificationStory | null;
+    /** The project a log notification is about (ONE-143), while its owner may read it. */
+    project?: NotificationProject | null;
 }
 
 // Supabase returns foreign-key joins as arrays; use this helper to normalize.
@@ -198,12 +209,14 @@ export function normalizeNotification(n: any): Notification {
     const post = Array.isArray(n.post) ? n.post[0] : n.post;
     const comment = Array.isArray(n.comment) ? n.comment[0] : n.comment;
     const story = Array.isArray(n.story) ? n.story[0] : n.story;
+    const project = Array.isArray(n.project) ? n.project[0] : n.project;
     return {
         ...n,
         sender: sender ?? { id: '', username: '', avatar_url: null },
         post: post ?? null,
         comment: comment ?? null,
         story: story ?? null,
+        project: project ?? null,
     } as Notification;
 }
 

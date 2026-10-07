@@ -29,7 +29,7 @@ import {
   productRoute,
   UNAVAILABLE_LABEL,
 } from '../../lib/screens/products';
-import { projectRoute, projectRowSubtitle } from '../../lib/screens/projects';
+import { listedFor, projectRoute, projectRowSubtitle } from '../../lib/screens/projects';
 import { color, space, type } from '../../theme/tokens';
 
 /**
@@ -124,7 +124,10 @@ export default function ProductScreen() {
 
 function ProductDetail({ product, onRefreshProduct }: { product: Product; onRefreshProduct: () => Promise<unknown> }) {
   const router = useRouter();
+  const { profileId } = useCurrentProfile();
   const projects = useProjectsUsingProductQuery(product.id);
+  // An unlisted project is listed nowhere but to its owner (ONE-137).
+  const usedIn = listedFor(projects.data ?? [], profileId);
   const price = formatPrice(product.priceCents, product.currency);
   const business = product.business;
 
@@ -208,13 +211,13 @@ function ProductDetail({ product, onRefreshProduct }: { product: Product; onRefr
           <RowSkeletons count={2} />
         ) : projects.isError ? (
           <SectionError message="Couldn't load the projects that use it." onRetry={() => void projects.refetch()} />
-        ) : (projects.data ?? []).length === 0 ? (
+        ) : usedIn.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>{PRODUCT_PROJECTS_EMPTY.title}</Text>
             <Text style={styles.emptyBody}>{PRODUCT_PROJECTS_EMPTY.body}</Text>
           </View>
         ) : (
-          (projects.data ?? []).map((project, index, all) => (
+          usedIn.map((project, index, all) => (
             <ProjectRow
               key={project.id}
               project={project}

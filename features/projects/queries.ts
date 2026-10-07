@@ -2,15 +2,18 @@
 
 import { useQuery } from '@tanstack/react-query';
 import {
+  fetchChildProjects,
   fetchContributedProjects,
   fetchContributors,
   fetchOwnedProjects,
   fetchProject,
+  fetchProjectLog,
+  logEntryStatusFor,
   fetchProjectProducts,
   fetchProjectsUsingProduct,
 } from './api';
 import { projectKeys } from './keys';
-import type { Contributor, Project, ProjectProduct, ProjectSummary } from './types';
+import type { Contributor, LogEntryStatus, Project, ProjectLogEntry, ProjectProduct, ProjectSummary } from './types';
 
 /**
  * One project. `data` is null when there is none the viewer may see — deleted,
@@ -29,6 +32,14 @@ export const useOwnedProjectsQuery = (ownerProfileId: string | undefined) =>
     queryKey: projectKeys.owned(ownerProfileId ?? ''),
     queryFn: () => fetchOwnedProjects(ownerProfileId!),
     enabled: Boolean(ownerProfileId),
+  });
+
+/** The projects inside one (ONE-134) that the viewer may see, newest first. */
+export const useChildProjectsQuery = (parentProjectId: string | undefined) =>
+  useQuery<ProjectSummary[]>({
+    queryKey: projectKeys.children(parentProjectId ?? ''),
+    queryFn: () => fetchChildProjects(parentProjectId!),
+    enabled: Boolean(parentProjectId),
   });
 
 /** The projects a profile contributed to that the viewer may see, newest first. */
@@ -63,3 +74,23 @@ export const useProjectProductsQuery = (projectId: string | undefined) =>
     enabled: Boolean(projectId),
   });
 
+
+/** A project's log (ONE-141) the viewer may see, newest first. */
+export const useProjectLogQuery = (projectId: string | undefined) =>
+  useQuery<ProjectLogEntry[]>({
+    queryKey: projectKeys.log(projectId ?? ''),
+    queryFn: () => fetchProjectLog(projectId!),
+    enabled: Boolean(projectId),
+  });
+
+/**
+ * What an entry the active profile writes on a project would be (ONE-143):
+ * published, proposed, or null when it may not write. Asked only of someone
+ * other than the owner, whose entries are always published.
+ */
+export const useLogEntryStatusQuery = (projectId: string | undefined, profileId: string | undefined, enabled = true) =>
+  useQuery<LogEntryStatus | null>({
+    queryKey: projectKeys.logAccess(projectId ?? '', profileId ?? ''),
+    queryFn: () => logEntryStatusFor(projectId!, profileId!),
+    enabled: Boolean(projectId && profileId) && enabled,
+  });

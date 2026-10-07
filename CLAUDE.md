@@ -27,7 +27,7 @@ lib/screens/               pure screen logic, extracted so it can be tested
 theme/tokens.ts            design tokens — the single source of truth for colour and type
 store/AppContext.native    global UI state — no server data
 services/                  supabase client and the shared ground features reach: postRows,
-                           profileBootstrap, media/story upload, realtime
+                           orderedRows, profileBootstrap, media/story upload, realtime
 supabase/migrations/       schema
 supabase/seeds/dev.sql     made-up people and content for the local stack and the hosted dev project
 supabase/functions/        edge functions: delete-user-account, tag-resolve (the tag host's web page),
@@ -205,7 +205,8 @@ Use these exactly — as table names, variable names, and user-facing labels.
 | **Scan History** | A user's private log of Tags they scanned. Private by default; opt-in to public. |
 | **Profile** | A presence on the platform. Either a Business Profile or an Individual Profile. |
 | **Product** | A taggable catalog item listed by a Business Profile. A Tag Destination, not a thing you can buy — payments are permanently out of scope (see below). |
-| **Project** | A build, install or completed work. Can link many Contributors and Products. |
+| **Project** | A build, install or completed work, or a thing kept on record. Can link many Contributors and Products. One level of projects can sit inside another: the house, and the furnace in it (ONE-134). |
+| **Unlisted** | A project visibility between Public and Private: listed nowhere, readable by whoever opened one of its tags (ONE-137). |
 | **Contributor** | A Profile Linked to a Project as participant or supplier. **Never "vendor".** |
 | **Linked** | The verb for connections between entities. Not "attached", "connected", or "associated". |
 | **Save** | Bookmarking a Product, Project, or Profile. Not "favorite", "bookmark", or "like". |

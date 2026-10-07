@@ -37,11 +37,19 @@ export const routeForDestination = (destination: TagDestination): string | null 
 
 // ─── Which state the screen is in ───────────────────────────────────────
 
-export type TagFailure = 'not-found' | 'inactive' | 'unlinked' | 'offline' | 'failed' | 'destination-missing';
+export type TagFailure =
+  | 'not-found'
+  | 'inactive'
+  | 'unlinked'
+  | 'unlisted-signed-out'
+  | 'offline'
+  | 'failed'
+  | 'destination-missing';
 
 export type TagScreen =
   | { kind: 'resolving' }
-  | { kind: 'redirect'; tagId: string; route: string }
+  /** `grant`: the project is Unlisted, so opening the tag records access first (ONE-137). */
+  | { kind: 'redirect'; tagId: string; route: string; grant?: boolean }
   /** The scanner's own blank tag: on to linking it (ONE-139). No Scan, since it points nowhere. */
   | { kind: 'link'; route: string }
   | { kind: TagFailure };
@@ -70,7 +78,7 @@ const isOffline = (error: unknown): boolean =>
  * resolution could send someone to a tag's old destination after its owner
  * paused it.
  */
-export const tagScreenFor = (query: TagQueryState): TagScreen => {
+export const tagScreenFor = (query: TagQueryState, auth?: AuthStatus): TagScreen => {
   if (query.isFetching || !query.isFetchedAfterMount) return { kind: 'resolving' };
 
   if (query.error) return { kind: isOffline(query.error) ? 'offline' : 'failed' };
@@ -87,6 +95,13 @@ export const tagScreenFor = (query: TagQueryState): TagScreen => {
 
   const route = resolution.destination ? routeForDestination(resolution.destination) : null;
   if (!route) return { kind: 'destination-missing' };
+  // An Unlisted project opens for a signed-in scanner, who is granted it on
+  // the way (ONE-137); someone signed out signs in first. Wait to know which.
+  if (resolution.projectUnlisted) {
+    if (auth === 'unknown') return { kind: 'resolving' };
+    if (auth === 'signed-out') return { kind: 'unlisted-signed-out' };
+    return { kind: 'redirect', tagId: resolution.tagId, route, grant: true };
+  }
   return { kind: 'redirect', tagId: resolution.tagId, route };
 };
 
@@ -153,6 +168,12 @@ export const FAILURE_COPY: Record<TagFailure, FailureCopy> = {
     label: 'Not set up',
     title: "This tag isn't set up yet.",
     body: "Its owner hasn't linked it to anything yet. If it's yours, sign in with the account that made it.",
+    retry: false,
+  },
+  'unlisted-signed-out': {
+    label: 'Sign in to see this',
+    title: 'This is for people who scan its tag.',
+    body: "It isn't listed anywhere on OneTag. Sign in, and this tag opens it.",
     retry: false,
   },
   offline: {

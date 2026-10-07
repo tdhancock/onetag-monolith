@@ -6,6 +6,7 @@ import {
   createEmbeddedTags,
   createTag,
   deleteTag,
+  grantProjectTagAccess,
   linkTag,
   moveEmbeddedTag,
   recordScan,
@@ -20,6 +21,7 @@ import { useOptimisticToggle } from '../../lib/optimisticToggle';
 import { scanKeys } from '../scans';
 import { postKeys } from '../posts';
 import { profileKeys } from '../profiles';
+import { projectKeys } from '../projects';
 
 export interface RecordScanInput {
   tagId: string;
@@ -47,6 +49,26 @@ export const useRecordScan = () => {
       if (scannerProfileId) void queryClient.invalidateQueries({ queryKey: scanKeys.history(scannerProfileId) });
     },
     onError: () => undefined,
+  });
+};
+
+export interface GrantProjectTagAccessInput {
+  shortCode: string;
+  /** The acting profile, which the grant is for. */
+  profileId: ProfileId;
+}
+
+/**
+ * Open an Unlisted project's tag (ONE-137) before going to it. Every project
+ * read is dropped from the cache afterwards: the project, and anything listed
+ * inside it, may have read as missing before the grant existed.
+ */
+export const useGrantProjectTagAccess = () => {
+  const queryClient = useQueryClient();
+  return useMutation<boolean, unknown, GrantProjectTagAccessInput>({
+    mutationFn: ({ shortCode, profileId }) => grantProjectTagAccess(shortCode, profileId),
+    retry: 0,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: projectKeys.all }),
   });
 };
 

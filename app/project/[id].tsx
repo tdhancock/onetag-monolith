@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -7,8 +7,11 @@ import { useApp } from '../../store/AppContext.native';
 import { useAuthStatus } from '../../features/auth';
 import { useCurrentProfile } from '../../features/profiles';
 import {
+  useChildProjectsQuery,
   useContributorsQuery,
   useDeleteProject,
+  useLogEntryStatusQuery,
+  useProjectLogQuery,
   useProjectProductsQuery,
   useProjectQuery,
   useSetProjectPublic,
@@ -16,10 +19,13 @@ import {
   type Project,
   type ProjectProduct,
 } from '../../features/projects';
-import { useDestinationScanCountQuery } from '../../features/tags';
+import { useCreateTag, useDestinationScanCountQuery, useMyTagsQuery } from '../../features/tags';
+import { shareTagLink } from '../../services/tagSharing';
 import DestinationActions from '../../components/native/DestinationActions';
 import DetailSection from '../../components/native/DetailSection';
 import ProjectContributors from '../../components/native/ProjectContributors';
+import ProjectIncludes from '../../components/native/ProjectIncludes';
+import ProjectLog from '../../components/native/ProjectLog';
 import { homeBackHeaderLeft } from '../../components/native/HomeBackButton';
 import { useBackOrHome } from '../../lib/useBackOrHome';
 import { RowSkeletons, SectionError } from '../../components/native/SectionStates';
@@ -28,19 +34,27 @@ import { DotsHorizontalIcon, XIcon } from '../../components/native/Icons';
 import { onwardActionsFor } from '../../lib/screens/tagResolution';
 import { tagCreateRoute } from '../../lib/screens/tags';
 import { productRoute } from '../../lib/screens/products';
+import { DETAILS_TITLE, detailDisplayValue } from '../../lib/screens/projectDetails';
+import { LOG_TITLE, LOG_WRITE_LABEL, logWriteMode, projectLogEntryRoute } from '../../lib/screens/projectLog';
 import {
   canManageProject,
   deleteProjectConfirm,
-  PRIVATE_LABEL,
+  INCLUDES_TITLE,
+  partOfText,
   PROJECT_NOT_FOUND,
   productsEmptyState,
   projectAddContributorRoute,
+  projectCreateRoute,
   projectEditRoute,
   projectKindLabel,
   projectLinkProductRoute,
   projectRoute,
+  projectShareFor,
   projectStats,
+  shareableTagFor,
+  shareTagFor,
   unlinkProductConfirm,
+  visibilityBadge,
 } from '../../lib/screens/projects';
 import { color, space, type } from '../../theme/tokens';
 
@@ -147,12 +161,36 @@ function ProjectDetail({
   onLeave: () => void;
 }) {
   const router = useRouter();
+  const { addToast } = useApp();
   const { profileId } = useCurrentProfile();
   const contributors = useContributorsQuery(project.id);
   const products = useProjectProductsQuery(project.id);
+  // One level deep (ONE-134): a project inside another holds nothing itself.
+  const holdsProjects = !project.parentProjectId;
+  const inside = useChildProjectsQuery(holdsProjects ? project.id : undefined);
+  const insideCount = inside.data?.length ?? 0;
+  const log = useProjectLogQuery(project.id);
+  const logCount = log.data?.length ?? 0;
+  // Contributors add to the log, and a business that scanned its tag proposes (ONE-143).
+  const logAccess = useLogEntryStatusQuery(project.id, profileId, !isOwner);
+  const writeMode = logWriteMode(isOwner, logAccess.data);
   // Only the owner sees how often their tags pointing here were scanned.
   const scans = useDestinationScanCountQuery(profileId, { kind: 'project', id: project.id }, isOwner);
   const owner = project.owner;
+
+  // An unlisted project is shared through one of its owner's Digital Tags (ONE-137).
+  const shareMode = projectShareFor(project, isOwner);
+  const myTags = useMyTagsQuery(shareMode === 'tag-link' ? profileId : undefined);
+  const createTag = useCreateTag();
+  const shareThroughTag = async () => {
+    if (!profileId) return;
+    try {
+      const tag = shareableTagFor(myTags.data, project.id) ?? (await createTag.mutateAsync(shareTagFor(profileId, project.id)));
+      await shareTagLink(tag.shortCode);
+    } catch {
+      addToast("Couldn't make a link to share. Try again.", 'error');
+    }
+  };
 
   const openProfile = (username: string) => router.push(`/user/${encodeURIComponent(username)}`);
   const addContributor = () => router.push(projectAddContributorRoute(project.id));
@@ -178,6 +216,9 @@ function ProjectDetail({
         onRefreshProject(),
         contributors.refetch(),
         products.refetch(),
+        holdsProjects ? inside.refetch() : undefined,
+        log.refetch(),
+        !isOwner && profileId ? logAccess.refetch() : undefined,
         isOwner ? scans.refetch() : undefined,
       ]);
     } finally {
@@ -205,12 +246,25 @@ function ProjectDetail({
       <View style={styles.intro}>
         <View style={styles.labels}>
           <MonoLabel color="textMid">{projectKindLabel(project)}</MonoLabel>
-          {project.isPublic ? null : (
-            <View style={styles.badge} accessible accessibilityLabel={PRIVATE_LABEL}>
-              <MonoLabel color="inverse">{PRIVATE_LABEL}</MonoLabel>
+          {visibilityBadge(project) ? (
+            <View style={styles.badge} accessible accessibilityLabel={visibilityBadge(project)!}>
+              <MonoLabel color="inverse">{visibilityBadge(project)}</MonoLabel>
             </View>
-          )}
+          ) : null}
         </View>
+        {project.parent ? (
+          <Pressable
+            onPress={() => router.push(projectRoute(project.parent!.id))}
+            accessibilityRole="link"
+            accessibilityLabel={partOfText(project.parent.name)}
+            hitSlop={12}
+            style={styles.partOfHit}
+          >
+            <Text style={styles.partOf}>
+              Part of <Text style={styles.partOfName}>{project.parent.name}</Text>
+            </Text>
+          </Pressable>
+        ) : null}
         <Text style={styles.name} accessibilityRole="header">
           {project.name}
         </Text>
@@ -237,10 +291,63 @@ function ProjectDetail({
             target={{ kind: 'project', id: project.id }}
             title={project.name}
             route={projectRoute(project.id)}
+            onShare={shareMode === 'app-link' ? undefined : shareMode === 'tag-link' ? () => void shareThroughTag() : null}
           />
         </View>
         {project.description ? <Text style={styles.description}>{project.description}</Text> : null}
       </View>
+
+      {project.details.length > 0 ? <ProjectDetailRows details={project.details} /> : null}
+
+      {holdsProjects && (isOwner || insideCount > 0) ? (
+        <DetailSection
+          title={INCLUDES_TITLE}
+          trailing={
+            isOwner && insideCount > 0 ? (
+              <Button variant="outline" size="sm" onPress={() => router.push(projectCreateRoute(project.id))}>
+                Add a project
+              </Button>
+            ) : null
+          }
+        >
+          <ProjectIncludes
+            projects={inside.data}
+            isPending={inside.isPending}
+            isError={inside.isError}
+            onRetry={() => void inside.refetch()}
+            isOwner={isOwner}
+            onOpen={(id) => router.push(projectRoute(id))}
+            onAdd={() => router.push(projectCreateRoute(project.id))}
+          />
+        </DetailSection>
+      ) : null}
+
+      {/* An empty log is a prompt to whoever may write to it, and nothing to anyone else (ONE-141). */}
+      {writeMode || logCount > 0 || log.isError ? (
+        <DetailSection
+          title={LOG_TITLE}
+          trailing={
+            writeMode && logCount > 0 ? (
+              <Button variant="outline" size="sm" onPress={() => router.push(projectLogEntryRoute(project.id))}>
+                {LOG_WRITE_LABEL[writeMode]}
+              </Button>
+            ) : null
+          }
+        >
+          <ProjectLog
+            entries={log.data}
+            isPending={log.isPending}
+            isError={log.isError}
+            onRetry={() => void log.refetch()}
+            isOwner={isOwner}
+            writeMode={writeMode}
+            profileId={profileId}
+            onOpenProfile={openProfile}
+            onAdd={() => router.push(projectLogEntryRoute(project.id))}
+            onEdit={(entry) => router.push(projectLogEntryRoute(project.id, entry.id))}
+          />
+        </DetailSection>
+      ) : null}
 
       <DetailSection
         title="Contributors"
@@ -286,6 +393,40 @@ function ProjectDetail({
         />
       </DetailSection>
     </ScrollView>
+  );
+}
+
+/**
+ * A project's details (ONE-140) as label and value rows: a date in the
+ * device's locale, and a link that opens when tapped.
+ */
+function ProjectDetailRows({ details }: { details: Project['details'] }) {
+  return (
+    <DetailSection title={DETAILS_TITLE}>
+      {details.map((detail, index) => {
+        const shown = detailDisplayValue(detail);
+        const rowStyle = [styles.detailRow, index < details.length - 1 && styles.detailDivider];
+        return detail.kind === 'link' ? (
+          <Pressable
+            key={detail.id}
+            onPress={() => void Linking.openURL(detail.value).catch(() => undefined)}
+            accessibilityRole="link"
+            accessibilityLabel={`${detail.label}, ${shown}`}
+            style={rowStyle}
+          >
+            <Text style={styles.detailLabel}>{detail.label}</Text>
+            <Text style={[styles.detailValue, styles.detailLink]} numberOfLines={1}>
+              {shown}
+            </Text>
+          </Pressable>
+        ) : (
+          <View key={detail.id} style={rowStyle} accessible accessibilityLabel={`${detail.label}, ${shown}`}>
+            <Text style={styles.detailLabel}>{detail.label}</Text>
+            <Text style={styles.detailValue}>{shown}</Text>
+          </View>
+        );
+      })}
+    </DetailSection>
   );
 }
 
@@ -401,6 +542,8 @@ function OwnerMenu({
   const router = useRouter();
   const { addToast } = useApp();
   const setPublic = useSetProjectPublic();
+  // Deleting it deletes what is inside it (ONE-134); the confirmation says how much.
+  const inside = useChildProjectsQuery(project.parentProjectId ? undefined : project.id);
 
   const toggleVisibility = () => {
     onClose();
@@ -415,7 +558,7 @@ function OwnerMenu({
 
   const confirmDelete = () => {
     onClose();
-    const confirm = deleteProjectConfirm(project);
+    const confirm = deleteProjectConfirm(project, inside.data?.length ?? 0);
     Alert.alert(confirm.title, confirm.body, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -455,7 +598,9 @@ function OwnerMenu({
         hint={
           project.isPublic
             ? 'Only you and its contributors will see it. Its tags lead others to not found.'
-            : 'Anyone will be able to see it again.'
+            : project.unlisted
+              ? 'Anyone will be able to see it, in Explore and search too.'
+              : 'Anyone will be able to see it again.'
         }
         onPress={toggleVisibility}
       />
@@ -517,6 +662,19 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginTop: space.xs,
   },
+  partOfHit: {
+    alignSelf: 'flex-start',
+    marginTop: space.sm,
+  },
+  partOf: {
+    fontFamily: type.body,
+    fontSize: 14,
+    color: color.textMid,
+  },
+  partOfName: {
+    fontFamily: type.bodyBold,
+    color: color.text,
+  },
   owner: {
     fontFamily: type.body,
     fontSize: 14,
@@ -541,6 +699,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: color.text,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: space.lg,
+    marginHorizontal: space.lg,
+    paddingVertical: space.md,
+  },
+  detailDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: color.border,
+  },
+  detailLabel: {
+    fontFamily: type.body,
+    fontSize: 14,
+    color: color.textMid,
+  },
+  detailValue: {
+    flexShrink: 1,
+    textAlign: 'right',
+    fontFamily: type.bodyMedium,
+    fontSize: 14,
+    color: color.text,
+  },
+  detailLink: {
+    textDecorationLine: 'underline',
   },
   thumb: {
     width: THUMB,

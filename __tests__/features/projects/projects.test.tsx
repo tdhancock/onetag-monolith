@@ -21,6 +21,23 @@
 //      it destroys first. Only the owner sees scan counts.
 //   4. Empty sections prompt the owner and explain to a visitor.
 //   5. Create and edit write the project, its cover filed under the account.
+//   6. A project can sit inside another, one level deep (ONE-134): the house
+//      lists what it includes, each names the house it is part of — to those
+//      who may see the house — and deleting the house says what goes with it.
+//   7. A project is Public, Unlisted or Private (ONE-137): the form writes the
+//      choice, the page badges it, Make public lifts Unlisted too, and its
+//      owner shares it through a Digital Tag.
+//   8. A project keeps details its owner defines (ONE-140): the form adds them,
+//      from a template or one by one, saves only those with a value, in order,
+//      and the page shows them, a date in the device's locale and a link that
+//      opens.
+//   9. A project keeps a log (ONE-141): its owner adds, edits and deletes
+//      entries, naming who did the work from a profile search; the page shows
+//      each one, who did it a tap from their profile; and the profile named
+//      can take its name off.
+//  10. Others write to it (ONE-143): a Contributor adds to it, a business
+//      that scanned its tag proposes an entry, and the owner approves or
+//      declines it from Waiting for you.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -61,11 +78,26 @@ jest.mock('react-native', () => {
     ...shim,
     FlatList,
     Switch,
+    Linking: { openURL: (url: string) => mockOpenURL(url) },
     ScrollView: box,
     KeyboardAvoidingView: box,
     RefreshControl: () => null,
     Platform: { OS: 'ios' },
     useWindowDimensions: () => ({ width: 375, height: 812 }),
+  };
+});
+const mockOpenURL = jest.fn((_url: string) => Promise.resolve());
+// The picker hands back whatever date the test puts in mockPickedDate.
+let mockPickedDate = new Date(2026, 2, 4);
+jest.mock('@react-native-community/datetimepicker', () => {
+  const React = require('react');
+  return {
+    __esModule: true,
+    default: (p: { onChange: (e: { type: string }, d?: Date) => void }) =>
+      React.createElement('button', {
+        'aria-label': 'Date picker',
+        onClick: () => p.onChange({ type: 'set' }, mockPickedDate),
+      }),
   };
 });
 jest.mock('react-native-safe-area-context', () => {
@@ -99,16 +131,32 @@ jest.mock('expo-router', () => ({
 const mockToast = jest.fn();
 jest.mock('../../../store/AppContext.native', () => ({ useApp: () => ({ addToast: mockToast }) }));
 
-const mockActing: { profileId: string | undefined; authUserId: string | undefined; status: string } = {
+const mockActing: {
+  profileId: string | undefined;
+  authUserId: string | undefined;
+  status: string;
+  profile: { id: string; name: string; username: string; profilePicture: string | null };
+} = {
   profileId: 'p-builder',
   authUserId: 'a-builder',
   status: 'ready',
+  profile: { id: 'p-builder', name: 'Ana Builds', username: 'ana_builds', profilePicture: null },
 };
-jest.mock('../../../features/profiles', () => ({ useCurrentProfile: () => mockActing }));
+// Who did a log entry's work is found by handle (ONE-141); every search finds these.
+const mockProfileResults = [
+  { id: 'p-acme', username: 'acme_hvac', name: 'Acme HVAC', avatarUrl: null, isVerified: false, profileType: 'business' },
+];
+jest.mock('../../../features/profiles', () => ({
+  useCurrentProfile: () => mockActing,
+  PROFILE_SEARCH_MIN_LENGTH: 2,
+  useProfileSearchQuery: () => ({ data: mockProfileResults, isFetching: false, isError: false, refetch: jest.fn() }),
+}));
 const mockAuth = { status: 'signed-in' };
 jest.mock('../../../features/auth', () => ({ useAuthStatus: () => mockAuth.status }));
 
 jest.mock('../../../services/destinationSharing', () => ({ shareDestination: jest.fn(() => Promise.resolve()) }));
+const mockShareTagLink = jest.fn((_shortCode: string) => Promise.resolve());
+jest.mock('../../../services/tagSharing', () => ({ shareTagLink: (shortCode: string) => mockShareTagLink(shortCode) }));
 const mockPick = jest.fn();
 jest.mock('../../../services/mediaPicker', () => ({ pickImageFromLibrary: (...a: unknown[]) => mockPick(...a) }));
 jest.mock('../../../services/localFile', () => ({
@@ -122,6 +170,7 @@ import ProjectScreen from '../../../app/project/[id]';
 import CreateProjectScreen from '../../../app/project/create';
 import EditProjectScreen from '../../../app/project/[id]/edit';
 import LinkProductScreen from '../../../app/project/[id]/link-product';
+import LogEntryScreen from '../../../app/project/[id]/log';
 import { fetchContributedProjects, linkProduct } from '../../../features/projects';
 import {
   canManageProject,
@@ -175,6 +224,9 @@ const seed = () => {
     ],
     product_media: [{ id: 'm1', product_id: 'pd-tile', url: 'https://cdn.example/tile.jpg', media_type: 'photo', sort_order: 0 }],
     project_products: [{ id: 'pp-1', project_id: 'pj-barn', product_id: 'pd-tile' }],
+    project_details: [],
+    project_log_entries: [],
+    project_log_media: [],
     tags: [
       { id: 't-1', owner_profile_id: 'p-builder', dest_project_id: 'pj-barn' },
       { id: 't-2', owner_profile_id: 'p-builder', dest_project_id: 'pj-barn' },
@@ -204,12 +256,27 @@ const seed = () => {
     project_products: (pp) => project(pp.project_id) !== null,
   };
   db.embeds = {
-    projects: (row) => ({ ...row, owner: profile(row.owner_profile_id) }),
+    // The parent embed reads under the viewer's RLS, as PostgREST's does.
+    projects: (row) => {
+      const parent = row.parent_project_id ? project(row.parent_project_id) : null;
+      return {
+        ...row,
+        owner: profile(row.owner_profile_id),
+        parent: parent ? { id: parent.id, name: parent.name } : null,
+        details: db.tables.project_details!.filter((d) => d.project_id === row.id),
+      };
+    },
     contributors: (row, select) =>
       select.includes('project:') ? { project: project(row.project_id) } : { ...row, profile: profile(row.contributor_profile_id) },
     project_products: (row, select) =>
       select.includes('project:') ? { project: project(row.project_id) } : { id: row.id, product: product(row.product_id) },
     products: (row) => ({ ...product(row.id), business: profile(row.business_profile_id) }),
+    project_log_entries: (row) => ({
+      ...row,
+      performed_by: profile(row.performed_by_profile_id),
+      author: profile(row.author_profile_id),
+      photos: db.tables.project_log_media!.filter((m) => m.entry_id === row.id),
+    }),
   };
   db.rpcResults = {
     tag_scan_counts: (args) =>
@@ -229,6 +296,8 @@ const actAs = (profileId: string | null) => {
   mockActing.profileId = profileId ?? undefined;
   mockActing.authUserId = profileId ? `a-${profileId}` : undefined;
   mockActing.status = profileId ? 'ready' : 'signed-out';
+  const row = PROFILES.find((p) => p.id === profileId);
+  mockActing.profile = { id: profileId ?? '', name: row?.full_name ?? '', username: row?.username ?? '', profilePicture: null };
   mockAuth.status = profileId ? 'signed-in' : 'signed-out';
 };
 
@@ -265,6 +334,12 @@ async function remount(screen: React.ReactElement): Promise<HTMLDivElement> {
 const buttons = (el: HTMLElement) => Array.from(el.querySelectorAll('button'));
 const byText = (el: HTMLElement, text: string) => buttons(el).find((b) => b.textContent === text);
 const byLabel = (el: HTMLElement, label: string) => el.querySelector(`[aria-label="${label}"]`) as HTMLElement | null;
+const blur = async (el: HTMLElement, label: string) => {
+  act(() => {
+    byLabel(el, label)!.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+  });
+  await settle(2);
+};
 const click = async (target: HTMLElement | null | undefined) => {
   act(() => (target as HTMLElement).click());
   await settle();
@@ -284,7 +359,8 @@ beforeEach(() => {
   seed();
   actAs('p-builder');
   mockParams.current = { id: 'pj-barn' };
-  [mockRouter.push, mockRouter.back, mockRouter.replace, mockToast, mockPick].forEach((m) => m.mockReset());
+  [mockRouter.push, mockRouter.back, mockRouter.replace, mockToast, mockPick, mockOpenURL].forEach((m) => m.mockClear());
+  mockPick.mockReset();
   mockRouter.canGoBack.mockReturnValue(true);
   (Alert.alert as jest.Mock).mockReset();
 });
@@ -314,7 +390,7 @@ describe('the screen logic', () => {
   it('needs only a name', () => {
     expect(projectDraftValid(EMPTY_PROJECT_DRAFT)).toBe(false);
     expect(projectDraftValid({ ...EMPTY_PROJECT_DRAFT, name: 'Loft' })).toBe(true);
-    expect(EMPTY_PROJECT_DRAFT.isPublic).toBe(true);
+    expect(EMPTY_PROJECT_DRAFT.visibility).toBe('public');
   });
 
   it('names what deleting destroys: the contributors\' link and every tag pointing at it', () => {
@@ -597,7 +673,7 @@ describe('creating and editing a project', () => {
   it('saves a change of visibility, and nothing until something changes', async () => {
     const el = await mount(<EditProjectScreen />);
     expect((byLabel(el, 'Save') as HTMLButtonElement).disabled).toBe(true);
-    await click(byLabel(el, 'Public'));
+    await click(byLabel(el, 'Visibility: Private'));
     expect(el.textContent).toContain('Only you and its contributors can see it');
     await click(byLabel(el, 'Save'));
     expect(db.tables.projects![0]).toMatchObject({ is_public: false, cover_url: 'https://cdn.example/barn.jpg' });
@@ -610,5 +686,582 @@ describe('creating and editing a project', () => {
     const el = await mount(<EditProjectScreen />);
     expect(el.textContent).toContain("You can't edit this project");
     expect(byLabel(el, 'Name')).toBeNull();
+  });
+});
+
+// ─── Projects inside a project (ONE-134) ────────────────────────────────
+
+describe('projects inside a project', () => {
+  const FURNACE = {
+    ...BARN,
+    id: 'pj-furnace',
+    name: 'Furnace',
+    project_type: 'HVAC',
+    description: null,
+    cover_url: null,
+    parent_project_id: 'pj-barn',
+    created_at: '2026-02-01T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    db.tables.projects!.push({ ...FURNACE });
+  });
+
+  it("lists what the house includes, each leading to its page, with the owner's Add a project", async () => {
+    const el = await mount(<ProjectScreen />);
+    expect(el.textContent).toContain('Includes');
+    await click(byLabel(el, 'Furnace, HVAC · 2025'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/project/pj-furnace');
+    await click(byText(el, 'Add a project'));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/project/create', params: { parent: 'pj-barn' } });
+  });
+
+  it("names the house a project is part of, leading back to it", async () => {
+    mockParams.current = { id: 'pj-furnace' };
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Part of Barn conversion'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/project/pj-barn');
+    // One level deep: a project inside another includes nothing itself.
+    expect(el.textContent).not.toContain('Includes');
+  });
+
+  it("doesn't name a house the viewer may not see", async () => {
+    db.tables.projects!.find((p) => p.id === 'pj-barn')!.is_public = false;
+    actAs('p-stranger');
+    mockParams.current = { id: 'pj-furnace' };
+    const el = await mount(<ProjectScreen />);
+    expect(el.textContent).toContain('Furnace');
+    expect(el.textContent).not.toContain('Part of');
+  });
+
+  it('shows a visitor what a house includes, without the owner\'s controls', async () => {
+    actAs('p-stranger');
+    const el = await mount(<ProjectScreen />);
+    expect(el.textContent).toContain('Includes');
+    expect(byText(el, 'Add a project')).toBeUndefined();
+  });
+
+  it('shows an owner an empty Includes, with a prompt, and a visitor nothing', async () => {
+    db.tables.projects = db.tables.projects!.filter((p) => p.id !== 'pj-furnace');
+    const owner = await mount(<ProjectScreen />);
+    expect(owner.textContent).toContain('Nothing inside it yet');
+    actAs('p-stranger');
+    const visitor = await remount(<ProjectScreen />);
+    expect(visitor.textContent).not.toContain('Includes');
+  });
+
+  it('says what goes with the house when it is deleted', async () => {
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Manage project'));
+    await click(byText(el, 'Delete project'));
+    const [, body] = (Alert.alert as jest.Mock).mock.calls[0];
+    expect(body).toMatch(/^This also deletes the 1 project inside it\. /);
+  });
+
+  it('creates a project inside the house it was started from', async () => {
+    mockParams.current = { parent: 'pj-barn' };
+    const el = await mount(<CreateProjectScreen />);
+    expect(byLabel(el, 'Part of: Barn conversion')).not.toBeNull();
+    await type(el, 'Name', 'Water heater');
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.projects!.find((p) => p.name === 'Water heater')).toMatchObject({ parent_project_id: 'pj-barn' });
+  });
+
+  it('moves a project into another of the owner\'s from its edit form', async () => {
+    db.tables.projects!.push({ ...BARN, id: 'pj-shed', name: 'Shed', created_at: '2026-03-01T00:00:00Z' });
+    mockParams.current = { id: 'pj-shed' };
+    const el = await mount(<EditProjectScreen />);
+    await click(byLabel(el, 'Part of: None'));
+    await click(byText(el, 'Barn conversion'));
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.projects!.find((p) => p.id === 'pj-shed')).toMatchObject({ parent_project_id: 'pj-barn' });
+  });
+
+  it("doesn't offer Part of on a project that holds others: one level only", async () => {
+    db.tables.projects!.push({ ...BARN, id: 'pj-shed', name: 'Shed', created_at: '2026-03-01T00:00:00Z' });
+    const el = await mount(<EditProjectScreen />);
+    expect(el.querySelector('[aria-label^="Part of"]')).toBeNull();
+  });
+});
+
+// ─── Unlisted (ONE-137) ─────────────────────────────────────────────────
+
+describe('an unlisted project', () => {
+  it('is chosen on the form, written as unlisted and not public', async () => {
+    const el = await mount(<EditProjectScreen />);
+    await click(byLabel(el, 'Visibility: Unlisted'));
+    expect(el.textContent).toContain("Anyone with its tag can see it, but it isn't listed anywhere");
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.projects![0]).toMatchObject({ is_public: false, unlisted: true });
+  });
+
+  it('starts the edit form on Unlisted when it is', async () => {
+    Object.assign(db.tables.projects![0]!, { is_public: false, unlisted: true });
+    const el = await mount(<EditProjectScreen />);
+    expect(byLabel(el, 'Visibility: Unlisted, selected')).not.toBeNull();
+  });
+
+  it('is badged Unlisted on its page', async () => {
+    Object.assign(db.tables.projects![0]!, { is_public: false, unlisted: true });
+    const el = await mount(<ProjectScreen />);
+    expect(byLabel(el, 'Unlisted')!.textContent).toBe('Unlisted');
+  });
+
+  describe('shared', () => {
+    beforeEach(() => {
+      Object.assign(db.tables.projects![0]!, { is_public: false, unlisted: true });
+      mockShareTagLink.mockClear();
+      // A tag as TAG_SELECT reads it: the code the database issued, and its project.
+      db.embeds.tags = (row) => ({
+        ...row,
+        short_code: row.short_code ?? 'SHRD2345',
+        dest_project: row.dest_project_id ? { id: row.dest_project_id, name: 'Barn conversion' } : null,
+      });
+    });
+
+    it('by its owner, through a Digital Tag made for it, whose link opens it for whoever holds it', async () => {
+      const el = await mount(<ProjectScreen />);
+      await click(byLabel(el, 'Share Barn conversion'));
+      expect(db.tables.tags!.find((t) => t.tag_type === 'digital')).toMatchObject({
+        owner_profile_id: 'p-builder',
+        dest_project_id: 'pj-barn',
+        name: 'Shared link',
+      });
+      expect(mockShareTagLink).toHaveBeenCalledWith('SHRD2345');
+    });
+
+    it('through the Digital Tag already made, not another', async () => {
+      db.tables.tags!.push({
+        id: 't-digital',
+        owner_profile_id: 'p-builder',
+        tag_type: 'digital',
+        active: true,
+        short_code: 'DGTL2345',
+        dest_project_id: 'pj-barn',
+        created_at: '2026-02-01T00:00:00Z',
+      });
+      const el = await mount(<ProjectScreen />);
+      await click(byLabel(el, 'Share Barn conversion'));
+      expect(db.tables.tags!.filter((t) => t.tag_type === 'digital')).toHaveLength(1);
+      expect(mockShareTagLink).toHaveBeenCalledWith('DGTL2345');
+    });
+
+    it("not at all by someone holding its tag, since a link would open nothing for whoever they sent it to", async () => {
+      actAs('p-tiles');
+      const el = await mount(<ProjectScreen />);
+      expect(el.textContent).toContain('Barn conversion');
+      expect(byLabel(el, 'Share Barn conversion')).toBeNull();
+    });
+  });
+
+  it('is made public from the menu, and no longer unlisted', async () => {
+    Object.assign(db.tables.projects![0]!, { is_public: false, unlisted: true });
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Manage project'));
+    await click(byLabel(el, 'Make public'));
+    expect(db.tables.projects![0]).toMatchObject({ is_public: true, unlisted: false });
+  });
+});
+
+// ─── Details (ONE-140) ──────────────────────────────────────────────────
+
+describe('project details', () => {
+  const detailRows = () =>
+    db.tables
+      .project_details!.filter((d) => d.project_id === 'pj-barn')
+      .sort((a, b) => (a.sort_order as number) - (b.sort_order as number));
+
+  const storeDetails = () => {
+    db.tables.project_details!.push(
+      { id: 'd-make', project_id: 'pj-barn', label: 'Make', kind: 'text', value: 'Acme', sort_order: 0 },
+      { id: 'd-installed', project_id: 'pj-barn', label: 'Installed', kind: 'date', value: '2026-03-04', sort_order: 1 },
+      { id: 'd-manual', project_id: 'pj-barn', label: 'Manual', kind: 'link', value: 'https://acme.test/manual', sort_order: 2 },
+    );
+  };
+
+  it('shows them on the page in order, a date for the locale and a link that opens when tapped', async () => {
+    storeDetails();
+    actAs(null);
+    const el = await mount(<ProjectScreen />);
+    const section = byLabel(el, 'Details')!;
+    expect(section.textContent).toMatch(/Make.*Acme.*Installed.*2026.*Manual.*acme\.test\/manual/);
+    expect(byLabel(el, `Installed, ${new Date(2026, 2, 4).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`)).not.toBeNull();
+    await click(byLabel(el, 'Manual, acme.test/manual'));
+    expect(mockOpenURL).toHaveBeenCalledWith('https://acme.test/manual');
+  });
+
+  it("isn't shown when there are none", async () => {
+    const el = await mount(<ProjectScreen />);
+    expect(byLabel(el, 'Details')).toBeNull();
+  });
+
+  it('saves only the details with a value: the HVAC template with Model number filled stores one row', async () => {
+    const el = await mount(<CreateProjectScreen />);
+    await type(el, 'Name', 'Furnace');
+    await click(byText(el, 'Start from a template'));
+    await click(byLabel(el, 'HVAC'));
+    expect((byLabel(el, 'Detail 2 label') as HTMLInputElement).value).toBe('Model number');
+    // A template is offered only while there are no details.
+    expect(byText(el, 'Start from a template')).toBeUndefined();
+    await type(el, 'Detail 2 value', 'XR-200');
+    await click(byLabel(el, 'Save'));
+
+    const created = db.tables.projects!.find((p) => p.name === 'Furnace')!;
+    expect(db.tables.project_details!.filter((d) => d.project_id === created.id)).toEqual([
+      expect.objectContaining({ label: 'Model number', kind: 'text', value: 'XR-200', sort_order: 0 }),
+    ]);
+  });
+
+  it('adds a detail of a kind, a date from the picker', async () => {
+    mockPickedDate = new Date(2026, 9, 1);
+    const el = await mount(<EditProjectScreen />);
+    await click(byText(el, 'Add a detail'));
+    await click(byLabel(el, 'Date'));
+    await type(el, 'Detail 1 label', 'Last serviced');
+    await click(byLabel(el, 'Detail 1 value, no date yet'));
+    await click(byLabel(el, 'Date picker'));
+    await click(byText(el, 'Done'));
+    await click(byLabel(el, 'Save'));
+    expect(detailRows()).toEqual([expect.objectContaining({ label: 'Last serviced', kind: 'date', value: '2026-10-01' })]);
+  });
+
+  it('follows a new order and forgets a removed detail when saved again', async () => {
+    storeDetails();
+    const el = await mount(<EditProjectScreen />);
+    await click(byLabel(el, 'Options for detail 3'));
+    await click(byLabel(el, 'Move up'));
+    await click(byLabel(el, 'Options for detail 1'));
+    await click(byLabel(el, 'Remove detail'));
+    await click(byLabel(el, 'Save'));
+    expect(detailRows().map((d) => [d.id, d.sort_order])).toEqual([
+      ['d-manual', 0],
+      ['d-installed', 1],
+    ]);
+  });
+
+  it("won't save a value that doesn't suit its kind, and says why once it is left", async () => {
+    const el = await mount(<EditProjectScreen />);
+    await click(byText(el, 'Add a detail'));
+    await click(byLabel(el, 'Number'));
+    await type(el, 'Detail 1 label', 'Capacity (gal)');
+    await type(el, 'Detail 1 value', 'forty');
+    expect((byLabel(el, 'Save') as HTMLButtonElement).disabled).toBe(true);
+    await blur(el, 'Detail 1 value');
+    expect(el.textContent).toContain('A number, like 40 or 2.5.');
+    await type(el, 'Detail 1 value', '40');
+    expect((byLabel(el, 'Save') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('writes nothing when its details are refused: the new project is deleted again', async () => {
+    const el = await mount(<CreateProjectScreen />);
+    await type(el, 'Name', 'Furnace');
+    await click(byText(el, 'Add a detail'));
+    await click(byLabel(el, 'Text'));
+    await type(el, 'Detail 1 label', 'Make');
+    await type(el, 'Detail 1 value', 'Acme');
+    db.failNext = { table: 'project_details', kind: 'insert', error: { message: 'refused' } };
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.projects!.find((p) => p.name === 'Furnace')).toBeUndefined();
+    expect(mockToast).toHaveBeenCalledWith(expect.any(String), 'error');
+  });
+});
+
+// ─── The log (ONE-141) ──────────────────────────────────────────────────
+
+describe('the project log', () => {
+  const ACME = { id: 'p-acme', username: 'acme_hvac', full_name: 'Acme HVAC', avatar_url: null, is_verified: false, profile_type: 'business' };
+  const entry = (overrides: Record<string, unknown>) => ({
+    project_id: 'pj-barn',
+    notes: null,
+    cost_cents: null,
+    currency: 'USD',
+    performed_by_profile_id: null,
+    created_at: '2026-03-12T10:00:00Z',
+    updated_at: '2026-03-12T10:00:00Z',
+    ...overrides,
+  });
+  // Newest first, as the database orders them.
+  const storeLog = () => {
+    db.tables.project_log_entries!.push(
+      entry({
+        id: 'e-igniter',
+        occurred_on: '2026-03-12',
+        title: 'Replaced the igniter',
+        notes: 'Under warranty',
+        cost_cents: 18000,
+        performed_by_profile_id: 'p-acme',
+      }),
+      entry({ id: 'e-filter', occurred_on: '2026-01-05', title: 'Changed the filter' }),
+    );
+    db.tables.project_log_media!.push({ id: 'lm-1', entry_id: 'e-igniter', url: 'https://cdn.example/receipt.jpg', sort_order: 0 });
+  };
+  const today = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  };
+  const confirmAlert = async () => {
+    const [, , buttons] = (Alert.alert as jest.Mock).mock.calls[0] as [string, string, { onPress?: () => void }[]];
+    act(() => buttons[1]!.onPress!());
+    await settle();
+  };
+
+  beforeEach(() => {
+    db.tables.profiles!.push({ ...ACME });
+    db.rpcResults.remove_me_from_log_entry = (args) => {
+      const named = db.tables.project_log_entries!.find(
+        (e) => e.id === args.p_entry_id && e.performed_by_profile_id === viewer.profileId,
+      );
+      if (named) named.performed_by_profile_id = null;
+      return Boolean(named);
+    };
+  });
+
+  it('shows each entry newest first: its day, what was done, who did it, its cost, notes and photos', async () => {
+    storeLog();
+    actAs(null);
+    const el = await mount(<ProjectScreen />);
+    const section = byLabel(el, 'Log')!;
+    expect(section.textContent).toMatch(/Replaced the igniter.*Changed the filter/);
+    expect(section.textContent).toContain('$180');
+    expect(section.textContent).not.toContain('$180.00');
+    expect(section.textContent).toContain('Under warranty');
+    expect(byLabel(el, 'Replaced the igniter, photo 1 of 1')).not.toBeNull();
+    // A visitor gets no options and no Add to log.
+    expect(byLabel(el, 'Options for Replaced the igniter')).toBeNull();
+    expect(byText(el, 'Add to log')).toBeUndefined();
+  });
+
+  it("opens the profile of who did the work when it's tapped", async () => {
+    storeLog();
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Done by Acme HVAC, @acme_hvac'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/user/acme_hvac');
+  });
+
+  it('is left out for a visitor when empty, and prompts its owner to add to it', async () => {
+    actAs('p-stranger');
+    const visitor = await mount(<ProjectScreen />);
+    expect(byLabel(visitor, 'Log')).toBeNull();
+    actAs('p-builder');
+    const owner = await remount(<ProjectScreen />);
+    expect(byLabel(owner, 'Log')!.textContent).toContain('Nothing logged yet');
+    await click(byText(owner, 'Add to log'));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/project/pj-barn/log', params: {} });
+  });
+
+  it('logs an entry, naming who did it from a search, its cost a record', async () => {
+    const el = await mount(<LogEntryScreen />);
+    expect((byLabel(el, 'Save') as HTMLButtonElement).disabled).toBe(true);
+    await type(el, 'What was done', 'Replaced the igniter');
+    await click(byLabel(el, 'Who did it: no one named'));
+    await type(el, 'Search profiles', 'acme');
+    await click(byLabel(el, 'Choose Acme HVAC, @acme_hvac'));
+    expect(byLabel(el, 'Who did it: Acme HVAC')).not.toBeNull();
+    await type(el, 'Cost', '180');
+    await click(byLabel(el, 'Save'));
+
+    expect(db.tables.project_log_entries).toEqual([
+      expect.objectContaining({
+        project_id: 'pj-barn',
+        occurred_on: today(),
+        title: 'Replaced the igniter',
+        cost_cents: 18000,
+        currency: 'USD',
+        performed_by_profile_id: 'p-acme',
+      }),
+    ]);
+    expect(mockRouter.back).toHaveBeenCalled();
+  });
+
+  it("won't log a day that hasn't happened yet", async () => {
+    mockPickedDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    const el = await mount(<LogEntryScreen />);
+    await type(el, 'What was done', 'Booked a service');
+    await click(el.querySelector('[aria-label^="When, "]') as HTMLElement);
+    await click(byLabel(el, 'Date picker'));
+    await click(byText(el, 'Done'));
+    expect(el.textContent).toContain("That day hasn't happened yet.");
+    expect((byLabel(el, 'Save') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('edits an entry from its menu, its photos with it', async () => {
+    storeLog();
+    const page = await mount(<ProjectScreen />);
+    await click(byLabel(page, 'Options for Replaced the igniter'));
+    await click(byLabel(page, 'Edit entry'));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/project/pj-barn/log', params: { entry: 'e-igniter' } });
+
+    mockParams.current = { id: 'pj-barn', entry: 'e-igniter' };
+    const el = await remount(<LogEntryScreen />);
+    expect((byLabel(el, 'What was done') as HTMLInputElement).value).toBe('Replaced the igniter');
+    expect((byLabel(el, 'Save') as HTMLButtonElement).disabled).toBe(true);
+    await click(byLabel(el, 'Photo 1 of 1'));
+    await click(byLabel(el, 'Remove photo'));
+    await type(el, 'Cost', '190');
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.project_log_entries!.find((e) => e.id === 'e-igniter')).toMatchObject({
+      cost_cents: 19000,
+      performed_by_profile_id: 'p-acme',
+    });
+    expect(db.tables.project_log_media).toEqual([]);
+  });
+
+  it('deletes an entry only on confirmation', async () => {
+    storeLog();
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Options for Changed the filter'));
+    await click(byLabel(el, 'Delete entry'));
+    expect(db.tables.project_log_entries).toHaveLength(2);
+    await confirmAlert();
+    expect(db.tables.project_log_entries!.map((e) => e.id)).toEqual(['e-igniter']);
+  });
+
+  it('lets the business named take its name off, leaving the entry', async () => {
+    storeLog();
+    actAs('p-acme');
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Options for Replaced the igniter'));
+    expect(byLabel(el, 'Edit entry')).toBeNull();
+    await click(byLabel(el, 'Remove me'));
+    await confirmAlert();
+    expect(db.tables.project_log_entries!.find((e) => e.id === 'e-igniter')).toMatchObject({
+      title: 'Replaced the igniter',
+      performed_by_profile_id: null,
+    });
+  });
+
+  it('gives the form only to the owner', async () => {
+    actAs('p-tiles');
+    const el = await mount(<LogEntryScreen />);
+    expect(el.textContent).toContain("You can't change this log");
+    expect(byLabel(el, 'What was done')).toBeNull();
+  });
+});
+
+// ─── Writing to someone else's log (ONE-143) ────────────────────────────
+
+describe("writing to someone else's log", () => {
+  // Tile Co is a Contributor on the barn; Oak Studio's account scanned its tag.
+  const statusFor = (author: unknown) => (author === 'p-tiles' ? 'published' : author === 'p-oak' ? 'proposed' : null);
+  const proposal = {
+    id: 'e-boiler',
+    project_id: 'pj-barn',
+    occurred_on: '2026-04-01',
+    title: 'Serviced the boiler',
+    notes: null,
+    cost_cents: 12000,
+    currency: 'USD',
+    performed_by_profile_id: 'p-oak',
+    author_profile_id: 'p-oak',
+    status: 'proposed',
+    created_at: '2026-04-01T10:00:00Z',
+    updated_at: '2026-04-01T10:00:00Z',
+  };
+  const confirmAlert = async () => {
+    const [, , buttons] = (Alert.alert as jest.Mock).mock.calls[0] as [string, string, { onPress?: () => void }[]];
+    act(() => buttons[1]!.onPress!());
+    await settle();
+  };
+
+  beforeEach(() => {
+    db.rpcResults.log_entry_status_for = (args) => statusFor(args.p_author_profile_id);
+    db.rpcResults.approve_log_entry = (args) => {
+      const entry = db.tables.project_log_entries!.find((e) => e.id === args.p_entry_id)!;
+      entry.status = 'published';
+      db.tables.contributors!.push({
+        id: 'c-oak',
+        project_id: entry.project_id,
+        contributor_profile_id: entry.author_profile_id,
+        role: null,
+        is_public: true,
+        added_at: '2026-04-02T00:00:00Z',
+      });
+      return true;
+    };
+    // A proposal reaches only the project's owner and its author, as RLS has it.
+    db.visible.project_log_entries = (e) =>
+      e.status !== 'proposed' || viewer.profileId === 'p-builder' || viewer.profileId === e.author_profile_id;
+  });
+
+  it('lets a Contributor add to the log, as the one who did the work', async () => {
+    actAs('p-tiles');
+    const page = await mount(<ProjectScreen />);
+    expect(byLabel(page, 'Log')!.textContent).toContain('Nothing logged yet');
+    await click(byText(page, 'Add to log'));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/project/pj-barn/log', params: {} });
+
+    const el = await remount(<LogEntryScreen />);
+    expect(byLabel(el, 'Who did it: Tile Co')).not.toBeNull();
+    await type(el, 'What was done', 'Laid the tile');
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.project_log_entries).toEqual([
+      expect.objectContaining({
+        title: 'Laid the tile',
+        author_profile_id: 'p-tiles',
+        status: 'published',
+        performed_by_profile_id: 'p-tiles',
+      }),
+    ]);
+    expect(mockToast).toHaveBeenCalledWith('Added to the log.', 'success');
+  });
+
+  it('lets a business that scanned its tag propose an entry, saying the owner approves it first', async () => {
+    actAs('p-oak');
+    const page = await mount(<ProjectScreen />);
+    await click(byText(page, 'Propose a log entry'));
+
+    const el = await remount(<LogEntryScreen />);
+    expect(el.textContent).toContain('Propose a log entry');
+    expect(el.textContent).toContain("The project's owner approves it before it shows on the log.");
+    await type(el, 'What was done', 'Serviced the boiler');
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.project_log_entries).toEqual([
+      expect.objectContaining({ title: 'Serviced the boiler', author_profile_id: 'p-oak', status: 'proposed' }),
+    ]);
+    expect(mockToast).toHaveBeenCalledWith('Sent to the owner to approve.', 'success');
+  });
+
+  it('offers no way in to anyone else', async () => {
+    actAs('p-stranger');
+    const page = await mount(<ProjectScreen />);
+    expect(byLabel(page, 'Log')).toBeNull();
+    const el = await remount(<LogEntryScreen />);
+    expect(el.textContent).toContain("You can't change this log");
+  });
+
+  it("shows the owner a proposal Waiting for you, which Approve publishes and Links its business", async () => {
+    db.tables.project_log_entries!.push({ ...proposal });
+    const el = await mount(<ProjectScreen />);
+    const waiting = byLabel(el, 'Waiting for you')!;
+    expect(waiting.textContent).toContain('Serviced the boiler');
+    expect(waiting.textContent).toContain('Proposed by Oak Studio');
+    await click(byLabel(el, 'Approve Serviced the boiler'));
+    expect(db.rpcs).toContainEqual({ name: 'approve_log_entry', args: { p_entry_id: 'e-boiler' } });
+    expect(db.tables.project_log_entries![0]).toMatchObject({ status: 'published' });
+    expect(byLabel(el, 'Waiting for you')).toBeNull();
+    expect(byLabel(el, 'Contributors')!.textContent).toContain('Oak Studio');
+  });
+
+  it('declines a proposal only on confirmation, deleting it', async () => {
+    db.tables.project_log_entries!.push({ ...proposal });
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Decline Serviced the boiler'));
+    expect(db.tables.project_log_entries).toHaveLength(1);
+    await confirmAlert();
+    expect(db.tables.project_log_entries).toEqual([]);
+  });
+
+  it("marks a business's own proposal Waiting for approval, which it may edit, and hides it from everyone else", async () => {
+    db.tables.project_log_entries!.push({ ...proposal });
+    actAs('p-oak');
+    const author = await mount(<ProjectScreen />);
+    expect(byLabel(author, 'Log')!.textContent).toContain('Waiting for approval');
+    expect(byLabel(author, 'Approve Serviced the boiler')).toBeNull();
+    await click(byLabel(author, 'Options for Serviced the boiler'));
+    expect(byLabel(author, 'Edit entry')).not.toBeNull();
+
+    actAs('p-stranger');
+    const visitor = await remount(<ProjectScreen />);
+    expect(byLabel(visitor, 'Log')).toBeNull();
   });
 });

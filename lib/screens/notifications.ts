@@ -7,8 +7,11 @@ import { startOfDay, subDays } from 'date-fns';
 import type { Notification } from '../../types';
 import { messageThreadRoute } from './messages';
 
-/** The sentence after the sender's name, ending in a full stop. */
-export const notificationSentence = (type: Notification['type']): string => {
+/**
+ * The sentence after the sender's name, ending in a full stop. A log
+ * notification (ONE-143) names its project, when the owner can still read it.
+ */
+export const notificationSentence = (type: Notification['type'], projectName?: string | null): string => {
   switch (type) {
     case 'like': return 'liked your post.';
     case 'comment': return 'commented on your post.';
@@ -19,6 +22,8 @@ export const notificationSentence = (type: Notification['type']): string => {
     case 'repost': return 'reposted your post.';
     case 'mention': return 'mentioned you.';
     case 'story_like': return 'liked your OneSnap.';
+    case 'log_entry_added': return `added to ${projectName ?? 'your project'}'s log.`;
+    case 'log_entry_proposed': return `wants to add to ${projectName ?? 'your project'}'s log.`;
     default: return 'interacted with you.';
   }
 };
@@ -33,23 +38,28 @@ export const commentRoute = (postId: string, commentId: string): string =>
 /** A OneSnap, opened on its own in the viewer. */
 export const oneSnapRoute = (storyId: string) => ({ pathname: '/story-viewer' as const, params: { storyId } });
 
+/** A project's page, which a log notification opens (ONE-143). */
+const projectPage = (projectId: string): string => `/project/${encodeURIComponent(projectId)}`;
+
 /**
  * Where tapping a push opens, from the data send-push puts on it
  * (supabase/functions/send-push/handler.ts): the follower's profile, the
  * requests, the thread with whoever messaged, the comment a comment, reply
- * or mention is about, or the post a mention is in. Anything else opens
- * Notifications.
+ * or mention is about, the post a mention is in, or the project whose log
+ * someone wrote to. Anything else opens Notifications.
  */
 export const pushRoute = (data: Record<string, unknown> | null | undefined): string => {
   const type = typeof data?.type === 'string' ? data.type : undefined;
   const username = typeof data?.username === 'string' && data.username ? data.username : undefined;
   const postId = typeof data?.postId === 'string' && data.postId ? data.postId : undefined;
   const commentId = typeof data?.commentId === 'string' && data.commentId ? data.commentId : undefined;
+  const projectId = typeof data?.projectId === 'string' && data.projectId ? data.projectId : undefined;
 
   if (type === 'follow' && username) return `/user/${username}`;
   if (type === 'follow_request') return '/follow-requests';
   // send-push names the sender; the thread with them opens (ONE-103).
   if (type === 'message') return username ? messageThreadRoute(username) : '/messages';
+  if (projectId) return projectPage(projectId);
   if (postId && commentId) return commentRoute(postId, commentId);
   if (postId) return `/post/${postId}`;
   return '/notifications';
@@ -58,11 +68,12 @@ export const pushRoute = (data: Record<string, unknown> | null | undefined): str
 /**
  * Where tapping a row on the Notifications screen opens: the same places a
  * push does, and a liked OneSnap in the viewer. Null for a row with nowhere
- * left to go — its post or OneSnap is gone.
+ * left to go — its post, OneSnap or project is gone.
  */
 export const notificationRoute = (
-  n: Pick<Notification, 'type' | 'sender' | 'post' | 'comment' | 'story'>,
+  n: Pick<Notification, 'type' | 'sender' | 'post' | 'comment' | 'story' | 'project'>,
 ): string | ReturnType<typeof oneSnapRoute> | null => {
+  if (n.type === 'log_entry_added' || n.type === 'log_entry_proposed') return n.project ? projectPage(n.project.id) : null;
   if (n.type === 'follow') return `/user/${n.sender.username}`;
   if (n.type === 'follow_request') return '/follow-requests';
   if (n.type === 'story_like') return n.story ? oneSnapRoute(n.story.id) : null;

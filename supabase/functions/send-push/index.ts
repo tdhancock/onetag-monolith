@@ -45,13 +45,16 @@ Deno.serve((request) =>
       const { data, error } = await admin
         .from('notifications')
         .select(
-          'type, post_id, comment_id, sender:profiles!notifications_sender_id_fkey(username), receiver:profiles!notifications_receiver_id_fkey(username, user_id, profile_type)',
+          'type, post_id, comment_id, project_id, sender:profiles!notifications_sender_id_fkey(username), ' +
+            'receiver:profiles!notifications_receiver_id_fkey(username, user_id, profile_type), ' +
+            'project:projects!notifications_project_id_fkey(name)',
         )
         .eq('id', id)
         .maybeSingle();
       if (error) throw error;
       const sender = one(data?.sender as ProfileEmbed | ProfileEmbed[]);
       const receiver = receiverOf(one(data?.receiver as ProfileEmbed | ProfileEmbed[]));
+      const project = one(data?.project as { name: string } | { name: string }[]);
       if (!data || !sender || !receiver) return null;
       return {
         kind: 'notification',
@@ -60,6 +63,8 @@ Deno.serve((request) =>
         receiver,
         postId: data.post_id ?? null,
         commentId: data.comment_id ?? null,
+        projectId: data.project_id ?? null,
+        projectName: project?.name ?? null,
       };
     },
 
