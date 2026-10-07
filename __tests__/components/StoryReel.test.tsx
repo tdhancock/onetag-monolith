@@ -4,9 +4,9 @@
 //
 // target: __tests__/components/StoryReel.test.tsx
 //
-// OneSnaps as square cards (ONE-67): the reel renders portrait,
-// square-cornered cards — never circles — with an ink border while unseen
-// and a dimmed hairline once seen, and the first tile is "Your OneSnap".
+// OneSnaps as square cards (ONE-67): the reel renders small square cards
+// (ONE-146) — never circles — with an ink border while unseen and a dimmed
+// hairline once seen, and the first tile is "Your OneSnap".
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -66,7 +66,7 @@ jest.mock('../../features/stories', () => ({
   useMyStoriesQuery: () => ({ data: mockMyStories.current }),
 }));
 
-import StoryReel, { REEL_CARD_WIDTH, REEL_CARD_HEIGHT, VIEWED_OPACITY } from '../../components/native/StoryReel';
+import StoryReel, { REEL_CARD_SIZE, REEL_ITEM_WIDTH, VIEWED_OPACITY } from '../../components/native/StoryReel';
 import type { StoryGroup } from '../../components/native/StoryReel';
 import StoryCreator from '../../components/native/StoryCreator';
 import { gradientFor } from '../../lib/oneSnaps';
@@ -128,14 +128,16 @@ describe('StoryReel — cards', () => {
   ];
   const all = groups.flatMap((g) => g.stories);
 
-  it('renders each person as a square-cornered portrait card with the image', () => {
+  it('renders each person as a small square card with the image, in a column wide enough for the name', () => {
     mockIsStoryViewed.mockReturnValue(false);
     const el = mount(<StoryReel storyGroups={groups} allStories={all} onViewStories={jest.fn()} />);
+    expect(REEL_CARD_SIZE).toBeLessThan(REEL_ITEM_WIDTH);
     for (const name of ['ana', 'ben']) {
-      const card = cardOf(itemButton(el, `${name}'s OneSnap, new`));
-      expect(card.style.width).toBe(`${REEL_CARD_WIDTH}px`);
-      expect(card.style.height).toBe(`${REEL_CARD_HEIGHT}px`);
-      expect(REEL_CARD_HEIGHT).toBeGreaterThan(REEL_CARD_WIDTH);
+      const button = itemButton(el, `${name}'s OneSnap, new`);
+      expect(button.style.width).toBe(`${REEL_ITEM_WIDTH}px`);
+      const card = cardOf(button);
+      expect(card.style.width).toBe(`${REEL_CARD_SIZE}px`);
+      expect(card.style.height).toBe(`${REEL_CARD_SIZE}px`);
       // Never a circle.
       expect(parseFloat(card.style.borderRadius || '0')).toBe(0);
       expect(card.querySelector('img')?.getAttribute('src')).toBe(`https://example.test/${name[0]}1.jpg`);
@@ -216,7 +218,8 @@ describe('StoryCreator — the "Your OneSnap" tile', () => {
     expect(tile).not.toBeNull();
     expect(tile.textContent).toContain('Your OneSnap');
     const card = cardOf(tile);
-    expect(card.style.width).toBe(`${REEL_CARD_WIDTH}px`);
+    expect(card.style.width).toBe(`${REEL_CARD_SIZE}px`);
+    expect(card.style.height).toBe(`${REEL_CARD_SIZE}px`);
     expect(card.querySelector('img')).toBeNull();
 
     act(() => tile.click());
