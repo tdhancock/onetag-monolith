@@ -45,6 +45,14 @@ jobs:
       - name: No raw hex outside the token layer
         run: sh scripts/check-no-raw-hex.sh
 
+      # Bundles the app as Metro and Babel will for a build or an update.
+      # Typecheck, lint and Jest never load either, so a package they can't
+      # resolve, or a broken import or route, passed every check above and
+      # first failed at `pnpm publish:preview` (ONE-147). No env vars needed:
+      # bundling inlines EXPO_PUBLIC_* without running the app.
+      - name: Bundle the app (iOS)
+        run: pnpm exec expo export --platform ios --output-dir "$RUNNER_TEMP/expo-export"
+
   migrations:
     # The name is kept so an existing required check still matches it. The
     # job also runs the pgTAP suite (ONE-111) and the API checks (ONE-114).
