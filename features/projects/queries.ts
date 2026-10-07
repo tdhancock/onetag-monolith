@@ -7,11 +7,12 @@ import {
   fetchContributors,
   fetchOwnedProjects,
   fetchProject,
+  fetchProjectLog,
   fetchProjectProducts,
   fetchProjectsUsingProduct,
 } from './api';
 import { projectKeys } from './keys';
-import type { Contributor, Project, ProjectProduct, ProjectSummary } from './types';
+import type { Contributor, Project, ProjectLogEntry, ProjectProduct, ProjectSummary } from './types';
 
 /**
  * One project. `data` is null when there is none the viewer may see — deleted,
@@ -72,3 +73,11 @@ export const useProjectProductsQuery = (projectId: string | undefined) =>
     enabled: Boolean(projectId),
   });
 
+
+/** A project's log (ONE-141) the viewer may see, newest first. */
+export const useProjectLogQuery = (projectId: string | undefined) =>
+  useQuery<ProjectLogEntry[]>({
+    queryKey: projectKeys.log(projectId ?? ''),
+    queryFn: () => fetchProjectLog(projectId!),
+    enabled: Boolean(projectId),
+  });

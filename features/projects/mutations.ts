@@ -7,21 +7,27 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   addContributor,
+  createLogEntry,
   createProject,
+  deleteLogEntry,
   deleteProject,
   linkProduct,
   removeContributor,
+  removeMeFromLogEntry,
+  saveLogEntryEdits,
   saveProjectEdits,
   unlinkProduct,
   updateContributor,
   updateProject,
+  type LogEntryEdits,
   type NewContributor,
+  type NewLogEntryInput,
   type NewProjectInput,
   type ProjectEdits,
 } from './api';
 import { projectKeys } from './keys';
 import { saveKeys } from '../saves';
-import type { Contributor, Project } from './types';
+import type { Contributor, Project, ProjectLogEntry } from './types';
 import type { AuthUserId } from '../../types';
 
 const signedIn = (authUserId: AuthUserId | undefined): AuthUserId => {
@@ -198,5 +204,52 @@ export const useSetContributorPublic = () => {
     mutationFn: ({ contributor, isPublic }: ContributorVisibilityInput) =>
       updateContributor(contributor.id, { isPublic }),
     onSettled: (_data, _error, { contributor }) => invalidateContributor(queryClient, contributor),
+  });
+};
+
+// ─── The log (ONE-141) ──────────────────────────────────────────────────
+
+/** An entry, as a write to it names it: which entry, on which project's log. */
+type LogEntryRef = Pick<ProjectLogEntry, 'id' | 'projectId'>;
+
+/** Log an entry on a project. Resolves to its id; the photos are filed under the account. */
+export const useCreateLogEntry = (authUserId: AuthUserId | undefined) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: NewLogEntryInput) => createLogEntry(signedIn(authUserId), input),
+    onSettled: (_data, _error, { projectId }) => queryClient.invalidateQueries({ queryKey: projectKeys.log(projectId) }),
+  });
+};
+
+export interface UpdateLogEntryInput {
+  /** The entry as stored: its photos are what the edit's are saved against. */
+  entry: LogEntryRef & Pick<ProjectLogEntry, 'photos'>;
+  edits: LogEntryEdits;
+}
+
+/** Save an edit to a log entry. Re-reads the log whether or not it went through. */
+export const useUpdateLogEntry = (authUserId: AuthUserId | undefined) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ entry, edits }: UpdateLogEntryInput) => saveLogEntryEdits(signedIn(authUserId), entry, edits),
+    onSettled: (_data, _error, { entry }) => queryClient.invalidateQueries({ queryKey: projectKeys.log(entry.projectId) }),
+  });
+};
+
+/** Delete a log entry and its photos. */
+export const useDeleteLogEntry = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (entry: LogEntryRef) => deleteLogEntry(entry.id),
+    onSettled: (_data, _error, entry) => queryClient.invalidateQueries({ queryKey: projectKeys.log(entry.projectId) }),
+  });
+};
+
+/** Take the active profile's name off an entry naming it as who did the work ("Remove me"). */
+export const useRemoveMeFromLogEntry = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (entry: LogEntryRef) => removeMeFromLogEntry(entry.id),
+    onSettled: (_data, _error, entry) => queryClient.invalidateQueries({ queryKey: projectKeys.log(entry.projectId) }),
   });
 };

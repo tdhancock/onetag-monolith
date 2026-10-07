@@ -11,6 +11,7 @@ export {
   fetchProjectsUsingProduct,
   fetchContributors,
   fetchProjectProducts,
+  fetchProjectLog,
   createProject,
   updateProject,
   saveProjectEdits,
@@ -21,14 +22,28 @@ export {
   addContributor,
   removeContributor,
   updateContributor,
+  createLogEntry,
+  saveLogEntryEdits,
+  deleteLogEntry,
+  removeMeFromLogEntry,
   mapProjectRow,
   mapContributorRow,
+  mapLogEntryRow,
   PROJECT_SELECT,
   CONTRIBUTOR_SELECT,
+  LOG_ENTRY_SELECT,
 } from './api';
 // A project as a list shows it, shared with other features through services/.
 export { mapProjectSummaryRow, PROJECT_SUMMARY_SELECT } from '../../services/projectRows';
-export type { NewProjectInput, ProjectEdits, ProjectDetailEdit, NewContributor, ContributorChanges } from './api';
+export type {
+  NewProjectInput,
+  ProjectEdits,
+  ProjectDetailEdit,
+  NewContributor,
+  ContributorChanges,
+  NewLogEntryInput,
+  LogEntryEdits,
+} from './api';
 export { projectKeys } from './keys';
 export {
   useProjectQuery,
@@ -38,6 +53,7 @@ export {
   useProjectsUsingProductQuery,
   useContributorsQuery,
   useProjectProductsQuery,
+  useProjectLogQuery,
 } from './queries';
 export {
   useCreateProject,
@@ -50,6 +66,10 @@ export {
   useRemoveContributor,
   useUpdateContributorRole,
   useSetContributorPublic,
+  useCreateLogEntry,
+  useUpdateLogEntry,
+  useDeleteLogEntry,
+  useRemoveMeFromLogEntry,
 } from './mutations';
 export type {
   UpdateProjectInput,
@@ -57,6 +77,7 @@ export type {
   ProductLinkInput,
   ContributorRoleInput,
   ContributorVisibilityInput,
+  UpdateLogEntryInput,
 } from './mutations';
 export type {
   Project,
@@ -64,6 +85,9 @@ export type {
   ProjectDetail,
   ProjectDetailInput,
   ProjectDetailKind,
+  ProjectLogEntry,
+  ProjectLogEntryFields,
+  ProjectLogPhoto,
   ProjectSummary,
   ProjectSummaryRow,
   ProjectProfile,

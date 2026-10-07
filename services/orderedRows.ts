@@ -1,6 +1,7 @@
 // Rows a parent keeps in the order its owner sets: a product's specs, a
-// project's details (ONE-140). An edit hands back the whole list in its new
-// order; these turn that into the fewest writes, and make them.
+// project's details (ONE-140), a log entry's photos (ONE-141). An edit hands
+// back the whole list in its new order; these turn that into the fewest
+// writes, and make them.
 //
 // Shared here rather than in either feature, since a feature's api.ts never
 // imports another feature's.
@@ -57,15 +58,23 @@ const throwIfError = async (request: PromiseLike<{ error: unknown }>): Promise<v
   if (error) throw error;
 };
 
-/** Where the rows live: their table, and the column naming their parent. */
+/**
+ * Where the rows live: their table, and the column naming their parent. A
+ * table that caps its rows (a log entry's four photos) has its removals made
+ * first, so a save that swaps one never holds one too many.
+ */
 export interface OrderedRowsTable {
   table: string;
   parentColumn: string;
+  removalsFirst?: boolean;
 }
 
-/** Write a parent's rows in the order given. Additions first, removals last. */
+/**
+ * Write a parent's rows in the order given: additions first and removals last,
+ * so a save that fails part way loses nothing — unless the table is capped.
+ */
 export const saveOrderedRows = async <T extends object>(
-  { table, parentColumn }: OrderedRowsTable,
+  { table, parentColumn, removalsFirst = false }: OrderedRowsTable,
   parentId: string,
   current: StoredRow<T>[],
   next: EditedRow<T>[],
@@ -73,6 +82,10 @@ export const saveOrderedRows = async <T extends object>(
 ): Promise<void> => {
   const { inserts, updates, removals } = orderedRowChanges(current, next, fields);
   const columns = (row: T, sortOrder: number) => ({ ...pick(row, fields), sort_order: sortOrder });
+  const remove = async () => {
+    if (removals.length > 0) await throwIfError(supabase.from(table).delete().in('id', removals));
+  };
+  if (removalsFirst) await remove();
   if (inserts.length > 0) {
     await throwIfError(
       supabase.from(table).insert(inserts.map((row) => ({ [parentColumn]: parentId, ...columns(row, row.sortOrder) }))),
@@ -81,5 +94,5 @@ export const saveOrderedRows = async <T extends object>(
   await Promise.all(
     updates.map((row) => throwIfError(supabase.from(table).update(columns(row, row.sortOrder)).eq('id', row.id))),
   );
-  if (removals.length > 0) await throwIfError(supabase.from(table).delete().in('id', removals));
+  if (!removalsFirst) await remove();
 };

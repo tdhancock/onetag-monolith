@@ -16,7 +16,7 @@ import { PROJECT_SUMMARY_SELECT } from '../../services/projectRows';
 import { CHAT_LIST_SELECT, MESSAGE_SELECT_QUERY } from '../../features/messages/api';
 import { NOTIFICATION_SELECT_QUERY } from '../../features/notifications/api';
 import { PRODUCT_SELECT } from '../../features/products/api';
-import { CONTRIBUTOR_SELECT, PROJECT_SELECT } from '../../features/projects/api';
+import { CONTRIBUTOR_SELECT, LOG_ENTRY_SELECT, PROJECT_SELECT } from '../../features/projects/api';
 import { TAG_SELECT } from '../../features/tags/api';
 import { PROFILE_SELECT } from '../../features/profiles/api';
 import { SAVE_SELECT } from '../../features/saves/api';
@@ -40,6 +40,7 @@ const SELECTS: [name: string, table: string, select: string][] = [
   ['PROJECT_SELECT', 'projects', PROJECT_SELECT],
   ['PROJECT_SUMMARY_SELECT', 'projects', PROJECT_SUMMARY_SELECT],
   ['CONTRIBUTOR_SELECT', 'contributors', CONTRIBUTOR_SELECT],
+  ['LOG_ENTRY_SELECT', 'project_log_entries', LOG_ENTRY_SELECT],
   ['TAG_SELECT', 'tags', TAG_SELECT],
   ['PROFILE_SELECT', 'profiles', PROFILE_SELECT],
   ['SAVE_SELECT', 'saves', SAVE_SELECT],

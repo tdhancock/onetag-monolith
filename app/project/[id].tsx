@@ -10,6 +10,7 @@ import {
   useChildProjectsQuery,
   useContributorsQuery,
   useDeleteProject,
+  useProjectLogQuery,
   useProjectProductsQuery,
   useProjectQuery,
   useSetProjectPublic,
@@ -22,6 +23,7 @@ import DestinationActions from '../../components/native/DestinationActions';
 import DetailSection from '../../components/native/DetailSection';
 import ProjectContributors from '../../components/native/ProjectContributors';
 import ProjectIncludes from '../../components/native/ProjectIncludes';
+import ProjectLog from '../../components/native/ProjectLog';
 import { homeBackHeaderLeft } from '../../components/native/HomeBackButton';
 import { useBackOrHome } from '../../lib/useBackOrHome';
 import { RowSkeletons, SectionError } from '../../components/native/SectionStates';
@@ -31,6 +33,7 @@ import { onwardActionsFor } from '../../lib/screens/tagResolution';
 import { tagCreateRoute } from '../../lib/screens/tags';
 import { productRoute } from '../../lib/screens/products';
 import { DETAILS_TITLE, detailDisplayValue } from '../../lib/screens/projectDetails';
+import { LOG_TITLE, projectLogEntryRoute } from '../../lib/screens/projectLog';
 import {
   canManageProject,
   deleteProjectConfirm,
@@ -160,6 +163,8 @@ function ProjectDetail({
   const holdsProjects = !project.parentProjectId;
   const inside = useChildProjectsQuery(holdsProjects ? project.id : undefined);
   const insideCount = inside.data?.length ?? 0;
+  const log = useProjectLogQuery(project.id);
+  const logCount = log.data?.length ?? 0;
   // Only the owner sees how often their tags pointing here were scanned.
   const scans = useDestinationScanCountQuery(profileId, { kind: 'project', id: project.id }, isOwner);
   const owner = project.owner;
@@ -189,6 +194,7 @@ function ProjectDetail({
         contributors.refetch(),
         products.refetch(),
         holdsProjects ? inside.refetch() : undefined,
+        log.refetch(),
         isOwner ? scans.refetch() : undefined,
       ]);
     } finally {
@@ -287,6 +293,32 @@ function ProjectDetail({
             isOwner={isOwner}
             onOpen={(id) => router.push(projectRoute(id))}
             onAdd={() => router.push(projectCreateRoute(project.id))}
+          />
+        </DetailSection>
+      ) : null}
+
+      {/* An empty log is the owner's prompt, and nothing to anyone else (ONE-141). */}
+      {isOwner || logCount > 0 || log.isError ? (
+        <DetailSection
+          title={LOG_TITLE}
+          trailing={
+            isOwner && logCount > 0 ? (
+              <Button variant="outline" size="sm" onPress={() => router.push(projectLogEntryRoute(project.id))}>
+                Add to log
+              </Button>
+            ) : null
+          }
+        >
+          <ProjectLog
+            entries={log.data}
+            isPending={log.isPending}
+            isError={log.isError}
+            onRetry={() => void log.refetch()}
+            isOwner={isOwner}
+            profileId={profileId}
+            onOpenProfile={openProfile}
+            onAdd={() => router.push(projectLogEntryRoute(project.id))}
+            onEdit={(entry) => router.push(projectLogEntryRoute(project.id, entry.id))}
           />
         </DetailSection>
       ) : null}

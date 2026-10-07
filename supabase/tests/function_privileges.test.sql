@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(56);
+SELECT plan(58);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -150,6 +150,13 @@ SELECT ok(NOT has_function_privilege('anon', 'public.is_calendar_date(text)', 'E
   'anon cannot execute is_calendar_date(): only the signed-in write details');
 SELECT ok(has_function_privilege('authenticated', 'public.is_calendar_date(text)', 'EXECUTE'),
   'authenticated can execute is_calendar_date(): the date check on project_details calls it');
+
+-- ─── Project log (ONE-141) ────────────────────────────────────────────
+
+SELECT ok(NOT has_function_privilege('anon', 'public.remove_me_from_log_entry(uuid)', 'EXECUTE'),
+  'anon cannot execute remove_me_from_log_entry(): a name is a signed-in profile''s to remove');
+SELECT ok(has_function_privilege('authenticated', 'public.remove_me_from_log_entry(uuid)', 'EXECUTE'),
+  'authenticated can execute remove_me_from_log_entry(): the profile named on an entry takes its name off');
 
 SELECT * FROM finish();
 ROLLBACK;

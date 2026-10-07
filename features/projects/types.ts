@@ -62,6 +62,47 @@ export interface Project extends ProjectSummary {
   details: ProjectDetail[];
 }
 
+/** A photo on a log entry (ONE-141). */
+export interface ProjectLogPhoto {
+  id: string;
+  url: string;
+  sortOrder: number;
+}
+
+/**
+ * One dated entry in a project's log (ONE-141): what was done, on which day,
+ * by whom, and what it cost — "Mar 12: replaced the igniter, Acme HVAC, $180".
+ */
+export interface ProjectLogEntry {
+  id: string;
+  projectId: string;
+  /** The day it was done: YYYY-MM-DD. */
+  occurredOn: string;
+  title: string;
+  notes: string | null;
+  /** A record, never a payment: minor units of `currency`, or null for none. */
+  costCents: number | null;
+  currency: string;
+  /** Who did it, or null for no one named. */
+  performedByProfileId: string | null;
+  /** That profile, when it could be read. */
+  performedBy: ProjectProfile | null;
+  /** Up to four, in order. */
+  photos: ProjectLogPhoto[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A log entry's own fields, as create and edit write them. */
+export interface ProjectLogEntryFields {
+  occurredOn: string;
+  title: string;
+  notes: string | null;
+  costCents: number | null;
+  currency: string;
+  performedByProfileId: string | null;
+}
+
 /** A Product a project Links: "Products used". */
 export interface ProjectProduct {
   /** The `project_products` row. */
@@ -132,6 +173,22 @@ export interface ProjectRow {
   parent?: ProjectParent | ProjectParent[] | null;
   /** Its details (ONE-140), in any order. */
   details?: ProjectDetailRow[] | null;
+}
+
+/** A `project_log_entries` row with who did it and its photos embedded. */
+export interface ProjectLogEntryRow {
+  id: string;
+  project_id: string;
+  occurred_on: string;
+  title: string;
+  notes: string | null;
+  cost_cents: number | null;
+  currency: string;
+  performed_by_profile_id: string | null;
+  created_at: string;
+  updated_at: string;
+  performed_by?: ProjectProfileRow | ProjectProfileRow[] | null;
+  photos?: { id: string; url: string; sort_order: number }[] | null;
 }
 
 /** A `project_details` row. */

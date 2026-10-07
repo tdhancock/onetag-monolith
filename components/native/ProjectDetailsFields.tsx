@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Keyboard, Platform, StyleSheet, Text, View } from 'react-native';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { StyleSheet, Text, View } from 'react-native';
 import { useStore } from '@tanstack/react-form';
-import { Button, IconButton, MonoLabel, Pressable, Sheet, SheetRow } from './ui';
+import { Button, IconButton, MonoLabel, Sheet, SheetRow } from './ui';
+import DateField from './DateField';
 import { DotsHorizontalIcon } from './Icons';
 import { withForm } from './form';
 import { projectFormOptions } from './projectFormOptions';
@@ -11,18 +11,15 @@ import {
   DETAIL_KINDS,
   DETAIL_LABEL_MAX_LENGTH,
   DETAIL_VALUE_MAX_LENGTH,
-  dateFromDetailValue,
-  detailDisplayValue,
   detailDraftsFromTemplate,
   detailKindLabel,
-  detailValueFromDate,
   newDetailDraft,
   PROJECT_DETAIL_TEMPLATES,
   PROJECT_DETAILS_MAX,
   templateSummary,
   type ProjectDetailTemplate,
 } from '../../lib/screens/projectDetails';
-import { color, radius, space, type } from '../../theme/tokens';
+import { color, space, type } from '../../theme/tokens';
 
 /** What the sheet holds: the kinds to add, the templates, or one detail's options. */
 type Open = { kind: 'add' } | { kind: 'template' } | { kind: 'options'; index: number } | null;
@@ -101,7 +98,7 @@ const ProjectDetailsFields = withForm({
             {detail.kind === 'date' ? (
               <form.Field name={`details[${index}].value`}>
                 {(field) => (
-                  <DetailDateValue
+                  <DateField
                     value={field.state.value}
                     onChange={field.handleChange}
                     error={field.state.meta.errors.find((e): e is string => typeof e === 'string') ?? null}
@@ -174,67 +171,6 @@ const ProjectDetailsFields = withForm({
   },
 });
 
-/**
- * A date detail's value: drawn as a field, it opens the system picker.
- * Android's picker is a dialog that closes itself; iOS's spins in place
- * until Done, which keeps today if nothing was turned.
- */
-function DetailDateValue({
-  value,
-  onChange,
-  error,
-  accessibilityLabel,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  error: string | null;
-  accessibilityLabel: string;
-}) {
-  const [picking, setPicking] = useState(false);
-  const shown = value ? detailDisplayValue({ kind: 'date', value }) : null;
-
-  const onPick = (event: DateTimePickerEvent, date?: Date) => {
-    if (Platform.OS === 'android' || event.type === 'dismissed') setPicking(false);
-    if (event.type === 'set' && date) onChange(detailValueFromDate(date));
-  };
-  const done = () => {
-    if (!value) onChange(detailValueFromDate(new Date()));
-    setPicking(false);
-  };
-
-  return (
-    <View>
-      <Pressable
-        onPress={() => {
-          Keyboard.dismiss();
-          setPicking(true);
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={`${accessibilityLabel}, ${shown ?? 'no date yet'}`}
-        style={({ pressed }) => [styles.dateField, pressed && styles.dateFieldPressed]}
-      >
-        <Text style={shown ? styles.dateValue : styles.datePlaceholder}>{shown ?? 'Choose a date'}</Text>
-      </Pressable>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {picking ? (
-        <View style={styles.picker}>
-          <DateTimePicker
-            value={dateFromDetailValue(value)}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={onPick}
-          />
-          {Platform.OS === 'ios' ? (
-            <Button variant="outline" size="sm" onPress={done} style={styles.pickerDone}>
-              Done
-            </Button>
-          ) : null}
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   section: {
     paddingHorizontal: space.lg,
@@ -270,45 +206,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: space.sm,
     marginTop: space.md,
-  },
-  // Drawn as a TextField, since it reads as one.
-  dateField: {
-    minHeight: 48,
-    justifyContent: 'center',
-    paddingHorizontal: space.md,
-    borderWidth: 1,
-    borderColor: color.border,
-    borderRadius: radius.none,
-    backgroundColor: color.bgPanel,
-  },
-  dateFieldPressed: {
-    borderColor: color.text,
-  },
-  dateValue: {
-    fontFamily: type.body,
-    fontSize: 15,
-    color: color.text,
-  },
-  datePlaceholder: {
-    fontFamily: type.body,
-    fontSize: 15,
-    color: color.textMuted,
-  },
-  error: {
-    marginTop: space.xs,
-    fontFamily: type.body,
-    fontSize: 13,
-    color: color.heart,
-  },
-  picker: {
-    marginTop: space.sm,
-    borderWidth: 1,
-    borderColor: color.border,
-    paddingBottom: space.md,
-    alignItems: 'stretch',
-  },
-  pickerDone: {
-    alignSelf: 'center',
   },
 });
 

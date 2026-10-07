@@ -30,6 +30,10 @@
 //      from a template or one by one, saves only those with a value, in order,
 //      and the page shows them, a date in the device's locale and a link that
 //      opens.
+//   9. A project keeps a log (ONE-141): its owner adds, edits and deletes
+//      entries, naming who did the work from a profile search; the page shows
+//      each one, who did it a tap from their profile; and the profile named
+//      can take its name off.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -128,7 +132,15 @@ const mockActing: { profileId: string | undefined; authUserId: string | undefine
   authUserId: 'a-builder',
   status: 'ready',
 };
-jest.mock('../../../features/profiles', () => ({ useCurrentProfile: () => mockActing }));
+// Who did a log entry's work is found by handle (ONE-141); every search finds these.
+const mockProfileResults = [
+  { id: 'p-acme', username: 'acme_hvac', name: 'Acme HVAC', avatarUrl: null, isVerified: false, profileType: 'business' },
+];
+jest.mock('../../../features/profiles', () => ({
+  useCurrentProfile: () => mockActing,
+  PROFILE_SEARCH_MIN_LENGTH: 2,
+  useProfileSearchQuery: () => ({ data: mockProfileResults, isFetching: false, isError: false, refetch: jest.fn() }),
+}));
 const mockAuth = { status: 'signed-in' };
 jest.mock('../../../features/auth', () => ({ useAuthStatus: () => mockAuth.status }));
 
@@ -146,6 +158,7 @@ import ProjectScreen from '../../../app/project/[id]';
 import CreateProjectScreen from '../../../app/project/create';
 import EditProjectScreen from '../../../app/project/[id]/edit';
 import LinkProductScreen from '../../../app/project/[id]/link-product';
+import LogEntryScreen from '../../../app/project/[id]/log';
 import { fetchContributedProjects, linkProduct } from '../../../features/projects';
 import {
   canManageProject,
@@ -200,6 +213,8 @@ const seed = () => {
     product_media: [{ id: 'm1', product_id: 'pd-tile', url: 'https://cdn.example/tile.jpg', media_type: 'photo', sort_order: 0 }],
     project_products: [{ id: 'pp-1', project_id: 'pj-barn', product_id: 'pd-tile' }],
     project_details: [],
+    project_log_entries: [],
+    project_log_media: [],
     tags: [
       { id: 't-1', owner_profile_id: 'p-builder', dest_project_id: 'pj-barn' },
       { id: 't-2', owner_profile_id: 'p-builder', dest_project_id: 'pj-barn' },
@@ -244,6 +259,11 @@ const seed = () => {
     project_products: (row, select) =>
       select.includes('project:') ? { project: project(row.project_id) } : { id: row.id, product: product(row.product_id) },
     products: (row) => ({ ...product(row.id), business: profile(row.business_profile_id) }),
+    project_log_entries: (row) => ({
+      ...row,
+      performed_by: profile(row.performed_by_profile_id),
+      photos: db.tables.project_log_media!.filter((m) => m.entry_id === row.id),
+    }),
   };
   db.rpcResults = {
     tag_scan_counts: (args) =>
@@ -881,5 +901,177 @@ describe('project details', () => {
     await click(byLabel(el, 'Save'));
     expect(db.tables.projects!.find((p) => p.name === 'Furnace')).toBeUndefined();
     expect(mockToast).toHaveBeenCalledWith(expect.any(String), 'error');
+  });
+});
+
+// ─── The log (ONE-141) ──────────────────────────────────────────────────
+
+describe('the project log', () => {
+  const ACME = { id: 'p-acme', username: 'acme_hvac', full_name: 'Acme HVAC', avatar_url: null, is_verified: false, profile_type: 'business' };
+  const entry = (overrides: Record<string, unknown>) => ({
+    project_id: 'pj-barn',
+    notes: null,
+    cost_cents: null,
+    currency: 'USD',
+    performed_by_profile_id: null,
+    created_at: '2026-03-12T10:00:00Z',
+    updated_at: '2026-03-12T10:00:00Z',
+    ...overrides,
+  });
+  // Newest first, as the database orders them.
+  const storeLog = () => {
+    db.tables.project_log_entries!.push(
+      entry({
+        id: 'e-igniter',
+        occurred_on: '2026-03-12',
+        title: 'Replaced the igniter',
+        notes: 'Under warranty',
+        cost_cents: 18000,
+        performed_by_profile_id: 'p-acme',
+      }),
+      entry({ id: 'e-filter', occurred_on: '2026-01-05', title: 'Changed the filter' }),
+    );
+    db.tables.project_log_media!.push({ id: 'lm-1', entry_id: 'e-igniter', url: 'https://cdn.example/receipt.jpg', sort_order: 0 });
+  };
+  const today = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  };
+  const confirmAlert = async () => {
+    const [, , buttons] = (Alert.alert as jest.Mock).mock.calls[0] as [string, string, { onPress?: () => void }[]];
+    act(() => buttons[1]!.onPress!());
+    await settle();
+  };
+
+  beforeEach(() => {
+    db.tables.profiles!.push({ ...ACME });
+    db.rpcResults.remove_me_from_log_entry = (args) => {
+      const named = db.tables.project_log_entries!.find(
+        (e) => e.id === args.p_entry_id && e.performed_by_profile_id === viewer.profileId,
+      );
+      if (named) named.performed_by_profile_id = null;
+      return Boolean(named);
+    };
+  });
+
+  it('shows each entry newest first: its day, what was done, who did it, its cost, notes and photos', async () => {
+    storeLog();
+    actAs(null);
+    const el = await mount(<ProjectScreen />);
+    const section = byLabel(el, 'Log')!;
+    expect(section.textContent).toMatch(/Replaced the igniter.*Changed the filter/);
+    expect(section.textContent).toContain('$180');
+    expect(section.textContent).not.toContain('$180.00');
+    expect(section.textContent).toContain('Under warranty');
+    expect(byLabel(el, 'Replaced the igniter, photo 1 of 1')).not.toBeNull();
+    // A visitor gets no options and no Add to log.
+    expect(byLabel(el, 'Options for Replaced the igniter')).toBeNull();
+    expect(byText(el, 'Add to log')).toBeUndefined();
+  });
+
+  it("opens the profile of who did the work when it's tapped", async () => {
+    storeLog();
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Done by Acme HVAC, @acme_hvac'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/user/acme_hvac');
+  });
+
+  it('is left out for a visitor when empty, and prompts its owner to add to it', async () => {
+    actAs('p-stranger');
+    const visitor = await mount(<ProjectScreen />);
+    expect(byLabel(visitor, 'Log')).toBeNull();
+    actAs('p-builder');
+    const owner = await remount(<ProjectScreen />);
+    expect(byLabel(owner, 'Log')!.textContent).toContain('Nothing logged yet');
+    await click(byText(owner, 'Add to log'));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/project/pj-barn/log', params: {} });
+  });
+
+  it('logs an entry, naming who did it from a search, its cost a record', async () => {
+    const el = await mount(<LogEntryScreen />);
+    expect((byLabel(el, 'Save') as HTMLButtonElement).disabled).toBe(true);
+    await type(el, 'What was done', 'Replaced the igniter');
+    await click(byLabel(el, 'Who did it: no one named'));
+    await type(el, 'Search profiles', 'acme');
+    await click(byLabel(el, 'Choose Acme HVAC, @acme_hvac'));
+    expect(byLabel(el, 'Who did it: Acme HVAC')).not.toBeNull();
+    await type(el, 'Cost', '180');
+    await click(byLabel(el, 'Save'));
+
+    expect(db.tables.project_log_entries).toEqual([
+      expect.objectContaining({
+        project_id: 'pj-barn',
+        occurred_on: today(),
+        title: 'Replaced the igniter',
+        cost_cents: 18000,
+        currency: 'USD',
+        performed_by_profile_id: 'p-acme',
+      }),
+    ]);
+    expect(mockRouter.back).toHaveBeenCalled();
+  });
+
+  it("won't log a day that hasn't happened yet", async () => {
+    mockPickedDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    const el = await mount(<LogEntryScreen />);
+    await type(el, 'What was done', 'Booked a service');
+    await click(el.querySelector('[aria-label^="When, "]') as HTMLElement);
+    await click(byLabel(el, 'Date picker'));
+    await click(byText(el, 'Done'));
+    expect(el.textContent).toContain("That day hasn't happened yet.");
+    expect((byLabel(el, 'Save') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('edits an entry from its menu, its photos with it', async () => {
+    storeLog();
+    const page = await mount(<ProjectScreen />);
+    await click(byLabel(page, 'Options for Replaced the igniter'));
+    await click(byLabel(page, 'Edit entry'));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/project/pj-barn/log', params: { entry: 'e-igniter' } });
+
+    mockParams.current = { id: 'pj-barn', entry: 'e-igniter' };
+    const el = await remount(<LogEntryScreen />);
+    expect((byLabel(el, 'What was done') as HTMLInputElement).value).toBe('Replaced the igniter');
+    expect((byLabel(el, 'Save') as HTMLButtonElement).disabled).toBe(true);
+    await click(byLabel(el, 'Photo 1 of 1'));
+    await click(byLabel(el, 'Remove photo'));
+    await type(el, 'Cost', '190');
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.project_log_entries!.find((e) => e.id === 'e-igniter')).toMatchObject({
+      cost_cents: 19000,
+      performed_by_profile_id: 'p-acme',
+    });
+    expect(db.tables.project_log_media).toEqual([]);
+  });
+
+  it('deletes an entry only on confirmation', async () => {
+    storeLog();
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Options for Changed the filter'));
+    await click(byLabel(el, 'Delete entry'));
+    expect(db.tables.project_log_entries).toHaveLength(2);
+    await confirmAlert();
+    expect(db.tables.project_log_entries!.map((e) => e.id)).toEqual(['e-igniter']);
+  });
+
+  it('lets the business named take its name off, leaving the entry', async () => {
+    storeLog();
+    actAs('p-acme');
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Options for Replaced the igniter'));
+    expect(byLabel(el, 'Edit entry')).toBeNull();
+    await click(byLabel(el, 'Remove me'));
+    await confirmAlert();
+    expect(db.tables.project_log_entries!.find((e) => e.id === 'e-igniter')).toMatchObject({
+      title: 'Replaced the igniter',
+      performed_by_profile_id: null,
+    });
+  });
+
+  it('gives the form only to the owner', async () => {
+    actAs('p-tiles');
+    const el = await mount(<LogEntryScreen />);
+    expect(el.textContent).toContain("You can't change this log");
+    expect(byLabel(el, 'What was done')).toBeNull();
   });
 });

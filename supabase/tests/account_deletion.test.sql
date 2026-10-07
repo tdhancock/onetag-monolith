@@ -213,7 +213,8 @@ SELECT ok(
 --
 -- The cascade above holds only while each one does. These are the ones that
 -- don't cascade, each set null on purpose. A NO ACTION key here would stop an
--- account's deletion outright, as reviewed_by did until ONE-98.
+-- account's deletion outright, as reviewed_by did until ONE-98. A log entry
+-- (ONE-141) is its project owner's record, so it outlives who did the work.
 
 -- confdeltype: c cascade, n set null, a no action.
 SELECT is(
@@ -227,7 +228,12 @@ SELECT is(
        AND k.connamespace = 'public'::regnamespace
        AND k.confdeltype <> 'c'
    ) fks),
-  ARRAY['messages.shared_profile_id n', 'reports.reviewed_by n', 'scans.scanner_profile_id n'],
+  ARRAY[
+    'messages.shared_profile_id n',
+    'project_log_entries.performed_by_profile_id n',
+    'reports.reviewed_by n',
+    'scans.scanner_profile_id n'
+  ],
   'every other foreign key to a profile or an account cascades');
 
 SELECT * FROM finish();

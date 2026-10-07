@@ -18,4 +18,6 @@ export const projectKeys = {
   contributors: (projectId: string) => [...base.all, 'contributors', projectId] as const,
   /** The products one project Links. */
   products: (projectId: string) => [...base.all, 'products', projectId] as const,
+  /** One project's log (ONE-141). */
+  log: (projectId: string) => [...base.all, 'log', projectId] as const,
 };
