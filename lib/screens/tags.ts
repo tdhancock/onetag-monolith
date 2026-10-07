@@ -85,6 +85,9 @@ export const tagExportRoute = (tagId: string): string => `/tags/${encodeURICompo
 /** Make a batch of blank tags and export them as printable sheets (ONE-138). */
 export const TAG_PRINT_ROUTE = '/tags/print';
 
+/** Link a blank tag to a destination, once (ONE-139). */
+export const tagLinkRoute = (tagId: string): string => `/tags/${encodeURIComponent(tagId)}/link`;
+
 /**
  * What the create flow can start with: a replacement's type and destination,
  * or a product's or project's own page pre-filling itself (ONE-89). The kind
@@ -491,3 +494,17 @@ export const sheetLabel = (index: number, total: number): string => `Sheet ${ind
 export const SHEETS_SAVED_MESSAGE = 'Saved to Photos.';
 
 export const PRINT_BLANK_TAGS_FAILED = "Couldn't make the tags. Check your connection and try again.";
+
+// ─── Linking a blank tag (ONE-139) ──────────────────────────────────────
+
+export const LINK_TAG_TITLE = 'Link this tag';
+
+export const LINK_TAG_INTRO =
+  'Choose what this tag points to. Once it is linked it points there for good: somewhere else needs a new tag.';
+
+export const LINK_TAG_FAILED = "Couldn't link the tag. Check your connection and try again.";
+
+export const LINK_TAG_NOT_BLANK = {
+  title: 'This tag is already linked',
+  body: "A tag's destination never changes once it has one. Print a new tag to point somewhere else.",
+} as const;

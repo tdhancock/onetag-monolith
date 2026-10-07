@@ -6,11 +6,13 @@ import { Button, MonoLabel } from '../../components/native/ui';
 import { useAuthStatus } from '../../features/auth';
 import { useCurrentProfile } from '../../features/profiles';
 import { useRecordScan, useTagQuery } from '../../features/tags';
-import { isValidShortCode } from '../../lib/tagLinks';
+import { buildTagRoute, isValidShortCode } from '../../lib/tagLinks';
+import { returnAfterSignIn } from '../../lib/signInReturn';
 import {
   FAILURE_COPY,
   SCAN_ATTRIBUTION_WAIT_MS,
   onwardActionsFor,
+  type OnwardAction,
   scanAttributionFor,
   tagScreenFor,
 } from '../../lib/screens/tagResolution';
@@ -73,9 +75,18 @@ export default function TagResolutionScreen() {
     router.replace(route);
   }, [tagId, route, scannerKnown, scannerProfileId, recordScan, router]);
 
+  // The scanner's own blank tag goes on to linking it (ONE-139). No Scan:
+  // a blank tag points nowhere, and the database refuses one anyway.
+  const linkRoute = screen.kind === 'link' ? screen.route : null;
+  useEffect(() => {
+    if (!linkRoute || handled.current) return;
+    handled.current = true;
+    router.replace(linkRoute);
+  }, [linkRoute, router]);
+
   const header = <Stack.Screen options={{ headerShown: false, gestureEnabled: true }} />;
 
-  if (screen.kind === 'resolving' || screen.kind === 'redirect') {
+  if (screen.kind === 'resolving' || screen.kind === 'redirect' || screen.kind === 'link') {
     return (
       <SafeAreaView style={styles.screen}>
         {header}
@@ -91,7 +102,12 @@ export default function TagResolutionScreen() {
   }
 
   const copy = FAILURE_COPY[screen.kind];
-  const onward = onwardActionsFor(auth);
+  // A blank tag may be the signed-out scanner's own: signing in comes back here.
+  const onward = onwardActionsFor(auth, screen.kind === 'unlinked' ? buildTagRoute(shortCode) : undefined);
+  const go = (action: OnwardAction) => {
+    if (action.returnTo) returnAfterSignIn(action.returnTo);
+    router.replace(action.route);
+  };
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -113,12 +129,12 @@ export default function TagResolutionScreen() {
           <Button
             fullWidth
             variant={copy.retry ? 'outline' : 'primary'}
-            onPress={() => router.replace(onward.primary.route)}
+            onPress={() => go(onward.primary)}
           >
             {onward.primary.label}
           </Button>
           {onward.secondary ? (
-            <Button fullWidth variant="outline" onPress={() => router.replace(onward.secondary!.route)}>
+            <Button fullWidth variant="outline" onPress={() => go(onward.secondary!)}>
               {onward.secondary.label}
             </Button>
           ) : null}

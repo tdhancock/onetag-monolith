@@ -1,16 +1,17 @@
 //
 // target: __tests__/api/blank_tags.test.ts
 //
-// Blank Physical Tags (ONE-135, ONE-138), against the local stack, through
-// the app's own data layer: a batch is made in one insert and listed as not
-// linked, and a tag printed before it points anywhere resolves as unlinked —
-// to its owner with the id to link it by, to anyone else with nothing — and
-// records no Scan.
+// Blank Physical Tags (ONE-135, ONE-138, ONE-139), against the local stack,
+// through the app's own data layer: a batch is made in one insert and listed
+// as not linked; a tag printed before it points anywhere resolves as unlinked
+// — to its owner with the id to link it by, to anyone else with nothing — and
+// records no Scan; and its owner links it once, after which it resolves and
+// records Scans like any other.
 
 import { actAs } from './support/liveSupabase';
 import { anonClient, sql } from './support/localStack';
 import { createAccount, deleteAccounts, type Account } from './support/accounts';
-import { createBlankTags, fetchMyTags, recordScan, resolveTag } from '../../features/tags/api';
+import { createBlankTags, fetchMyTags, linkTag, recordScan, resolveTag } from '../../features/tags/api';
 
 let owner: Account;
 let other: Account;
@@ -76,5 +77,54 @@ describe('a batch of blank tags (ONE-138)', () => {
   it("refuses a batch for someone else's profile", async () => {
     actAs(other.client);
     await expect(createBlankTags(owner.profileId, 12)).rejects.toBeTruthy();
+  });
+});
+
+describe('linking a blank tag (ONE-139)', () => {
+  let projectId: string;
+  let otherProjectId: string;
+
+  beforeAll(() => {
+    projectId = sql(`
+      INSERT INTO public.projects (owner_profile_id, name) VALUES ('${owner.profileId}', 'Furnace') RETURNING id;
+    `);
+    otherProjectId = sql(`
+      INSERT INTO public.projects (owner_profile_id, name) VALUES ('${other.profileId}', 'Not yours') RETURNING id;
+    `);
+  });
+
+  it("refuses another account linking the tag, even to its own project", async () => {
+    actAs(other.client);
+    await expect(linkTag(tagId, { kind: 'project', id: otherProjectId }, null)).rejects.toBeTruthy();
+  });
+
+  it("refuses the owner linking it to someone else's project", async () => {
+    actAs(owner.client);
+    await expect(linkTag(tagId, { kind: 'project', id: otherProjectId }, null)).rejects.toBeTruthy();
+  });
+
+  it('links it for its owner, named, and reads it back pointing there', async () => {
+    actAs(owner.client);
+    const linked = await linkTag(tagId, { kind: 'project', id: projectId }, 'Furnace');
+    expect(linked).toMatchObject({ id: tagId, linked: true, name: 'Furnace', destination: { kind: 'project', projectId } });
+  });
+
+  it('then resolves to the project for a stranger, and records their Scan', async () => {
+    actAs(anonClient());
+    expect(await resolveTag(shortCode)).toEqual({
+      status: 'active',
+      tagId,
+      destination: { kind: 'project', projectId },
+    });
+    await recordScan(tagId, null);
+    expect(sql(`SELECT count(*) FROM public.scans WHERE tag_id = '${tagId}';`)).toBe('1');
+  });
+
+  it('refuses a second link: a destination, once set, never changes', async () => {
+    actAs(owner.client);
+    const second = sql(`
+      INSERT INTO public.projects (owner_profile_id, name) VALUES ('${owner.profileId}', 'Water heater') RETURNING id;
+    `);
+    await expect(linkTag(tagId, { kind: 'project', id: second }, null)).rejects.toBeTruthy();
   });
 });

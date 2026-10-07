@@ -24,6 +24,7 @@ import {
   TAGS_DASHBOARD_ROUTE,
   tagDestinationLabel,
   tagExportRoute,
+  tagLinkRoute,
   tagTextOrNull,
   tagTitle,
 } from '../../lib/screens/tags';
@@ -77,8 +78,13 @@ export default function TagDetailScreen() {
     );
   }
 
-  // Somewhere to go next (Waterfall Discovery): the same route a scan of it takes.
-  const destinationRoute = tag.destination ? routeForDestination(tag.destination) : null;
+  // Somewhere to go next (Waterfall Discovery): the same route a scan of it
+  // takes — or, for a blank tag, linking it (ONE-139).
+  const destinationRoute = !tag.linked
+    ? tagLinkRoute(tag.id)
+    : tag.destination
+      ? routeForDestination(tag.destination)
+      : null;
 
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>

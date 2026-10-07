@@ -6,6 +6,7 @@ import {
   createEmbeddedTags,
   createTag,
   deleteTag,
+  linkTag,
   moveEmbeddedTag,
   recordScan,
   setTagActive,
@@ -13,7 +14,7 @@ import {
   updateTag,
 } from './api';
 import { tagKeys } from './keys';
-import type { NewEmbeddedTag, NewTag, OwnedTag, TagUpdates } from './types';
+import type { NewEmbeddedTag, NewTag, OwnedTag, TagDestinationRef, TagUpdates } from './types';
 import type { ProfileId } from '../../types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
 import { scanKeys } from '../scans';
@@ -120,6 +121,31 @@ export const useUpdateTag = (ownerProfileId: ProfileId | undefined) => {
     onSuccess: (_data, { tagId, updates }) => {
       queryClient.setQueryData<OwnedTag[]>(key, (list) => patchTag(list, tagId, updates));
       void queryClient.invalidateQueries({ queryKey: key });
+    },
+  });
+};
+
+export interface LinkTagInput {
+  tagId: string;
+  destination: TagDestinationRef;
+  name: string | null;
+}
+
+/**
+ * Link a blank tag to a destination (ONE-139). Not optimistic: once linked it
+ * never changes, so the screen moves on only when the server has it. The
+ * linked tag replaces the blank one in its owner's list, and its resolution
+ * is dropped, so the next scan of the same sticker goes to its destination.
+ */
+export const useLinkTag = (ownerProfileId: ProfileId | undefined) => {
+  const queryClient = useQueryClient();
+  const key = tagKeys.mine(ownerProfileId ?? '');
+  return useMutation<OwnedTag, unknown, LinkTagInput>({
+    mutationFn: ({ tagId, destination, name }) => linkTag(tagId, destination, name),
+    onSuccess: (tag) => {
+      queryClient.setQueryData<OwnedTag[]>(key, (list) => list?.map((existing) => (existing.id === tag.id ? tag : existing)));
+      queryClient.removeQueries({ queryKey: tagKeys.resolution(tag.shortCode) });
+      void queryClient.invalidateQueries({ queryKey: tagKeys.lists() });
     },
   });
 };

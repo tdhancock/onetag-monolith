@@ -16,6 +16,7 @@ import type {
   OwnedTagDestination,
   ResolveTagRow,
   TagDestination,
+  TagDestinationRef,
   TagResolution,
   TagResolutionFailure,
   TagRow,
@@ -330,6 +331,25 @@ export const updateTag = async (tagId: string, updates: TagUpdates): Promise<voi
   if (error) throw error;
   // RLS filters a row the caller does not own out of the update silently.
   if (!data || data.length === 0) throw new TagNotFoundError();
+};
+
+/**
+ * Link a blank Physical Tag to a destination, and name it (ONE-139). Once:
+ * the database refuses to change a destination a tag already has
+ * (protect_tag_identity, ONE-135), and RLS refuses one the account doesn't
+ * own, so a choice the picker never offered fails here too.
+ */
+export const linkTag = async (tagId: string, destination: TagDestinationRef, name: string | null): Promise<OwnedTag> => {
+  const { data, error } = await supabase
+    .from('tags')
+    .update({ [DESTINATION_COLUMN[destination.kind]]: destination.id, name })
+    .eq('id', tagId)
+    .select(TAG_SELECT);
+  if (error) throw error;
+  // RLS filters a row the caller does not own out of the update silently.
+  const row = ((data ?? []) as unknown as TagRow[])[0];
+  if (!row) throw new TagNotFoundError();
+  return mapTagRow(row);
 };
 
 /** Pause or resume a tag. A paused tag resolves to the inactive state. */

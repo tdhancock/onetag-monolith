@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
-import { MonoLabel, Pressable } from './ui';
+import { Button, MonoLabel, Pressable } from './ui';
 import type { OwnedTag } from '../../features/tags';
 import { scanSummary, TAG_TYPE_LABEL, tagDestinationLabel, tagStateLabel, tagTitle } from '../../lib/screens/tags';
 import { color, space, type } from '../../theme/tokens';
@@ -43,15 +43,17 @@ export interface TagRowProps {
   tag: OwnedTag;
   onPress: () => void;
   onToggleActive: () => void;
+  /** Link a blank tag (ONE-139). Offered only on a tag that isn't linked. */
+  onLink?: () => void;
   divider?: boolean;
 }
 
 /**
  * One tag on the dashboard (ONE-34): its name (or destination), a mono label
  * of its type and code, where it points, how often it has been scanned, and
- * its activation switch.
+ * its activation switch — and, for a blank tag, the way to link it.
  */
-const TagRow: React.FC<TagRowProps> = ({ tag, onPress, onToggleActive, divider = false }) => {
+const TagRow: React.FC<TagRowProps> = ({ tag, onPress, onToggleActive, onLink, divider = false }) => {
   const title = tagTitle(tag);
   return (
     <Pressable
@@ -81,12 +83,20 @@ const TagRow: React.FC<TagRowProps> = ({ tag, onPress, onToggleActive, divider =
         </Text>
         <Text style={styles.scans}>{scanSummary(tag)}</Text>
       </View>
+      {!tag.linked && onLink ? (
+        <Button size="sm" variant="outline" onPress={onLink} accessibilityLabel={`Link ${title}`} style={styles.link}>
+          Link
+        </Button>
+      ) : null}
       <TagActiveSwitch active={tag.active} onToggle={onToggleActive} tagName={title} />
     </Pressable>
   );
 };
 
 const styles = StyleSheet.create({
+  link: {
+    marginRight: space.sm,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

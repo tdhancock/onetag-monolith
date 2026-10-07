@@ -488,7 +488,7 @@ describe('recording the Scan', () => {
 // ─── Failures ───────────────────────────────────────────────────────────
 
 describe('a tag that does not open', () => {
-  it.each<TagFailure>(['not-found', 'inactive', 'failed', 'destination-missing'])(
+  it.each<TagFailure>(['not-found', 'inactive', 'unlinked', 'failed', 'destination-missing'])(
     "says what the app's route says for %s",
     (failure) => {
       const app = APP_FAILURE_COPY[failure];
@@ -517,6 +517,27 @@ describe('a tag that does not open', () => {
     expect(page).toContain(`<h1>${escapeHtml(FAILURE_COPY.inactive.title)}</h1>`);
     expect(page).not.toContain(escapeHtml(FAILURE_COPY['not-found'].title));
     expect(source.readProfile).not.toHaveBeenCalled();
+    expect(source.recordScan).not.toHaveBeenCalled();
+  });
+
+  it("says a blank tag isn't set up yet, and records no Scan (ONE-139)", async () => {
+    const blank: ResolveTagRow = {
+      ...profileTag,
+      tag_id: null,
+      active: true,
+      dest_profile_id: null,
+      dest_profile_username: null,
+      linked: false,
+      owned_by_caller: false,
+    };
+    const { deps, source } = setup({ resolveTag: jest.fn(async () => blank) });
+    const response = await handleRequest(request(`/t/${CODE}`), deps);
+    expect(response.status).toBe(404);
+    const page = await html(response);
+    expect(page).toContain(`<p class="label">Not set up · ${CODE}</p>`);
+    expect(page).toContain(`<h1>${escapeHtml(FAILURE_COPY.unlinked.title)}</h1>`);
+    expect(page).not.toContain(escapeHtml(FAILURE_COPY.inactive.title));
+    expect(page).toContain('<a class="button primary" href="onetag://t/ABC23XYZ">Open OneTag</a>');
     expect(source.recordScan).not.toHaveBeenCalled();
   });
 

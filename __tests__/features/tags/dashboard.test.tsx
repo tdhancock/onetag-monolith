@@ -358,6 +358,14 @@ describe('the dashboard', () => {
     expect(el.textContent).not.toContain('Destination removed');
   });
 
+  it("offers Link on a blank tag's row, and only there (ONE-139)", async () => {
+    mockDb.tags['p-studio'].push(row({ id: 't-blank', name: null, short_code: 'BLANK234', dest_profile_id: null, dest_profile: null }));
+    const el = await mount(<TagsDashboardScreen />);
+    expect(el.querySelectorAll('[aria-label^="Link "]')).toHaveLength(1);
+    click(byLabel(el, 'Link Blank tag'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/tags/t-blank/link');
+  });
+
   it('opens Print blank tags from the header, even with no tags yet', async () => {
     mockDb.tags['p-studio'] = [];
     const el = await mount(<TagsDashboardScreen />);
@@ -452,6 +460,9 @@ describe("a tag's detail", () => {
     expect(el.textContent).toContain("Once it's linked, scanning it goes there.");
     expect(el.textContent).not.toContain('Create a replacement');
     expect(el.querySelector('[data-qr]')!.getAttribute('data-qr')).toBe(buildTagUrl('BLANK234'));
+    // Its Destination row is the way to link it (ONE-139).
+    click(buttons(el).find((b) => b.textContent?.startsWith('Destination')));
+    expect(mockRouter.push).toHaveBeenCalledWith('/tags/t-blank/link');
   });
 
   it('shows a Digital Tag its link, and no replacement', async () => {

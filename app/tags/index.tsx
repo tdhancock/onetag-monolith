@@ -16,6 +16,7 @@ import {
   TAG_PRINT_ROUTE,
   tagCreateRoute,
   tagDetailRoute,
+  tagLinkRoute,
   TAGS_EMPTY_STATE,
   TAGS_FILTERED_EMPTY_STATE,
   type TagStateFilter,
@@ -143,6 +144,7 @@ export default function TagsDashboardScreen() {
             divider={index < visible.length - 1}
             onPress={() => router.push(tagDetailRoute(item.id))}
             onToggleActive={() => handleToggle(item)}
+            onLink={() => router.push(tagLinkRoute(item.id))}
           />
         )}
         ListHeaderComponent={

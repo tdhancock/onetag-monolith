@@ -368,7 +368,7 @@ export const routeFor = (pathname: string): Route => {
 
 // ─── The page ───────────────────────────────────────────────────────────
 
-export type TagFailure = 'not-found' | 'inactive' | 'failed' | 'destination-missing';
+export type TagFailure = 'not-found' | 'inactive' | 'unlinked' | 'failed' | 'destination-missing';
 
 /**
  * The in-app route's copy for the same failures, word for word:
@@ -386,6 +386,11 @@ export const FAILURE_COPY: Record<TagFailure, { label: string; title: string; bo
     title: 'This tag is no longer active.',
     body: 'Its owner has paused or replaced it.',
   },
+  unlinked: {
+    label: 'Not set up',
+    title: "This tag isn't set up yet.",
+    body: "Its owner hasn't linked it to anything yet. If it's yours, sign in with the account that made it.",
+  },
   failed: {
     label: 'Something went wrong',
     title: "This tag didn't open.",
@@ -398,10 +403,14 @@ export const FAILURE_COPY: Record<TagFailure, { label: string; title: string; bo
   },
 };
 
-/** 404 for a code that isn't there, 410 for a tag that was, 503 when the database couldn't say. */
+/**
+ * 404 for a code that isn't there, or a blank tag with nothing there yet; 410
+ * for a tag that was; 503 when the database couldn't say.
+ */
 const FAILURE_STATUS: Record<TagFailure, number> = {
   'not-found': 404,
   inactive: 410,
+  unlinked: 404,
   failed: 503,
   'destination-missing': 410,
 };
@@ -519,6 +528,9 @@ export const tagPage = async (code: string, request: Request, deps: HandlerDeps)
     return failurePage('failed', context);
   }
   if (!row) return failurePage('not-found', context);
+  // A blank tag, printed and not yet linked (ONE-135): nowhere to send anyone,
+  // and no Scan, since there is nowhere it was scanned to.
+  if (row.active && row.linked === false) return failurePage('unlinked', context);
   if (!row.active || !row.tag_id) return failurePage('inactive', context);
 
   const ref = destinationOf(row);

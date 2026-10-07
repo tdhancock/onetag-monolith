@@ -308,12 +308,21 @@ describe('tagScreenFor', () => {
   it.each([
     [{ status: 'not-found' } as const, 'not-found'],
     [{ status: 'inactive' } as const, 'inactive'],
-    // Until the owner can link a blank tag from the scan (ONE-139), it has nowhere to go.
-    [{ status: 'unlinked', tagId: 'tag-blank', ownedByCaller: true } as const, 'not-found'],
-    [{ status: 'unlinked', tagId: null, ownedByCaller: false } as const, 'not-found'],
+    // Someone else's blank tag isn't set up (ONE-139).
+    [{ status: 'unlinked', tagId: null, ownedByCaller: false } as const, 'unlinked'],
     [{ status: 'active', tagId: 'tag-1', destination: null } as const, 'destination-missing'],
   ])('shows %j as %s', (data, kind) => {
     expect(tagScreenFor({ ...settled, data })).toEqual({ kind });
+  });
+
+  it("sends a blank tag's owner on to linking it, and records nothing (ONE-139)", () => {
+    expect(tagScreenFor({ ...settled, data: { status: 'unlinked', tagId: 'tag-blank', ownedByCaller: true } }))
+      .toEqual({ kind: 'link', route: '/tags/tag-blank/link' });
+  });
+
+  it("shows an owner's blank tag as not set up when it came without its id", () => {
+    expect(tagScreenFor({ ...settled, data: { status: 'unlinked', tagId: null, ownedByCaller: true } }))
+      .toEqual({ kind: 'unlinked' });
   });
 
   it('shows offline for a request that never reached the server, and failed otherwise', () => {
@@ -362,6 +371,20 @@ describe('every failure has somewhere to go', () => {
       primary: { label: 'Join OneTag', route: '/(auth)/signup' },
       secondary: { label: 'Sign in', route: '/(auth)/login' },
     });
+  });
+
+  it("leads with Sign in, coming back to the tag, for a blank tag when signed out (ONE-139)", () => {
+    expect(onwardActionsFor('signed-out', '/t/BLANK234')).toEqual({
+      primary: { label: 'Sign in', route: '/(auth)/login', returnTo: '/t/BLANK234' },
+      secondary: { label: 'Join OneTag', route: '/(auth)/signup' },
+    });
+    // Signed in to another account, there is nowhere to come back to.
+    expect(onwardActionsFor('signed-in', '/t/BLANK234')).toEqual({ primary: { label: 'Go to OneTag', route: '/(tabs)' } });
+  });
+
+  it("says a blank tag isn't set up, and how its owner gets past that", () => {
+    expect(FAILURE_COPY.unlinked.title).toBe("This tag isn't set up yet.");
+    expect(FAILURE_COPY.unlinked.body).toContain('sign in with the account that made it');
   });
 
   it('says what the ticket says for the two states a stranger most often meets', () => {

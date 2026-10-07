@@ -58,10 +58,14 @@ jest.mock('../../services/supabase.native', () => ({
 
 import TagResolutionScreen from '../../app/t/[shortCode]';
 import { SCAN_ATTRIBUTION_WAIT_MS } from '../../lib/screens/tagResolution';
+import { takeReturnAfterSignIn } from '../../lib/signInReturn';
 
 const CODE = 'ABC23XYZ';
 const LIVE_PROFILE = { tag_id: 'tag-1', active: true, dest_profile_id: 'p-ana', dest_profile_username: 'ana' };
 const PAUSED = { tag_id: null, active: false, dest_profile_id: null, dest_profile_username: null };
+/** A blank tag (ONE-135), as its owner resolves it, and as anyone else does. */
+const BLANK_MINE = { ...PAUSED, tag_id: 'tag-blank', active: true, linked: false, owned_by_caller: true };
+const BLANK_THEIRS = { ...PAUSED, active: true, linked: false, owned_by_caller: false };
 
 /** resolve_tag answers with each result in turn, then keeps repeating the last. */
 function resolveWith(...results: { data: unknown; error?: unknown; status?: number }[]) {
@@ -325,5 +329,45 @@ describe('failure states', () => {
     await settle(10);
     expect(el.textContent).toContain("This tag didn't open.");
     expect(button(el, 'Try again')).toBeDefined();
+  });
+});
+
+// ─── A blank tag (ONE-139) ──────────────────────────────────────────────
+
+describe('a blank tag', () => {
+  it("sends its owner on to linking it, replacing the route, and records no scan", async () => {
+    resolveWith({ data: BLANK_MINE });
+    mount();
+    await settle();
+    expect(mockReplace).toHaveBeenCalledWith('/tags/tag-blank/link');
+    expect(mockReplace).toHaveBeenCalledTimes(1);
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("tells another account it isn't set up yet, records no scan, and offers the app", async () => {
+    resolveWith({ data: BLANK_THEIRS });
+    const el = mount();
+    await settle();
+    expect(el.textContent).toContain("This tag isn't set up yet.");
+    expect(el.textContent).toContain(`Not set up · ${CODE}`);
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(button(el, 'Go to OneTag')).toBeDefined();
+  });
+
+  it('asks someone signed out to sign in, and comes back to the tag afterwards', async () => {
+    mockWho.auth = 'signed-out';
+    mockWho.profile = { status: 'signed-out', profileId: undefined };
+    resolveWith({ data: BLANK_THEIRS });
+    const el = mount();
+    await settle();
+    expect(el.textContent).toContain("This tag isn't set up yet.");
+    act(() => button(el, 'Sign in')!.click());
+    expect(mockReplace).toHaveBeenCalledWith('/(auth)/login');
+    expect(takeReturnAfterSignIn()).toBe(`/t/${CODE}`);
+    // Joining instead leaves nothing to come back to: a new account owns no tag.
+    act(() => button(el, 'Join OneTag')!.click());
+    expect(takeReturnAfterSignIn()).toBeNull();
   });
 });
