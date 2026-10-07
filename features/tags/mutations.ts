@@ -2,9 +2,11 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  createBlankTags,
   createEmbeddedTags,
   createTag,
   deleteTag,
+  linkTag,
   moveEmbeddedTag,
   recordScan,
   setTagActive,
@@ -12,7 +14,7 @@ import {
   updateTag,
 } from './api';
 import { tagKeys } from './keys';
-import type { NewEmbeddedTag, NewTag, OwnedTag, TagUpdates } from './types';
+import type { NewEmbeddedTag, NewTag, OwnedTag, TagDestinationRef, TagUpdates } from './types';
 import type { ProfileId } from '../../types';
 import { useOptimisticToggle } from '../../lib/optimisticToggle';
 import { scanKeys } from '../scans';
@@ -70,6 +72,33 @@ export const useCreateTag = () => {
   });
 };
 
+export interface CreateBlankTagsInput {
+  /** The active profile: the tags are attributed to it, never to the account. */
+  ownerProfileId: ProfileId;
+  count: number;
+}
+
+/**
+ * Create a batch of blank Physical Tags to print (ONE-138).
+ *
+ * Not optimistic, as a single tag isn't: a code is worthless until the
+ * database has issued it. On success the batch joins its owner's cached list
+ * at once, and the lists are invalidated to pick up the server's copy.
+ */
+export const useCreateBlankTags = () => {
+  const queryClient = useQueryClient();
+  return useMutation<OwnedTag[], unknown, CreateBlankTagsInput>({
+    mutationFn: ({ ownerProfileId, count }) => createBlankTags(ownerProfileId, count),
+    onSuccess: (tags, { ownerProfileId }) => {
+      const made = new Set(tags.map((tag) => tag.id));
+      queryClient.setQueryData<OwnedTag[]>(tagKeys.mine(ownerProfileId), (list) =>
+        list ? [...tags, ...list.filter((existing) => !made.has(existing.id))] : list,
+      );
+      void queryClient.invalidateQueries({ queryKey: tagKeys.lists() });
+    },
+  });
+};
+
 /** Replace one tag in a profile's cached list. */
 const patchTag = (list: OwnedTag[] | undefined, tagId: string, patch: Partial<OwnedTag>) =>
   list?.map((tag) => (tag.id === tagId ? { ...tag, ...patch } : tag));
@@ -92,6 +121,31 @@ export const useUpdateTag = (ownerProfileId: ProfileId | undefined) => {
     onSuccess: (_data, { tagId, updates }) => {
       queryClient.setQueryData<OwnedTag[]>(key, (list) => patchTag(list, tagId, updates));
       void queryClient.invalidateQueries({ queryKey: key });
+    },
+  });
+};
+
+export interface LinkTagInput {
+  tagId: string;
+  destination: TagDestinationRef;
+  name: string | null;
+}
+
+/**
+ * Link a blank tag to a destination (ONE-139). Not optimistic: once linked it
+ * never changes, so the screen moves on only when the server has it. The
+ * linked tag replaces the blank one in its owner's list, and its resolution
+ * is dropped, so the next scan of the same sticker goes to its destination.
+ */
+export const useLinkTag = (ownerProfileId: ProfileId | undefined) => {
+  const queryClient = useQueryClient();
+  const key = tagKeys.mine(ownerProfileId ?? '');
+  return useMutation<OwnedTag, unknown, LinkTagInput>({
+    mutationFn: ({ tagId, destination, name }) => linkTag(tagId, destination, name),
+    onSuccess: (tag) => {
+      queryClient.setQueryData<OwnedTag[]>(key, (list) => list?.map((existing) => (existing.id === tag.id ? tag : existing)));
+      queryClient.removeQueries({ queryKey: tagKeys.resolution(tag.shortCode) });
+      void queryClient.invalidateQueries({ queryKey: tagKeys.lists() });
     },
   });
 };

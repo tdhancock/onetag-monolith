@@ -27,6 +27,7 @@ import ToastContainer from '../components/native/Toast';
 import { color, type } from '../theme/tokens';
 import QueryProvider from '../lib/QueryProvider';
 import { opensWithoutSession } from '../lib/screens/auth';
+import { takeReturnAfterSignIn } from '../lib/signInReturn';
 import { pushRoute } from '../lib/screens/notifications';
 
 // Keep the splash screen visible while we fetch resources
@@ -74,11 +75,12 @@ function RootLayoutNav() {
 
     // Auth state change listener — registered ONCE
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      // Signing in from the sign-in or sign-up screens goes home. supabase-js
-      // also reports SIGNED_IN as it restores a saved session at launch; that
-      // must not replace the screen a tag link or a push opened the app on.
+      // Signing in from the sign-in or sign-up screens goes home, or back to
+      // a tag that sent someone to sign in (ONE-139). supabase-js also reports
+      // SIGNED_IN as it restores a saved session at launch; that must not
+      // replace the screen a tag link or a push opened the app on.
       if (event === 'SIGNED_IN' && currentSegments.current[0] === '(auth)') {
-        router.replace('/(tabs)');
+        router.replace(takeReturnAfterSignIn() ?? '/(tabs)');
       } else if (event === 'SIGNED_OUT') {
         router.replace('/(auth)/login');
       }
@@ -178,6 +180,7 @@ function RootLayoutNav() {
       <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
       <Stack.Screen name="create-profile" options={{ presentation: 'modal' }} />
       <Stack.Screen name="tags/create" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="tags/print" options={{ presentation: 'modal' }} />
       <Stack.Screen name="product/create" options={{ presentation: 'modal' }} />
       <Stack.Screen name="product/[id]/edit" options={{ presentation: 'modal' }} />
       <Stack.Screen name="project/create" options={{ presentation: 'modal' }} />

@@ -10,6 +10,7 @@ import type { CurrentProfileStatus } from '../../features/profiles';
 import type { ProfileId } from '../../types';
 import { productRoute } from './products';
 import { projectRoute } from './projects';
+import { tagLinkRoute } from './tags';
 
 // ─── Where a destination goes ───────────────────────────────────────────
 
@@ -36,11 +37,13 @@ export const routeForDestination = (destination: TagDestination): string | null 
 
 // ─── Which state the screen is in ───────────────────────────────────────
 
-export type TagFailure = 'not-found' | 'inactive' | 'offline' | 'failed' | 'destination-missing';
+export type TagFailure = 'not-found' | 'inactive' | 'unlinked' | 'offline' | 'failed' | 'destination-missing';
 
 export type TagScreen =
   | { kind: 'resolving' }
   | { kind: 'redirect'; tagId: string; route: string }
+  /** The scanner's own blank tag: on to linking it (ONE-139). No Scan, since it points nowhere. */
+  | { kind: 'link'; route: string }
   | { kind: TagFailure };
 
 export interface TagQueryState {
@@ -74,6 +77,12 @@ export const tagScreenFor = (query: TagQueryState): TagScreen => {
 
   const resolution = query.data;
   if (!resolution || resolution.status === 'not-found') return { kind: 'not-found' };
+  // A blank tag (ONE-135): its owner links it; anyone else learns it isn't set up.
+  if (resolution.status === 'unlinked') {
+    return resolution.ownedByCaller && resolution.tagId
+      ? { kind: 'link', route: tagLinkRoute(resolution.tagId) }
+      : { kind: 'unlinked' };
+  }
   if (resolution.status === 'inactive') return { kind: 'inactive' };
 
   const route = resolution.destination ? routeForDestination(resolution.destination) : null;
@@ -140,6 +149,12 @@ export const FAILURE_COPY: Record<TagFailure, FailureCopy> = {
     body: 'Its owner has paused or replaced it.',
     retry: false,
   },
+  unlinked: {
+    label: 'Not set up',
+    title: "This tag isn't set up yet.",
+    body: "Its owner hasn't linked it to anything yet. If it's yours, sign in with the account that made it.",
+    retry: false,
+  },
   offline: {
     label: 'Offline',
     title: "You're offline.",
@@ -163,6 +178,8 @@ export const FAILURE_COPY: Record<TagFailure, FailureCopy> = {
 export interface OnwardAction {
   label: string;
   route: string;
+  /** Where signing in should come back to, instead of home (ONE-139). */
+  returnTo?: string;
 }
 
 /**
@@ -171,10 +188,24 @@ export interface OnwardAction {
  * Someone whose session is still loading is offered the signed-out routes;
  * the auth layout moves a signed-in account on from there.
  */
-export const onwardActionsFor = (auth: AuthStatus): { primary: OnwardAction; secondary?: OnwardAction } =>
-  auth === 'signed-in'
-    ? { primary: { label: 'Go to OneTag', route: '/(tabs)' } }
-    : {
-        primary: { label: 'Join OneTag', route: '/(auth)/signup' },
-        secondary: { label: 'Sign in', route: '/(auth)/login' },
-      };
+export const onwardActionsFor = (
+  auth: AuthStatus,
+  /**
+   * A tag to come back to after signing in: a blank tag's own route, since
+   * its owner may be the one holding it, signed out (ONE-139). Sign in then
+   * leads, and returns to the tag rather than home.
+   */
+  signInReturnTo?: string,
+): { primary: OnwardAction; secondary?: OnwardAction } => {
+  if (auth === 'signed-in') return { primary: { label: 'Go to OneTag', route: '/(tabs)' } };
+  if (signInReturnTo) {
+    return {
+      primary: { label: 'Sign in', route: '/(auth)/login', returnTo: signInReturnTo },
+      secondary: { label: 'Join OneTag', route: '/(auth)/signup' },
+    };
+  }
+  return {
+    primary: { label: 'Join OneTag', route: '/(auth)/signup' },
+    secondary: { label: 'Sign in', route: '/(auth)/login' },
+  };
+};

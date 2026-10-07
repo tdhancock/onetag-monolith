@@ -58,6 +58,23 @@ const PROJECT_TAG: ResolveTagRow = {
   dest_project_id: 'pj-1',
 };
 
+/** A blank Physical Tag, printed and not yet linked, as its owner resolves it (ONE-135). */
+const BLANK_FOR_OWNER: ResolveTagRow = {
+  tag_id: 'tag-blank',
+  active: true,
+  dest_profile_id: null,
+  dest_profile_username: null,
+  dest_product_id: null,
+  dest_project_id: null,
+  dest_post_id: null,
+  dest_post_username: null,
+  linked: false,
+  owned_by_caller: true,
+};
+
+/** The same tag as anyone else resolves it: no id, and not theirs. */
+const BLANK_FOR_OTHERS: ResolveTagRow = { ...BLANK_FOR_OWNER, tag_id: null, owned_by_caller: false };
+
 /** A fake `supabase.rpc(...).maybeSingle()` answering with one result. */
 function answer(result: { data: unknown; error: unknown; status: number }) {
   const maybeSingle = jest.fn(() => Promise.resolve(result));
@@ -162,6 +179,27 @@ describe('mapResolveTagRow', () => {
     expect(mapResolveTagRow(PRODUCT_TAG)).toEqual({
       status: 'active',
       tagId: 'tag-1',
+      destination: { kind: 'product', productId: 'pd-1' },
+    });
+  });
+
+  it('reads a blank tag, for its owner, as unlinked with the id to link it by (ONE-135)', () => {
+    expect(mapResolveTagRow(BLANK_FOR_OWNER)).toEqual({ status: 'unlinked', tagId: 'tag-blank', ownedByCaller: true });
+  });
+
+  it('reads a blank tag, for anyone else, as unlinked — not paused, though it carries no id', () => {
+    expect(mapResolveTagRow(BLANK_FOR_OTHERS)).toEqual({ status: 'unlinked', tagId: null, ownedByCaller: false });
+  });
+
+  it('reads a paused blank tag as paused: resolve_tag says nothing of where it points', () => {
+    expect(mapResolveTagRow({ ...BLANK_FOR_OTHERS, active: false, linked: null, owned_by_caller: null })).toEqual({
+      status: 'inactive',
+    });
+  });
+
+  it('reads a linked tag that says so as before', () => {
+    expect(mapResolveTagRow({ ...PRODUCT_TAG, linked: true, owned_by_caller: false })).toMatchObject({
+      status: 'active',
       destination: { kind: 'product', productId: 'pd-1' },
     });
   });
@@ -270,9 +308,21 @@ describe('tagScreenFor', () => {
   it.each([
     [{ status: 'not-found' } as const, 'not-found'],
     [{ status: 'inactive' } as const, 'inactive'],
+    // Someone else's blank tag isn't set up (ONE-139).
+    [{ status: 'unlinked', tagId: null, ownedByCaller: false } as const, 'unlinked'],
     [{ status: 'active', tagId: 'tag-1', destination: null } as const, 'destination-missing'],
   ])('shows %j as %s', (data, kind) => {
     expect(tagScreenFor({ ...settled, data })).toEqual({ kind });
+  });
+
+  it("sends a blank tag's owner on to linking it, and records nothing (ONE-139)", () => {
+    expect(tagScreenFor({ ...settled, data: { status: 'unlinked', tagId: 'tag-blank', ownedByCaller: true } }))
+      .toEqual({ kind: 'link', route: '/tags/tag-blank/link' });
+  });
+
+  it("shows an owner's blank tag as not set up when it came without its id", () => {
+    expect(tagScreenFor({ ...settled, data: { status: 'unlinked', tagId: null, ownedByCaller: true } }))
+      .toEqual({ kind: 'unlinked' });
   });
 
   it('shows offline for a request that never reached the server, and failed otherwise', () => {
@@ -321,6 +371,20 @@ describe('every failure has somewhere to go', () => {
       primary: { label: 'Join OneTag', route: '/(auth)/signup' },
       secondary: { label: 'Sign in', route: '/(auth)/login' },
     });
+  });
+
+  it("leads with Sign in, coming back to the tag, for a blank tag when signed out (ONE-139)", () => {
+    expect(onwardActionsFor('signed-out', '/t/BLANK234')).toEqual({
+      primary: { label: 'Sign in', route: '/(auth)/login', returnTo: '/t/BLANK234' },
+      secondary: { label: 'Join OneTag', route: '/(auth)/signup' },
+    });
+    // Signed in to another account, there is nowhere to come back to.
+    expect(onwardActionsFor('signed-in', '/t/BLANK234')).toEqual({ primary: { label: 'Go to OneTag', route: '/(tabs)' } });
+  });
+
+  it("says a blank tag isn't set up, and how its owner gets past that", () => {
+    expect(FAILURE_COPY.unlinked.title).toBe("This tag isn't set up yet.");
+    expect(FAILURE_COPY.unlinked.body).toContain('sign in with the account that made it');
   });
 
   it('says what the ticket says for the two states a stranger most often meets', () => {

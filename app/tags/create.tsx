@@ -1,31 +1,28 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import { useApp } from '../../store/AppContext.native';
-import { useCurrentProfile, useMyProfilesQuery, useProfilePostsQuery } from '../../features/profiles';
-import { useBusinessProductsQuery } from '../../features/products';
-import { useOwnedProjectsQuery } from '../../features/projects';
+import { useCurrentProfile } from '../../features/profiles';
 import { useCreateTag, type OwnedTag } from '../../features/tags';
-import { Button, Card, ListRow, MonoLabel, TextField } from '../../components/native/ui';
+import { Button, Card, MonoLabel, TextField } from '../../components/native/ui';
 import { CheckIcon } from '../../components/native/Icons';
 import KeyboardAvoider from '../../components/native/KeyboardAvoider';
 import FormScrollView from '../../components/native/FormScrollView';
 import TagQRCode from '../../components/native/TagQRCode';
+import OwnedDestinationList from '../../components/native/OwnedDestinationList';
 import { copyTagLink, shareTagLink } from '../../services/tagSharing';
 import { buildTagUrl } from '../../lib/tagLinks';
+import { useOwnedTagDestinations } from '../../lib/useOwnedTagDestinations';
 import {
   canContinue,
   chosenDestination,
   CREATABLE_TAG_TYPES,
   CREATE_TAG_FAILED,
-  destinationSections,
   EMPTY_TAG_DRAFT,
   initialTagCreate,
   newTagFromDraft,
   nextStep,
-  postChoices,
   previousStep,
   stepIndex,
   stepProgressLabel,
@@ -65,39 +62,13 @@ export default function CreateTagScreen() {
     destination?: string | string[];
     kind?: string | string[];
   }>();
-  const { profileId, authUserId } = useCurrentProfile();
-  const { data: profiles } = useMyProfilesQuery(authUserId);
+  const { profileId } = useCurrentProfile();
   const createTag = useCreateTag();
 
-  // What the account owns and so may point a tag at (ONE-89): its profiles,
-  // its business profile's products, every project its profiles own, and the
-  // posts of the profile it's acting as.
-  const business = profiles?.find((profile) => profile.profileType === 'business');
-  const individual = profiles?.find((profile) => profile.profileType !== 'business');
-  const products = useBusinessProductsQuery(business?.id);
-  const businessProjects = useOwnedProjectsQuery(business?.id);
-  const individualProjects = useOwnedProjectsQuery(individual?.id);
-  const posts = useProfilePostsQuery(profileId);
-  // A query with no profile to ask about never runs, so it is not waited on.
-  const loaded =
-    Boolean(profiles) &&
-    !products.isLoading &&
-    !businessProjects.isLoading &&
-    !individualProjects.isLoading &&
-    !posts.isLoading;
-
-  // Only destinations the account owns: one RLS would refuse is never offered.
+  // What the account owns and so may point a tag at (ONE-89), shared with
+  // linking a blank tag (ONE-139). One RLS would refuse is never offered.
   const wantedPost = param(params.kind) === 'post' ? param(params.destination) : undefined;
-  const sections = useMemo(
-    () =>
-      destinationSections(
-        profiles ?? [],
-        products.data ?? [],
-        [...(businessProjects.data ?? []), ...(individualProjects.data ?? [])],
-        postChoices(posts.data ?? [], wantedPost),
-      ),
-    [profiles, products.data, businessProjects.data, individualProjects.data, posts.data, wantedPost],
-  );
+  const { sections, loaded } = useOwnedTagDestinations(wantedPost);
 
   const [draft, setDraft] = useState<TagDraft>(EMPTY_TAG_DRAFT);
   const [step, setStep] = useState<TagCreateStep>('type');
@@ -212,42 +183,11 @@ export default function CreateTagScreen() {
           ) : null}
 
           {step === 'destination' ? (
-            <View style={styles.sections}>
-              {sections.map((section) => (
-                <View key={section.kind}>
-                  <MonoLabel color="textMid" style={styles.sectionTitle}>
-                    {section.title}
-                  </MonoLabel>
-                  {section.options.map((option, index) => {
-                    const selected =
-                      draft.destination?.kind === option.destination.kind &&
-                      draft.destination.id === option.destination.id;
-                    return (
-                      <ListRow
-                        key={option.destination.id}
-                        title={option.title}
-                        subtitle={option.subtitle}
-                        avatarUri={option.avatarUri}
-                        // A product's or project's picture is square; a profile's avatar round.
-                        leading={
-                          option.imageUri !== undefined ? (
-                            option.imageUri ? (
-                              <Image source={{ uri: option.imageUri }} style={styles.thumb} contentFit="cover" />
-                            ) : (
-                              <View style={styles.thumb} />
-                            )
-                          ) : undefined
-                        }
-                        divider={index < section.options.length - 1}
-                        onPress={() => update({ destination: option.destination })}
-                        accessibilityLabel={`${option.title}${selected ? ', selected' : ''}`}
-                        trailing={selected ? <CheckIcon color={color.text} size={20} strokeWidth={2} /> : null}
-                      />
-                    );
-                  })}
-                </View>
-              ))}
-            </View>
+            <OwnedDestinationList
+              sections={sections}
+              selected={draft.destination}
+              onSelect={(destination) => update({ destination })}
+            />
           ) : null}
 
           {step === 'details' ? (
@@ -412,11 +352,6 @@ function CreatedTag({
 }
 
 const styles = StyleSheet.create({
-  thumb: {
-    width: 40,
-    height: 40,
-    backgroundColor: color.bgPanel,
-  },
   screen: {
     flex: 1,
     backgroundColor: color.bg,
@@ -503,13 +438,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: color.textMid,
-  },
-  sections: {
-    marginTop: space.lg,
-    gap: space.lg,
-  },
-  sectionTitle: {
-    marginBottom: space.xs,
   },
   fields: {
     marginTop: space.lg,

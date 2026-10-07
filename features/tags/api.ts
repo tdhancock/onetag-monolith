@@ -16,6 +16,7 @@ import type {
   OwnedTagDestination,
   ResolveTagRow,
   TagDestination,
+  TagDestinationRef,
   TagResolution,
   TagResolutionFailure,
   TagRow,
@@ -50,6 +51,9 @@ const destinationOf = (row: ResolveTagRow): TagDestination | null => {
 /** Read a `resolve_tag` row — or its absence — as a resolution. */
 export const mapResolveTagRow = (row: ResolveTagRow | null): TagResolution => {
   if (!row) return { status: 'not-found' };
+  if (row.active && row.linked === false) {
+    return { status: 'unlinked', tagId: row.tag_id, ownedByCaller: row.owned_by_caller === true };
+  }
   if (!row.active || !row.tag_id) return { status: 'inactive' };
   return { status: 'active', tagId: row.tag_id, destination: destinationOf(row) };
 };
@@ -148,6 +152,7 @@ export const mapTagRow = (row: TagRow, counts?: TagScanCountRow): OwnedTag => ({
   active: row.active,
   createdAt: row.created_at,
   destination: destinationFromRow(row),
+  linked: Boolean(row.dest_profile_id || row.dest_product_id || row.dest_project_id || row.dest_post_id),
   hostPostId: row.host_post_id ?? null,
   scanCount: counts ? Number(counts.scan_count) || 0 : 0,
   lastScannedAt: counts?.last_scanned_at ?? null,
@@ -236,6 +241,29 @@ export const createTag = async (tag: NewTag): Promise<OwnedTag> => {
   return mapTagRow(data as unknown as TagRow);
 };
 
+/** The most blank tags made at once: two sheets of twelve (lib/tagSheet.ts). */
+export const MAX_BLANK_TAGS = 24;
+
+/**
+ * Create `count` blank Physical Tags for a profile and read them back
+ * (ONE-138): printed first, each Linked to a Destination later, once
+ * (ONE-135). One insert, so a batch lands whole or not at all and a failed
+ * one can be retried without doubling any. Their short codes are the
+ * database's to issue, as every tag's are.
+ */
+export const createBlankTags = async (ownerProfileId: ProfileId, count: number): Promise<OwnedTag[]> => {
+  if (!Number.isInteger(count) || count < 1 || count > MAX_BLANK_TAGS) {
+    throw new Error(`Make between 1 and ${MAX_BLANK_TAGS} blank tags, not ${count}`);
+  }
+  const { data, error } = await supabase
+    .from('tags')
+    .insert(Array.from({ length: count }, () => ({ owner_profile_id: ownerProfileId, tag_type: 'physical', format: 'qr' })))
+    .select(TAG_SELECT);
+
+  if (error) throw error;
+  return ((data ?? []) as unknown as TagRow[]).map((row) => mapTagRow(row));
+};
+
 /**
  * Embed tags in a post (ONE-46), all in one insert: they land together or
  * not at all, so a retry never doubles the ones that made it. Attributed to
@@ -303,6 +331,25 @@ export const updateTag = async (tagId: string, updates: TagUpdates): Promise<voi
   if (error) throw error;
   // RLS filters a row the caller does not own out of the update silently.
   if (!data || data.length === 0) throw new TagNotFoundError();
+};
+
+/**
+ * Link a blank Physical Tag to a destination, and name it (ONE-139). Once:
+ * the database refuses to change a destination a tag already has
+ * (protect_tag_identity, ONE-135), and RLS refuses one the account doesn't
+ * own, so a choice the picker never offered fails here too.
+ */
+export const linkTag = async (tagId: string, destination: TagDestinationRef, name: string | null): Promise<OwnedTag> => {
+  const { data, error } = await supabase
+    .from('tags')
+    .update({ [DESTINATION_COLUMN[destination.kind]]: destination.id, name })
+    .eq('id', tagId)
+    .select(TAG_SELECT);
+  if (error) throw error;
+  // RLS filters a row the caller does not own out of the update silently.
+  const row = ((data ?? []) as unknown as TagRow[])[0];
+  if (!row) throw new TagNotFoundError();
+  return mapTagRow(row);
 };
 
 /** Pause or resume a tag. A paused tag resolves to the inactive state. */

@@ -70,9 +70,11 @@ SELECT throws_ok(
     VALUES ((SELECT ba FROM ids), 'physical', (SELECT ba FROM ids))$$,
   '42501', NULL, 'a user cannot create a tag owned by someone else''s profile');
 
+-- A Physical Tag may be blank until it is linked (ONE-135, blank_tags.test.sql);
+-- every other tag needs its destination from the start.
 SELECT throws_ok(
-  $$INSERT INTO public.tags (owner_profile_id, tag_type) VALUES ((SELECT aa FROM ids), 'physical')$$,
-  '23514', NULL, 'the destination check rejects zero destinations');
+  $$INSERT INTO public.tags (owner_profile_id, tag_type) VALUES ((SELECT aa FROM ids), 'digital')$$,
+  '23514', NULL, 'the destination check rejects a Digital Tag with zero destinations');
 
 -- ONE-83 kept posts out; since 2026-09-28 a post is a Destination
 -- (post_destinations.test.sql).

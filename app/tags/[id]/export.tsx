@@ -9,7 +9,7 @@ import { Button, EmptyState, MonoLabel } from '../../../components/native/ui';
 import TagQRCode from '../../../components/native/TagQRCode';
 import { copyTagLink, saveTagQrToPhotos, shareTagQrImage } from '../../../services/tagSharing';
 import { buildTagUrl } from '../../../lib/tagLinks';
-import { destinationLabel, PHOTOS_DENIED_MESSAGE, TAGS_DASHBOARD_ROUTE, tagTitle } from '../../../lib/screens/tags';
+import { PHOTOS_DENIED_MESSAGE, TAGS_DASHBOARD_ROUTE, tagDestinationLabel, tagTitle } from '../../../lib/screens/tags';
 import { color, space, type } from '../../../theme/tokens';
 
 /** The preview's largest width, however wide the screen. */
@@ -106,7 +106,7 @@ export default function ExportTagScreen() {
         <Text style={styles.title} accessibilityRole="header">
           {tagTitle(tag)}
         </Text>
-        <Text style={styles.destination}>{destinationLabel(tag.destination)}</Text>
+        <Text style={styles.destination}>{tagDestinationLabel(tag)}</Text>
         {tag.active ? null : (
           <MonoLabel color="text" style={styles.inactive}>
             Inactive: scanning this shows it is no longer active

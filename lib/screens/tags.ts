@@ -34,6 +34,16 @@ export const destinationLabel = (destination: OwnedTagDestination | null): strin
   }
 };
 
+/** What a blank tag says where a destination would be (ONE-138). */
+export const NOT_LINKED_LABEL = 'Not linked';
+
+/**
+ * Where a tag points, as its rows and screens say it: its destination, or
+ * that a blank tag isn't linked yet — never "removed", which it never was.
+ */
+export const tagDestinationLabel = (tag: Pick<OwnedTag, 'destination' | 'linked'>): string =>
+  tag.linked ? destinationLabel(tag.destination) : NOT_LINKED_LABEL;
+
 /** A destination's id, whatever its kind. */
 export const destinationIdOf = (destination: OwnedTagDestination): string => {
   switch (destination.kind) {
@@ -48,9 +58,9 @@ export const destinationIdOf = (destination: OwnedTagDestination): string => {
   }
 };
 
-/** A tag's name, or its destination when it has none. */
-export const tagTitle = (tag: Pick<OwnedTag, 'name' | 'destination'>): string =>
-  tag.name?.trim() || (tag.destination ? tag.destination.name : 'Untitled tag');
+/** A tag's name, or its destination when it has none; a blank tag unnamed is a blank tag. */
+export const tagTitle = (tag: Pick<OwnedTag, 'name' | 'destination'> & Partial<Pick<OwnedTag, 'linked'>>): string =>
+  tag.name?.trim() || (tag.destination ? tag.destination.name : tag.linked === false ? 'Blank tag' : 'Untitled tag');
 
 export const scanCountLabel = (count: number): string => `${count} ${count === 1 ? 'scan' : 'scans'}`;
 
@@ -72,6 +82,12 @@ export const tagDetailRoute = (tagId: string): string => `/tags/${encodeURICompo
 
 export const tagExportRoute = (tagId: string): string => `/tags/${encodeURIComponent(tagId)}/export`;
 
+/** Make a batch of blank tags and export them as printable sheets (ONE-138). */
+export const TAG_PRINT_ROUTE = '/tags/print';
+
+/** Link a blank tag to a destination, once (ONE-139). */
+export const tagLinkRoute = (tagId: string): string => `/tags/${encodeURIComponent(tagId)}/link`;
+
 /**
  * What the create flow can start with: a replacement's type and destination,
  * or a product's or project's own page pre-filling itself (ONE-89). The kind
@@ -87,6 +103,13 @@ export const tagCreateRoute = (prefill: TagCreatePrefill = {}) => ({
   pathname: '/tags/create' as const,
   params: Object.fromEntries(Object.entries(prefill).filter(([, value]) => value)) as Record<string, string>,
 });
+
+/**
+ * Whether a tag can be replaced: a linked Physical Tag. A blank one has no
+ * destination to carry over — another sheet replaces it.
+ */
+export const canReplaceTag = (tag: Pick<OwnedTag, 'tagType' | 'linked'>): boolean =>
+  tag.tagType === 'physical' && tag.linked;
 
 /**
  * "Create a replacement" for a damaged or lost Physical Tag: the create flow,
@@ -444,3 +467,44 @@ export const CREATE_TAG_FAILED = "Couldn't create the tag. Nothing you entered w
 export const PHOTOS_DENIED_MESSAGE =
   "OneTag doesn't have access to your photos, so the QR code wasn't saved. " +
   'Allow photo access in Settings, or use Share to send it anywhere else.';
+
+// ─── Printing blank tags (ONE-138) ──────────────────────────────────────
+
+/** How many blank tags a batch makes: one sheet, or two. */
+export const BLANK_TAG_BATCHES = [
+  { count: 12, label: '12 tags', description: 'One sheet of US Letter' },
+  { count: 24, label: '24 tags', description: 'Two sheets' },
+] as const;
+
+export type BlankTagBatchSize = (typeof BLANK_TAG_BATCHES)[number]['count'];
+
+export const PRINT_BLANK_TAGS_TITLE = 'Print blank tags';
+
+export const PRINT_BLANK_TAGS_INTRO =
+  'Print a sheet of codes, stick them on things, and link each one the first time you scan it. ' +
+  "Until it's linked, a code tells anyone who scans it that it isn't set up yet.";
+
+/** What the screen says once a batch is made, and how to print it. */
+export const blankTagsReadyMessage = (count: number): string =>
+  `${count} blank tags made. Print at 100% scale on US Letter, then cut along the dashed lines.`;
+
+/** "Sheet 1 of 2". */
+export const sheetLabel = (index: number, total: number): string => `Sheet ${index + 1} of ${total}`;
+
+export const SHEETS_SAVED_MESSAGE = 'Saved to Photos.';
+
+export const PRINT_BLANK_TAGS_FAILED = "Couldn't make the tags. Check your connection and try again.";
+
+// ─── Linking a blank tag (ONE-139) ──────────────────────────────────────
+
+export const LINK_TAG_TITLE = 'Link this tag';
+
+export const LINK_TAG_INTRO =
+  'Choose what this tag points to. Once it is linked it points there for good: somewhere else needs a new tag.';
+
+export const LINK_TAG_FAILED = "Couldn't link the tag. Check your connection and try again.";
+
+export const LINK_TAG_NOT_BLANK = {
+  title: 'This tag is already linked',
+  body: "A tag's destination never changes once it has one. Print a new tag to point somewhere else.",
+} as const;

@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import QRCode from 'react-native-qrcode-svg';
-import { buildTagUrl, isValidShortCode } from '../../lib/tagLinks';
-import { TAG_QR_ERROR_CORRECTION, TAG_QR_QUIET_ZONE_MODULES } from '../../lib/tagQr';
+import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import { isValidShortCode } from '../../lib/tagLinks';
+import { TAG_QR_QUIET_ZONE_MODULES, tagQrLayout, type TagQrLayout } from '../../lib/tagQr';
 import { space, type } from '../../theme/tokens';
 
 // A QR code is pure black on pure white whatever the theme. Scanners read
@@ -12,25 +12,35 @@ import { space, type } from '../../theme/tokens';
 export const QR_INK = '#000000'; // allow-hex: QR scan reliability, see above
 export const QR_GROUND = '#ffffff'; // allow-hex: QR scan reliability, see above
 
-/** The fewest modules a QR code has on a side: version 1. */
-const SMALLEST_QR_MODULES = 21;
-
 /**
- * The quiet zone for a code drawn `size` wide, in the same units.
- *
- * react-native-qrcode-svg takes it in the code's own coordinate space, where
- * one module is `size / modules`. Sized for the largest module any code can
- * have (the 21-module version 1), it is at least four modules at every
- * version — whatever length the tag URL's configured domain makes the payload.
+ * The dark modules as one SVG path, in module units with the quiet zone
+ * included: a rectangle for each horizontal run of dark modules. One path
+ * rather than a rect per module, so neighbouring modules can't show a
+ * hairline seam between them at fractional scales.
  */
-export const tagQrQuietZone = (size: number): number =>
-  (size * TAG_QR_QUIET_ZONE_MODULES) / SMALLEST_QR_MODULES;
+export const qrModulePath = (layout: TagQrLayout): string => {
+  const q = TAG_QR_QUIET_ZONE_MODULES;
+  const parts: string[] = [];
+  layout.dark.forEach((row, r) => {
+    let c = 0;
+    while (c < row.length) {
+      if (!row[c]) {
+        c += 1;
+        continue;
+      }
+      const start = c;
+      while (c < row.length && row[c]) c += 1;
+      parts.push(`M${start + q} ${r + q}h${c - start}v1h${start - c}z`);
+    }
+  });
+  return parts.join('');
+};
 
 export interface TagQRCodeProps {
   /**
-   * The tag's short code. Never a URL: the URL is built here, so no caller can
-   * encode a wrong or stale domain. A code that is not the shape of one the
-   * database issues renders nothing.
+   * The tag's short code. Never a URL: the URL is built in lib/tagQr.ts, so no
+   * caller can encode a wrong or stale domain. A code that is not the shape of
+   * one the database issues renders nothing.
    */
   shortCode: string;
   /** Width of the code, quiet zone included. */
@@ -40,12 +50,19 @@ export interface TagQRCodeProps {
 }
 
 /**
- * A Tag's QR code (ONE-33): `buildTagUrl(shortCode)` at error correction H,
- * with a quiet zone of at least four modules, black on white on a white card
- * — so it scans on any theme — and the short code printed beneath.
+ * A Tag's QR code (ONE-33, ONE-136), drawn from tagQrLayout — the layout the
+ * exported image is drawn from too, so the screen shows exactly what prints:
+ * buildTagUrl(shortCode) at error correction H, a four-module quiet zone, the
+ * OneTag mark in a patch cleared in its centre, black on white on a white
+ * card so it scans on any theme, and the short code printed beneath.
  */
 const TagQRCode: React.FC<TagQRCodeProps> = ({ shortCode, size, showCode = true }) => {
-  if (!isValidShortCode(shortCode)) return null;
+  const layout = useMemo(() => (isValidShortCode(shortCode) ? tagQrLayout(shortCode) : null), [shortCode]);
+  if (!layout) return null;
+
+  const q = TAG_QR_QUIET_ZONE_MODULES;
+  const span = layout.modules + 2 * q;
+  const { mark } = layout;
 
   return (
     <View
@@ -54,14 +71,30 @@ const TagQRCode: React.FC<TagQRCodeProps> = ({ shortCode, size, showCode = true 
       accessibilityRole="image"
       accessibilityLabel={`QR code for tag ${shortCode}`}
     >
-      <QRCode
-        value={buildTagUrl(shortCode)}
-        size={size}
-        ecl={TAG_QR_ERROR_CORRECTION}
-        quietZone={tagQrQuietZone(size)}
-        color={QR_INK}
-        backgroundColor={QR_GROUND}
-      />
+      <Svg width={size} height={size} viewBox={`0 0 ${span} ${span}`}>
+        <Rect x={0} y={0} width={span} height={span} fill={QR_GROUND} />
+        <Path d={qrModulePath(layout)} fill={QR_INK} />
+        {mark ? (
+          <>
+            <Circle
+              cx={q + mark.left + mark.geometry.back.cx}
+              cy={q + mark.top + mark.geometry.back.cy}
+              r={mark.geometry.back.r}
+              stroke={QR_INK}
+              strokeWidth={mark.geometry.stroke}
+              fill="none"
+            />
+            <Circle
+              cx={q + mark.left + mark.geometry.front.cx}
+              cy={q + mark.top + mark.geometry.front.cy}
+              r={mark.geometry.front.r}
+              stroke={QR_INK}
+              strokeWidth={mark.geometry.stroke}
+              fill={QR_GROUND}
+            />
+          </>
+        ) : null}
+      </Svg>
       {showCode ? (
         <Text style={[styles.code, { fontSize: Math.max(13, Math.round(size / 14)) }]} selectable>
           {shortCode}
