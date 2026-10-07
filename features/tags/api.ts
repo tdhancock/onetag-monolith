@@ -55,7 +55,8 @@ export const mapResolveTagRow = (row: ResolveTagRow | null): TagResolution => {
     return { status: 'unlinked', tagId: row.tag_id, ownedByCaller: row.owned_by_caller === true };
   }
   if (!row.active || !row.tag_id) return { status: 'inactive' };
-  return { status: 'active', tagId: row.tag_id, destination: destinationOf(row) };
+  const resolution: TagResolution = { status: 'active', tagId: row.tag_id, destination: destinationOf(row) };
+  return row.dest_project_unlisted === true ? { ...resolution, projectUnlisted: true } : resolution;
 };
 
 /**
@@ -78,6 +79,22 @@ export const resolveTag = async (shortCode: string): Promise<TagResolution> => {
 
   if (error) throw new TagResolutionError(status === 0 ? 'offline' : 'failed', error);
   return mapResolveTagRow(data as ResolveTagRow | null);
+};
+
+/**
+ * Open an Unlisted project's tag as a profile (ONE-137): record the grant that
+ * lets that profile read the project, through this tag, while it stays live.
+ * The database grants only for the caller's own profile, an active Physical
+ * or Digital tag, and an unlisted project; anything else does nothing.
+ * Resolves to whether the profile now holds a grant through the tag.
+ */
+export const grantProjectTagAccess = async (shortCode: string, profileId: ProfileId): Promise<boolean> => {
+  const { data, error } = await supabase.rpc('grant_project_tag_access', {
+    p_short_code: shortCode,
+    p_profile_id: profileId,
+  });
+  if (error) throw error;
+  return data === true;
 };
 
 /**

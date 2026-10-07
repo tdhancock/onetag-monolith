@@ -28,8 +28,10 @@ export type TagResolution =
   /**
    * A live tag. `destination` is null when it points somewhere the app
    * cannot route: its target is gone, or is a kind this build doesn't know.
+   * `projectUnlisted` says its project is Unlisted (ONE-137): opening the tag
+   * is what lets a signed-in scanner read it.
    */
-  | { status: 'active'; tagId: string; destination: TagDestination | null }
+  | { status: 'active'; tagId: string; destination: TagDestination | null; projectUnlisted?: boolean }
   /**
    * A blank Physical Tag: printed, live, and not yet Linked to anything
    * (ONE-135). Its owner may link it, once; `tagId` is theirs alone, and is
@@ -59,6 +61,8 @@ export interface ResolveTagRow {
   linked?: boolean | null;
   /** Whether the caller's account owns the tag; null unless the tag is active. */
   owned_by_caller?: boolean | null;
+  /** Whether an active tag's project destination is Unlisted (ONE-137); null for any other. */
+  dest_project_unlisted?: boolean | null;
 }
 
 /** Why a resolution could not be read, in terms a screen can say something about. */

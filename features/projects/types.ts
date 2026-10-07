@@ -74,6 +74,8 @@ export interface ProjectFields {
   description: string | null;
   year: string | null;
   isPublic: boolean;
+  /** Unlisted (ONE-137): never with isPublic. */
+  unlisted: boolean;
   /** Optional (ONE-49): one of the fixed interests, or null. */
   interestSlug: string | null;
   /** The project this one sits inside (ONE-134), or null at the top level. */
@@ -100,6 +102,7 @@ export interface ProjectRow {
   year: string | null;
   cover_url: string | null;
   is_public: boolean;
+  unlisted?: boolean | null;
   created_at: string;
   description: string | null;
   /** A one-to-one embed arrives as an object; an older server or a mock may hand back an array. */

@@ -685,6 +685,22 @@ describe('Type-aware tabs (ONE-43)', () => {
     expect(el.querySelector('button[aria-label^="Furnace"]')).toBeNull();
   });
 
+  it('shows its owner an unlisted project, marked so (ONE-137)', async () => {
+    state.owned = [PROJECT, { ...PROJECT, id: 'pj-heater', name: 'Water heater', isPublic: false, unlisted: true }];
+    const el = await mount(<OwnProfileScreen />);
+    await selectTab(el, 'Projects');
+    expect(button(el, 'Water heater, Unlisted · Renovation · 2025')).not.toBeNull();
+  });
+
+  it('lists nobody else an unlisted project, even someone holding its tag, who reads it (ONE-137)', async () => {
+    state.owned = [PROJECT, { ...PROJECT, id: 'pj-heater', name: 'Water heater', isPublic: false, unlisted: true }];
+    mockParams.current = { username: 'ana' };
+    const el = await mount(<UserProfileScreen />);
+    await selectTab(el, 'Projects');
+    expect(el.querySelector('button[aria-label^="Water heater"]')).toBeNull();
+    expect(el.querySelector('button[aria-label^="Barn conversion"]')).not.toBeNull();
+  });
+
   it('marks a private project, which only those who may see it are shown', async () => {
     state.owned = [{ ...PROJECT, isPublic: false }];
     const el = await mount(<OwnProfileScreen />);

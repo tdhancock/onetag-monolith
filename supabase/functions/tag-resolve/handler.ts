@@ -147,6 +147,11 @@ export interface ResolveTagRow {
   linked?: boolean | null;
   /** Whether the caller owns the tag; the page reads as anon, so never true here. */
   owned_by_caller?: boolean | null;
+  /**
+   * Whether the project destination is Unlisted (ONE-137). The page reads as
+   * anon, which can't read one, so it offers the app with no details.
+   */
+  dest_project_unlisted?: boolean | null;
 }
 
 /** A name to show for a profile: the full name, or the handle. */
@@ -539,6 +544,11 @@ export const tagPage = async (code: string, request: Request, deps: HandlerDeps)
   // A live tag was read. As in the app, that is a Scan even when the
   // Destination then turns out to be private.
   if (isPersonReading(request)) recordScanInBackground(row.tag_id, deps);
+
+  // An Unlisted project (ONE-137) is there, but only for someone who opens its
+  // tag in the app. The page reads as anon, so it names nothing and offers the
+  // app — never "gone", which it isn't.
+  if (row.dest_project_unlisted === true) return destinationPage(unreadCard(ref), context);
 
   let card: DestinationCard | null;
   try {

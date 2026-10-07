@@ -55,7 +55,8 @@ export interface ProjectDraft {
   description: string;
   /** A stored URL, a photo just picked from the device, or none. */
   coverUri: string | null;
-  isPublic: boolean;
+  /** Public, Unlisted (ONE-137) or Private. */
+  visibility: ProjectVisibility;
   /** Optional: an interest slug, or null (ONE-49). */
   interestSlug: string | null;
   /** The project this one sits inside (ONE-134), or null at the top level. */
@@ -69,7 +70,7 @@ export const EMPTY_PROJECT_DRAFT: ProjectDraft = {
   year: '',
   description: '',
   coverUri: null,
-  isPublic: true,
+  visibility: 'public',
   interestSlug: null,
   parentProjectId: null,
 };
@@ -81,7 +82,7 @@ export const projectDraftFrom = (project: Project): ProjectDraft => ({
   year: project.year ?? '',
   description: project.description ?? '',
   coverUri: project.coverUrl,
-  isPublic: project.isPublic,
+  visibility: visibilityOf(project),
   interestSlug: project.interestSlug ?? null,
   parentProjectId: project.parentProjectId ?? null,
 });
@@ -101,7 +102,8 @@ export const projectFieldsFrom = (draft: ProjectDraft): ProjectFields => ({
   projectType: textOrNull(draft.projectType),
   year: textOrNull(draft.year),
   description: textOrNull(draft.description),
-  isPublic: draft.isPublic,
+  isPublic: draft.visibility === 'public',
+  unlisted: draft.visibility === 'unlisted',
   interestSlug: draft.interestSlug,
   parentProjectId: draft.parentProjectId,
 });
@@ -122,11 +124,31 @@ export const projectEditsFrom = (draft: ProjectDraft): ProjectEdits => ({
 export const projectDraftChanged = (draft: ProjectDraft, project: Project): boolean =>
   JSON.stringify(projectEditsFrom(draft)) !== JSON.stringify(projectEditsFrom(projectDraftFrom(project)));
 
-/** What the visibility switch says, either way. */
-export const projectVisibilityDescription = (isPublic: boolean): string =>
-  isPublic
-    ? 'Anyone can see it, including someone without the app who scans a tag.'
-    : 'Only you and its contributors can see it. To everyone else it does not exist.';
+/** Who can see a project (ONE-137). Stored as is_public and unlisted, never both. */
+export type ProjectVisibility = 'public' | 'unlisted' | 'private';
+
+/** A stored project's visibility, from its two columns. */
+export const visibilityOf = (project: { isPublic: boolean; unlisted?: boolean }): ProjectVisibility =>
+  project.isPublic ? 'public' : project.unlisted ? 'unlisted' : 'private';
+
+/** The three choices the project form offers, in order. */
+export const PROJECT_VISIBILITIES: { value: ProjectVisibility; label: string }[] = [
+  { value: 'public', label: 'Public' },
+  { value: 'unlisted', label: 'Unlisted' },
+  { value: 'private', label: 'Private' },
+];
+
+/** What each visibility means, said under its choice. */
+export const projectVisibilityDescription = (visibility: ProjectVisibility): string => {
+  switch (visibility) {
+    case 'public':
+      return 'Anyone can see it, in Explore and search, including someone without the app who scans a tag.';
+    case 'unlisted':
+      return "Anyone with its tag can see it, but it isn't listed anywhere: not in Explore, search or on your profile.";
+    case 'private':
+      return 'Only you and its contributors can see it. To everyone else it does not exist.';
+  }
+};
 
 // ─── What the screens say ───────────────────────────────────────────────
 
@@ -139,6 +161,22 @@ export const projectRowSubtitle = (project: Pick<Project, 'projectType' | 'year'
   [project.projectType, project.year].filter(Boolean).join(' · ') || 'Project';
 
 export const PRIVATE_LABEL = 'Private';
+export const UNLISTED_LABEL = 'Unlisted';
+
+/** The badge a project's rows and page carry: nothing for a public one. */
+export const visibilityBadge = (project: { isPublic: boolean; unlisted?: boolean }): string | null => {
+  const visibility = visibilityOf(project);
+  return visibility === 'public' ? null : visibility === 'unlisted' ? UNLISTED_LABEL : PRIVATE_LABEL;
+};
+
+/**
+ * Projects as a list shows them to a viewer (ONE-137): an unlisted one is
+ * listed nowhere but to its owner, even to someone who holds its tag.
+ */
+export const listedFor = <T extends Pick<ProjectSummary, 'unlisted' | 'ownerProfileId'>>(
+  projects: T[],
+  viewerProfileId: string | undefined,
+): T[] => projects.filter((project) => !project.unlisted || project.ownerProfileId === viewerProfileId);
 
 const counted = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
 

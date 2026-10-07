@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(50);
+SELECT plan(54);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -132,6 +132,17 @@ SELECT ok(NOT has_function_privilege('anon', 'public.register_push_token(text, t
 
 SELECT ok(NOT has_function_privilege('anon', 'public.feed_candidates(uuid, timestamptz, uuid, text, integer)', 'EXECUTE'),
   'anon cannot execute feed_candidates() (ONE-116)');
+
+-- ─── Unlisted projects (ONE-137) ──────────────────────────────────────
+
+SELECT ok(NOT has_function_privilege('anon', 'public.grant_project_tag_access(text, uuid)', 'EXECUTE'),
+  'anon cannot execute grant_project_tag_access(): a grant is a signed-in profile''s');
+SELECT ok(has_function_privilege('authenticated', 'public.grant_project_tag_access(text, uuid)', 'EXECUTE'),
+  'authenticated can execute grant_project_tag_access(): opening an unlisted project''s tag');
+SELECT ok(NOT has_function_privilege('anon', 'public.can_read_unlisted_project(uuid)', 'EXECUTE'),
+  'anon cannot execute can_read_unlisted_project()');
+SELECT ok(has_function_privilege('authenticated', 'public.can_read_unlisted_project(uuid)', 'EXECUTE'),
+  'authenticated can execute can_read_unlisted_project(): the unlisted read policy calls it');
 
 SELECT * FROM finish();
 ROLLBACK;

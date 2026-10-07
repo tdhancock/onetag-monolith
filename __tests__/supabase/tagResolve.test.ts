@@ -388,6 +388,22 @@ describe('a live tag', () => {
     expect(source.recordScan).toHaveBeenCalledWith('tag-1');
   });
 
+  it('offers an Unlisted project only through the app, naming nothing, and counts the Scan (ONE-137)', async () => {
+    const readProject = jest.fn(async () => null);
+    const { deps, source, background } = setup({
+      resolveTag: jest.fn(async () => ({ ...projectTag, dest_project_unlisted: true })),
+      readProject,
+    });
+    const response = await handleRequest(request(`/t/${CODE}`), deps);
+    expect(response.status).toBe(200);
+    const page = await html(response);
+    expect(page).toContain('Open this tag in OneTag');
+    expect(page).not.toContain(escapeHtml(FAILURE_COPY['destination-missing'].title));
+    expect(readProject).not.toHaveBeenCalled();
+    await Promise.all(background);
+    expect(source.recordScan).toHaveBeenCalledWith('tag-1');
+  });
+
   it("still offers the way into the app when the Destination's details can't be read", async () => {
     const failure = new Error('connection reset');
     const { deps, logged } = setup({ readProfile: jest.fn(async () => Promise.reject(failure)) });

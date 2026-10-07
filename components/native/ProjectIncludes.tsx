@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import { Button, ListRow } from './ui';
 import { RowSkeletons, SectionError } from './SectionStates';
 import type { ProjectSummary } from '../../features/projects';
-import { INCLUDES_EMPTY, PRIVATE_LABEL, projectRowSubtitle } from '../../lib/screens/projects';
+import { INCLUDES_EMPTY, projectRowSubtitle, visibilityBadge } from '../../lib/screens/projects';
 import { color, space, type } from '../../theme/tokens';
 
 export interface ProjectIncludesProps {
@@ -43,7 +43,7 @@ const ProjectIncludes: React.FC<ProjectIncludesProps> = ({ projects, isPending, 
   return (
     <>
       {projects.map((project, index) => {
-        const subtitle = [project.isPublic ? null : PRIVATE_LABEL, projectRowSubtitle(project)].filter(Boolean).join(' · ');
+        const subtitle = [visibilityBadge(project), projectRowSubtitle(project)].filter(Boolean).join(' · ');
         return (
           <ListRow
             key={project.id}

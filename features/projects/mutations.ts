@@ -67,12 +67,13 @@ export interface ProjectVisibilityInput {
 
 /**
  * Make a project private, or public again: the softer alternative to
- * deleting it, which keeps its contributors, products, saves and tags.
+ * deleting it, which keeps its contributors, products, saves and tags. Either
+ * way it is no longer Unlisted (ONE-137), which the edit form chooses.
  */
 export const useSetProjectPublic = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ project, isPublic }: ProjectVisibilityInput) => updateProject(project.id, { isPublic }),
+    mutationFn: ({ project, isPublic }: ProjectVisibilityInput) => updateProject(project.id, { isPublic, unlisted: false }),
     onSettled: (_data, _error, { project }) =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: projectKeys.detail(project.id) }),

@@ -35,7 +35,6 @@ import {
   deleteProjectConfirm,
   INCLUDES_TITLE,
   partOfText,
-  PRIVATE_LABEL,
   PROJECT_NOT_FOUND,
   productsEmptyState,
   projectAddContributorRoute,
@@ -46,6 +45,7 @@ import {
   projectRoute,
   projectStats,
   unlinkProductConfirm,
+  visibilityBadge,
 } from '../../lib/screens/projects';
 import { color, space, type } from '../../theme/tokens';
 
@@ -215,11 +215,11 @@ function ProjectDetail({
       <View style={styles.intro}>
         <View style={styles.labels}>
           <MonoLabel color="textMid">{projectKindLabel(project)}</MonoLabel>
-          {project.isPublic ? null : (
-            <View style={styles.badge} accessible accessibilityLabel={PRIVATE_LABEL}>
-              <MonoLabel color="inverse">{PRIVATE_LABEL}</MonoLabel>
+          {visibilityBadge(project) ? (
+            <View style={styles.badge} accessible accessibilityLabel={visibilityBadge(project)!}>
+              <MonoLabel color="inverse">{visibilityBadge(project)}</MonoLabel>
             </View>
-          )}
+          ) : null}
         </View>
         {project.parent ? (
           <Pressable
@@ -503,7 +503,9 @@ function OwnerMenu({
         hint={
           project.isPublic
             ? 'Only you and its contributors will see it. Its tags lead others to not found.'
-            : 'Anyone will be able to see it again.'
+            : project.unlisted
+              ? 'Anyone will be able to see it, in Explore and search too.'
+              : 'Anyone will be able to see it again.'
         }
         onPress={toggleVisibility}
       />

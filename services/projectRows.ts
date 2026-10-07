@@ -14,8 +14,13 @@ export interface ProjectSummary {
   projectType: string | null;
   year: string | null;
   coverUrl: string | null;
-  /** Public or Private. A private one reaches only its owner and contributors. */
+  /** Public, or not. A private one reaches only its owner and contributors. */
   isPublic: boolean;
+  /**
+   * Unlisted (ONE-137): never public, never listed anywhere, readable by
+   * whoever opened one of its tags as well as its owner and contributors.
+   */
+  unlisted: boolean;
   /** An interest slug (ONE-49), or null for an untagged project. */
   interestSlug: string | null;
   /** The project this one sits inside, one level deep (ONE-134), or null. */
@@ -31,6 +36,7 @@ export interface ProjectSummaryRow {
   year: string | null;
   cover_url: string | null;
   is_public: boolean;
+  unlisted?: boolean | null;
   interest_slug?: string | null;
   parent_project_id?: string | null;
   created_at: string;
@@ -38,7 +44,7 @@ export interface ProjectSummaryRow {
 
 /** What a list reads of a project. Embeds as `project:projects(…)` from a table that Links one. */
 export const PROJECT_SUMMARY_SELECT =
-  'id, owner_profile_id, name, project_type, year, cover_url, is_public, interest_slug, parent_project_id, created_at';
+  'id, owner_profile_id, name, project_type, year, cover_url, is_public, unlisted, interest_slug, parent_project_id, created_at';
 
 export const mapProjectSummaryRow = (row: ProjectSummaryRow): ProjectSummary => ({
   id: row.id,
@@ -48,6 +54,7 @@ export const mapProjectSummaryRow = (row: ProjectSummaryRow): ProjectSummary => 
   year: row.year,
   coverUrl: row.cover_url,
   isPublic: row.is_public,
+  unlisted: row.unlisted === true,
   interestSlug: row.interest_slug ?? null,
   parentProjectId: row.parent_project_id ?? null,
   createdAt: row.created_at,

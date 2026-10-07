@@ -30,6 +30,7 @@ const fields = (name: string, overrides: Partial<ProjectFields> = {}): ProjectFi
   description: null,
   year: null,
   isPublic: true,
+  unlisted: false,
   interestSlug: null,
   parentProjectId: null,
   ...overrides,

@@ -24,6 +24,8 @@
 //   6. A project can sit inside another, one level deep (ONE-134): the house
 //      lists what it includes, each names the house it is part of — to those
 //      who may see the house — and deleting the house says what goes with it.
+//   7. A project is Public, Unlisted or Private (ONE-137): the form writes the
+//      choice, the page badges it, and Make public lifts Unlisted too.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -321,7 +323,7 @@ describe('the screen logic', () => {
   it('needs only a name', () => {
     expect(projectDraftValid(EMPTY_PROJECT_DRAFT)).toBe(false);
     expect(projectDraftValid({ ...EMPTY_PROJECT_DRAFT, name: 'Loft' })).toBe(true);
-    expect(EMPTY_PROJECT_DRAFT.isPublic).toBe(true);
+    expect(EMPTY_PROJECT_DRAFT.visibility).toBe('public');
   });
 
   it('names what deleting destroys: the contributors\' link and every tag pointing at it', () => {
@@ -604,7 +606,7 @@ describe('creating and editing a project', () => {
   it('saves a change of visibility, and nothing until something changes', async () => {
     const el = await mount(<EditProjectScreen />);
     expect((byLabel(el, 'Save') as HTMLButtonElement).disabled).toBe(true);
-    await click(byLabel(el, 'Public'));
+    await click(byLabel(el, 'Visibility: Private'));
     expect(el.textContent).toContain('Only you and its contributors can see it');
     await click(byLabel(el, 'Save'));
     expect(db.tables.projects![0]).toMatchObject({ is_public: false, cover_url: 'https://cdn.example/barn.jpg' });
@@ -712,5 +714,37 @@ describe('projects inside a project', () => {
     db.tables.projects!.push({ ...BARN, id: 'pj-shed', name: 'Shed', created_at: '2026-03-01T00:00:00Z' });
     const el = await mount(<EditProjectScreen />);
     expect(el.querySelector('[aria-label^="Part of"]')).toBeNull();
+  });
+});
+
+// ─── Unlisted (ONE-137) ─────────────────────────────────────────────────
+
+describe('an unlisted project', () => {
+  it('is chosen on the form, written as unlisted and not public', async () => {
+    const el = await mount(<EditProjectScreen />);
+    await click(byLabel(el, 'Visibility: Unlisted'));
+    expect(el.textContent).toContain("Anyone with its tag can see it, but it isn't listed anywhere");
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.projects![0]).toMatchObject({ is_public: false, unlisted: true });
+  });
+
+  it('starts the edit form on Unlisted when it is', async () => {
+    Object.assign(db.tables.projects![0]!, { is_public: false, unlisted: true });
+    const el = await mount(<EditProjectScreen />);
+    expect(byLabel(el, 'Visibility: Unlisted, selected')).not.toBeNull();
+  });
+
+  it('is badged Unlisted on its page', async () => {
+    Object.assign(db.tables.projects![0]!, { is_public: false, unlisted: true });
+    const el = await mount(<ProjectScreen />);
+    expect(byLabel(el, 'Unlisted')!.textContent).toBe('Unlisted');
+  });
+
+  it('is made public from the menu, and no longer unlisted', async () => {
+    Object.assign(db.tables.projects![0]!, { is_public: false, unlisted: true });
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Manage project'));
+    await click(byLabel(el, 'Make public'));
+    expect(db.tables.projects![0]).toMatchObject({ is_public: true, unlisted: false });
   });
 });

@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, MonoLabel } from '../../components/native/ui';
 import { useAuthStatus } from '../../features/auth';
 import { useCurrentProfile } from '../../features/profiles';
-import { useRecordScan, useTagQuery } from '../../features/tags';
+import { useGrantProjectTagAccess, useRecordScan, useTagQuery } from '../../features/tags';
 import { buildTagRoute, isValidShortCode } from '../../lib/tagLinks';
 import { returnAfterSignIn } from '../../lib/signInReturn';
 import {
@@ -41,13 +41,17 @@ export default function TagResolutionScreen() {
   const auth = useAuthStatus();
   const { status: profileStatus, profileId } = useCurrentProfile();
   const { mutate: recordScan } = useRecordScan();
+  const { mutateAsync: grantAccess } = useGrantProjectTagAccess();
 
-  const screen = tagScreenFor({
-    data: query.data,
-    error: query.error,
-    isFetching: query.isFetching,
-    isFetchedAfterMount: query.isFetchedAfterMount,
-  });
+  const screen = tagScreenFor(
+    {
+      data: query.data,
+      error: query.error,
+      isFetching: query.isFetching,
+      isFetchedAfterMount: query.isFetchedAfterMount,
+    },
+    auth,
+  );
   const attribution = scanAttributionFor(auth, { status: profileStatus, profileId });
 
   // A resolved tag waits a bounded time for the scanner to be known, then
@@ -63,6 +67,7 @@ export default function TagResolutionScreen() {
   const handled = useRef(false);
   const tagId = screen.kind === 'redirect' ? screen.tagId : null;
   const route = screen.kind === 'redirect' ? screen.route : null;
+  const grant = screen.kind === 'redirect' && screen.grant === true;
   const scannerKnown = attribution.known || attributionTimedOut;
   const scannerProfileId = attribution.known ? attribution.scannerProfileId : null;
   useEffect(() => {
@@ -72,8 +77,17 @@ export default function TagResolutionScreen() {
     // Fire and forget: never awaited, so a slow or failed insert cannot hold
     // anyone back from the Destination.
     recordScan({ tagId, scannerProfileId });
+    // An Unlisted project is read through the grant opening its tag records
+    // (ONE-137), so that one is awaited. A grant that fails still goes on: the
+    // project's page says not found, as for any project it can't read.
+    if (grant && scannerProfileId) {
+      void grantAccess({ shortCode, profileId: scannerProfileId })
+        .catch(() => undefined)
+        .finally(() => router.replace(route));
+      return;
+    }
     router.replace(route);
-  }, [tagId, route, scannerKnown, scannerProfileId, recordScan, router]);
+  }, [tagId, route, grant, shortCode, scannerKnown, scannerProfileId, recordScan, grantAccess, router]);
 
   // The scanner's own blank tag goes on to linking it (ONE-139). No Scan:
   // a blank tag points nowhere, and the database refuses one anyway.
@@ -102,8 +116,10 @@ export default function TagResolutionScreen() {
   }
 
   const copy = FAILURE_COPY[screen.kind];
-  // A blank tag may be the signed-out scanner's own: signing in comes back here.
-  const onward = onwardActionsFor(auth, screen.kind === 'unlinked' ? buildTagRoute(shortCode) : undefined);
+  // A blank tag may be the signed-out scanner's own, and an Unlisted project
+  // opens once they're signed in: either way, signing in comes back here.
+  const comesBack = screen.kind === 'unlinked' || screen.kind === 'unlisted-signed-out';
+  const onward = onwardActionsFor(auth, comesBack ? buildTagRoute(shortCode) : undefined);
   const go = (action: OnwardAction) => {
     if (action.returnTo) returnAfterSignIn(action.returnTo);
     router.replace(action.route);

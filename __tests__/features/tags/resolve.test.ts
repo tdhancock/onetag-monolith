@@ -197,6 +197,16 @@ describe('mapResolveTagRow', () => {
     });
   });
 
+  it('reads a tag to an Unlisted project as one, so opening it grants access (ONE-137)', () => {
+    expect(mapResolveTagRow({ ...PROJECT_TAG, dest_project_unlisted: true })).toEqual({
+      status: 'active',
+      tagId: 'tag-1',
+      destination: { kind: 'project', projectId: 'pj-1' },
+      projectUnlisted: true,
+    });
+    expect(mapResolveTagRow({ ...PROJECT_TAG, dest_project_unlisted: false })).not.toHaveProperty('projectUnlisted');
+  });
+
   it('reads a linked tag that says so as before', () => {
     expect(mapResolveTagRow({ ...PRODUCT_TAG, linked: true, owned_by_caller: false })).toMatchObject({
       status: 'active',
@@ -323,6 +333,27 @@ describe('tagScreenFor', () => {
   it("shows an owner's blank tag as not set up when it came without its id", () => {
     expect(tagScreenFor({ ...settled, data: { status: 'unlinked', tagId: null, ownedByCaller: true } }))
       .toEqual({ kind: 'unlinked' });
+  });
+
+  describe('a tag to an Unlisted project (ONE-137)', () => {
+    const unlisted = { ...settled, data: mapResolveTagRow({ ...PROJECT_TAG, dest_project_unlisted: true }) };
+
+    it('goes to it signed in, granting access on the way', () => {
+      expect(tagScreenFor(unlisted, 'signed-in')).toEqual({ kind: 'redirect', tagId: 'tag-1', route: '/project/pj-1', grant: true });
+    });
+
+    it('asks someone signed out to sign in first', () => {
+      expect(tagScreenFor(unlisted, 'signed-out')).toEqual({ kind: 'unlisted-signed-out' });
+    });
+
+    it('waits while it is not yet known who is scanning', () => {
+      expect(tagScreenFor(unlisted, 'unknown')).toEqual({ kind: 'resolving' });
+    });
+
+    it('leaves every other project as it was', () => {
+      expect(tagScreenFor({ ...settled, data: mapResolveTagRow(PROJECT_TAG) }, 'signed-out'))
+        .toEqual({ kind: 'redirect', tagId: 'tag-1', route: '/project/pj-1' });
+    });
   });
 
   it('shows offline for a request that never reached the server, and failed otherwise', () => {

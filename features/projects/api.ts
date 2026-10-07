@@ -198,6 +198,7 @@ const fieldsToRow = (fields: Partial<ProjectFields>): Record<string, unknown> =>
   if (fields.description !== undefined) row.description = fields.description;
   if (fields.year !== undefined) row.year = fields.year;
   if (fields.isPublic !== undefined) row.is_public = fields.isPublic;
+  if (fields.unlisted !== undefined) row.unlisted = fields.unlisted;
   if (fields.interestSlug !== undefined) row.interest_slug = fields.interestSlug;
   if (fields.parentProjectId !== undefined) row.parent_project_id = fields.parentProjectId;
   return row;
