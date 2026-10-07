@@ -76,7 +76,11 @@ pnpm publish:preview    # publish for testers in Expo Go (docs/testing-with-expo
 declares, so anything the app imports must be declared there, including what a Babel
 transform imports on its behalf: NativeWind compiles every screen's JSX to import
 `react-native-css-interop`, which is why that package is a direct dependency. A missing one
-shows up as "Unable to resolve module" in `npx expo export`, not in Jest. A dependency's
+shows up as "Unable to resolve module" in `npx expo export`, not in Jest. The same goes for
+Babel: NativeWind's preset names `@babel/plugin-transform-react-jsx` as a string, which Babel
+looks up from NativeWind's folder, so it is a direct dev dependency too. Otherwise it is found
+only through pnpm's hidden hoisting (`node_modules/.pnpm/node_modules`), and when that misses
+(it did once, after an `expo install --fix`), every bundle fails with "Cannot find module". A dependency's
 install script runs only when `pnpm-workspace.yaml` names it under `allowBuilds`. One-off CLIs
 that aren't dependencies (the Supabase CLI, `eas-cli`) still run through `npx`. CI and EAS
 use the same pnpm, pinned in `package.json` and `eas.json`; change both together.
