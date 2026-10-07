@@ -20,4 +20,9 @@ export const projectKeys = {
   products: (projectId: string) => [...base.all, 'products', projectId] as const,
   /** One project's log (ONE-141). */
   log: (projectId: string) => [...base.all, 'log', projectId] as const,
+  /** What one profile may write to a project's log (ONE-143); a prefix reaches every profile's. */
+  logAccess: (projectId: string, profileId?: string) =>
+    profileId === undefined
+      ? ([...base.all, 'log-access', projectId] as const)
+      : ([...base.all, 'log-access', projectId, profileId] as const),
 };

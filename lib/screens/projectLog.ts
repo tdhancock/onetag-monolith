@@ -1,11 +1,18 @@
 // A project's log (ONE-141), the pure logic: the Add to log route, an entry as
 // the form holds it and as it is saved, its rules, and how the page shows one.
+// Who may write to it, and how a proposal waits for the owner (ONE-143).
 //
 // A cost is a record of what the work cost, never a payment (Working
 // Agreement §6). It is typed and stored as a product's price is, in minor
 // units of its currency.
 
-import type { LogEntryEdits, NewLogEntryInput, ProjectLogEntry, ProjectLogEntryFields } from '../../features/projects';
+import type {
+  LogEntryEdits,
+  LogEntryStatus,
+  NewLogEntryInput,
+  ProjectLogEntry,
+  ProjectLogEntryFields,
+} from '../../features/projects';
 import {
   currencyDigits,
   currencyError,
@@ -54,14 +61,17 @@ export interface LogEntryDraft {
   photos: MediaDraft[];
 }
 
-/** A new entry: done today, by no one named yet. */
-export const emptyLogEntryDraft = (today: Date = new Date()): LogEntryDraft => ({
+/**
+ * A new entry: done today, by no one named yet — or, for a Contributor or a
+ * business logging its own visit (ONE-143), by them.
+ */
+export const emptyLogEntryDraft = (today: Date = new Date(), performedBy: LogPerson | null = null): LogEntryDraft => ({
   occurredOn: detailValueFromDate(today),
   title: '',
   notes: '',
   cost: '',
   currency: DEFAULT_CURRENCY,
-  performedBy: null,
+  performedBy,
   photos: [],
 });
 
@@ -133,9 +143,15 @@ export const logEntryFieldsFrom = (draft: LogEntryDraft): ProjectLogEntryFields 
   };
 };
 
-/** What logging an entry from a draft writes. */
-export const newLogEntryInputFrom = (draft: LogEntryDraft, projectId: string): NewLogEntryInput => ({
+/** What logging an entry from a draft writes, as the active profile, in the mode it writes in. */
+export const newLogEntryInputFrom = (
+  draft: LogEntryDraft,
+  projectId: string,
+  author: { profileId: string; mode: LogWriteMode },
+): NewLogEntryInput => ({
   projectId,
+  authorProfileId: author.profileId,
+  status: logWriteStatus(author.mode),
   fields: logEntryFieldsFrom(draft),
   photoUris: draft.photos.map((photo) => photo.uri),
 });
@@ -188,21 +204,82 @@ export const formatLogCost = (costCents: number | null, currency: string, locale
 export const isNamedOn = (profileId: string | undefined, entry: Pick<ProjectLogEntry, 'performedByProfileId'>): boolean =>
   Boolean(profileId && entry.performedByProfileId === profileId);
 
+/** Whether the active profile wrote an entry (ONE-143). */
+export const isAuthorOf = (profileId: string | undefined, entry: Pick<ProjectLogEntry, 'authorProfileId'>): boolean =>
+  Boolean(profileId && entry.authorProfileId === profileId);
+
 /** What an entry's ⋯ menu offers. */
 export type LogEntryAction = 'edit' | 'delete' | 'remove-me';
 
 /**
- * What the active profile may do to an entry: its project's owner edits and
- * deletes it, and the profile named as who did the work takes its name off.
- * Nothing for anyone else, who gets no menu.
+ * What the active profile may do to an entry: the owner edits and deletes a
+ * published one (a proposal gets Approve and Decline instead), its author
+ * edits and deletes their own (ONE-143), and the profile named as who did the
+ * work takes its name off. Nothing for anyone else, who gets no menu.
  */
 export const logEntryActions = (
-  entry: Pick<ProjectLogEntry, 'performedByProfileId'>,
+  entry: Pick<ProjectLogEntry, 'performedByProfileId' | 'authorProfileId' | 'status'>,
   viewer: { isOwner: boolean; profileId: string | undefined },
 ): LogEntryAction[] => [
-  ...(viewer.isOwner ? (['edit', 'delete'] as const) : []),
+  ...((viewer.isOwner && entry.status === 'published') || (!viewer.isOwner && isAuthorOf(viewer.profileId, entry))
+    ? (['edit', 'delete'] as const)
+    : []),
   ...(isNamedOn(viewer.profileId, entry) ? (['remove-me'] as const) : []),
 ];
+
+/** Whether the active profile may open an entry to edit it: its owner or its author. */
+export const canEditLogEntry = (
+  entry: Pick<ProjectLogEntry, 'authorProfileId'>,
+  viewer: { isOwner: boolean; profileId: string | undefined },
+): boolean => viewer.isOwner || isAuthorOf(viewer.profileId, entry);
+
+// ─── Who writes to the log (ONE-143) ────────────────────────────────────
+
+/** How the active profile writes to a log: adding to it, or proposing an entry its owner approves. */
+export type LogWriteMode = 'add' | 'propose';
+
+/**
+ * How the active profile writes to a project's log, from what the database
+ * says its entries would be: the owner and Contributors add, a business that
+ * scanned the project's tag proposes, and anyone else doesn't write.
+ */
+export const logWriteMode = (isOwner: boolean, status: LogEntryStatus | null | undefined): LogWriteMode | null =>
+  isOwner || status === 'published' ? 'add' : status === 'proposed' ? 'propose' : null;
+
+/** The status an entry is written with, in a mode. */
+export const logWriteStatus = (mode: LogWriteMode): LogEntryStatus => (mode === 'propose' ? 'proposed' : 'published');
+
+/** The button, and the modal's title, for each mode. */
+export const LOG_WRITE_LABEL: Record<LogWriteMode, string> = {
+  add: 'Add to log',
+  propose: 'Propose a log entry',
+};
+
+/** Said on the form when proposing. */
+export const PROPOSAL_NOTE = "The project's owner approves it before it shows on the log.";
+
+/** Proposals first, waiting for the owner; then the published log. Each newest first, as read. */
+export const splitLog = <T extends Pick<ProjectLogEntry, 'status'>>(entries: T[]) => ({
+  waiting: entries.filter((entry) => entry.status === 'proposed'),
+  published: entries.filter((entry) => entry.status === 'published'),
+});
+
+/** The owner's group of proposals, at the top of the log. */
+export const WAITING_FOR_YOU = 'Waiting for you';
+
+/** What marks an author's own proposal, which only they and the owner see. */
+export const WAITING_FOR_APPROVAL = 'Waiting for approval';
+
+/** Who a proposal is from, as the owner's group says it. */
+export const proposedBy = (entry: Pick<ProjectLogEntry, 'author'>): string =>
+  `Proposed by ${entry.author?.name ?? 'a business'}`;
+
+/** Said before the owner declines a proposal. */
+export const declineLogEntryConfirm = (entry: Pick<ProjectLogEntry, 'title'>) => ({
+  title: `Decline ${entry.title}?`,
+  body: "It won't be added to the log, and it's deleted.",
+  confirm: 'Decline',
+});
 
 /** Said before the owner deletes an entry. */
 export const deleteLogEntryConfirm = (entry: Pick<ProjectLogEntry, 'title'>) => ({

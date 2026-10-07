@@ -3,11 +3,14 @@
 //
 // A project's log (ONE-141), the pure logic: the rules an entry is checked
 // against, what saving writes, how the page shows a day and a cost, and who
-// gets which of an entry's options.
+// gets which of an entry's options. Who writes to it, and how a proposal
+// waits for the owner (ONE-143).
 
 import {
+  canEditLogEntry,
   emptyLogEntryDraft,
   formatLogCost,
+  LOG_WRITE_LABEL,
   logEntryActions,
   logEntryDate,
   logEntryDraftChanged,
@@ -15,8 +18,12 @@ import {
   logEntryDraftFrom,
   logEntryDraftValid,
   logEntryEditsFrom,
+  logWriteMode,
+  logWriteStatus,
   newLogEntryInputFrom,
   projectLogEntryRoute,
+  proposedBy,
+  splitLog,
   type LogEntryDraft,
 } from '../../lib/screens/projectLog';
 import type { ProjectLogEntry } from '../../features/projects';
@@ -32,6 +39,9 @@ const draft = (overrides: Partial<LogEntryDraft> = {}): LogEntryDraft => ({
 const ENTRY: ProjectLogEntry = {
   id: 'e1',
   projectId: 'pj-furnace',
+  authorProfileId: 'p-owner',
+  author: null,
+  status: 'published',
   occurredOn: '2026-03-12',
   title: 'Replaced the igniter',
   notes: 'Under warranty',
@@ -90,9 +100,12 @@ describe('an entry', () => {
         photos: [{ key: 'k', uri: 'file:///receipt.jpg' }],
       }),
       'pj-furnace',
+      { profileId: 'p-owner', mode: 'add' },
     );
     expect(input).toEqual({
       projectId: 'pj-furnace',
+      authorProfileId: 'p-owner',
+      status: 'published',
       fields: {
         occurredOn: '2026-10-06',
         title: 'Replaced the igniter',
@@ -138,8 +151,48 @@ describe('on the project page', () => {
     expect(logEntryActions(ENTRY, { isOwner: false, profileId: undefined })).toEqual([]);
   });
 
+  it('gives an author edit and delete of their own entry, and the owner Approve and Decline instead on a proposal (ONE-143)', () => {
+    const byAcme = { ...ENTRY, authorProfileId: 'p-acme' };
+    expect(logEntryActions(byAcme, { isOwner: false, profileId: 'p-acme' })).toEqual(['edit', 'delete', 'remove-me']);
+    const proposal = { ...byAcme, status: 'proposed' as const, performedByProfileId: null };
+    expect(logEntryActions(proposal, { isOwner: false, profileId: 'p-acme' })).toEqual(['edit', 'delete']);
+    expect(logEntryActions(proposal, { isOwner: true, profileId: 'p-owner' })).toEqual([]);
+    expect(canEditLogEntry(proposal, { isOwner: false, profileId: 'p-acme' })).toBe(true);
+    expect(canEditLogEntry(proposal, { isOwner: false, profileId: 'p-stranger' })).toBe(false);
+    expect(canEditLogEntry(proposal, { isOwner: true, profileId: 'p-owner' })).toBe(true);
+  });
+
   it('opens Add to log, or one entry to edit, as a modal over the project', () => {
     expect(projectLogEntryRoute('pj-furnace')).toEqual({ pathname: '/project/pj-furnace/log', params: {} });
     expect(projectLogEntryRoute('pj-furnace', 'e1')).toEqual({ pathname: '/project/pj-furnace/log', params: { entry: 'e1' } });
+  });
+});
+
+describe('who writes to the log (ONE-143)', () => {
+  it('lets the owner and Contributors add, a business that scanned its tag propose, and no one else write', () => {
+    expect(logWriteMode(true, undefined)).toBe('add');
+    expect(logWriteMode(false, 'published')).toBe('add');
+    expect(logWriteMode(false, 'proposed')).toBe('propose');
+    expect(logWriteMode(false, null)).toBeNull();
+    expect(LOG_WRITE_LABEL.propose).toBe('Propose a log entry');
+    expect([logWriteStatus('add'), logWriteStatus('propose')]).toEqual(['published', 'proposed']);
+  });
+
+  it('writes a proposal as proposed, by the business, which did the work unless it says otherwise', () => {
+    const acme = { id: 'p-acme', name: 'Acme HVAC', username: 'acme_hvac', avatarUrl: null };
+    const start = emptyLogEntryDraft(TODAY, acme);
+    expect(start.performedBy).toEqual(acme);
+    expect(newLogEntryInputFrom({ ...start, title: 'Serviced' }, 'pj-furnace', { profileId: 'p-acme', mode: 'propose' })).toMatchObject({
+      authorProfileId: 'p-acme',
+      status: 'proposed',
+      fields: { performedByProfileId: 'p-acme' },
+    });
+  });
+
+  it('puts proposals first, each saying who it is from', () => {
+    const proposal = { ...ENTRY, id: 'e2', status: 'proposed' as const, author: ENTRY.performedBy };
+    expect(splitLog([ENTRY, proposal])).toEqual({ waiting: [proposal], published: [ENTRY] });
+    expect(proposedBy(proposal)).toBe('Proposed by Acme HVAC');
+    expect(proposedBy({ author: null })).toBe('Proposed by a business');
   });
 });

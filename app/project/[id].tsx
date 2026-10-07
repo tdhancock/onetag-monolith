@@ -10,6 +10,7 @@ import {
   useChildProjectsQuery,
   useContributorsQuery,
   useDeleteProject,
+  useLogEntryStatusQuery,
   useProjectLogQuery,
   useProjectProductsQuery,
   useProjectQuery,
@@ -33,7 +34,7 @@ import { onwardActionsFor } from '../../lib/screens/tagResolution';
 import { tagCreateRoute } from '../../lib/screens/tags';
 import { productRoute } from '../../lib/screens/products';
 import { DETAILS_TITLE, detailDisplayValue } from '../../lib/screens/projectDetails';
-import { LOG_TITLE, projectLogEntryRoute } from '../../lib/screens/projectLog';
+import { LOG_TITLE, LOG_WRITE_LABEL, logWriteMode, projectLogEntryRoute } from '../../lib/screens/projectLog';
 import {
   canManageProject,
   deleteProjectConfirm,
@@ -165,6 +166,9 @@ function ProjectDetail({
   const insideCount = inside.data?.length ?? 0;
   const log = useProjectLogQuery(project.id);
   const logCount = log.data?.length ?? 0;
+  // Contributors add to the log, and a business that scanned its tag proposes (ONE-143).
+  const logAccess = useLogEntryStatusQuery(project.id, profileId, !isOwner);
+  const writeMode = logWriteMode(isOwner, logAccess.data);
   // Only the owner sees how often their tags pointing here were scanned.
   const scans = useDestinationScanCountQuery(profileId, { kind: 'project', id: project.id }, isOwner);
   const owner = project.owner;
@@ -195,6 +199,7 @@ function ProjectDetail({
         products.refetch(),
         holdsProjects ? inside.refetch() : undefined,
         log.refetch(),
+        !isOwner && profileId ? logAccess.refetch() : undefined,
         isOwner ? scans.refetch() : undefined,
       ]);
     } finally {
@@ -297,14 +302,14 @@ function ProjectDetail({
         </DetailSection>
       ) : null}
 
-      {/* An empty log is the owner's prompt, and nothing to anyone else (ONE-141). */}
-      {isOwner || logCount > 0 || log.isError ? (
+      {/* An empty log is a prompt to whoever may write to it, and nothing to anyone else (ONE-141). */}
+      {writeMode || logCount > 0 || log.isError ? (
         <DetailSection
           title={LOG_TITLE}
           trailing={
-            isOwner && logCount > 0 ? (
+            writeMode && logCount > 0 ? (
               <Button variant="outline" size="sm" onPress={() => router.push(projectLogEntryRoute(project.id))}>
-                Add to log
+                {LOG_WRITE_LABEL[writeMode]}
               </Button>
             ) : null
           }
@@ -315,6 +320,7 @@ function ProjectDetail({
             isError={log.isError}
             onRetry={() => void log.refetch()}
             isOwner={isOwner}
+            writeMode={writeMode}
             profileId={profileId}
             onOpenProfile={openProfile}
             onAdd={() => router.push(projectLogEntryRoute(project.id))}

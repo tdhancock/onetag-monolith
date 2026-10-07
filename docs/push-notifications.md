@@ -12,9 +12,9 @@ turn it on in production.
    to it. Signing out deletes the device's row first.
    (`supabase/migrations/20260928190000_push_tokens_per_device.sql`)
 2. When a `notifications` row of a type that pushes is written (`follow`,
-   `follow_request`, `comment`, `reply`, `mention`), or a `messages` row, a trigger
-   calls `request_push()`. That queues a POST through `pg_net` to the
-   `send-push` edge function: `{ "kind": "notification" | "message", "id": … }`,
+   `follow_request`, `comment`, `reply`, `mention`, `log_entry_added`,
+   `log_entry_proposed`), or a `messages` row, a trigger calls `request_push()`.
+   That queues a POST through `pg_net` to the `send-push` edge function: `{ "kind": "notification" | "message", "id": … }`,
    with a shared secret in `x-push-secret`.
    (`supabase/migrations/20260928130000_push_notifications.sql`)
 3. `pg_net` sends it after the transaction commits, from a background worker.
@@ -30,7 +30,8 @@ turn it on in production.
    closed is routed once the app has started, and only once.
 
 The text is the Notifications screen's own sentence. A message's push says who
-it's from, never what it says. Likes, reposts, comment likes and OneSnap likes
+it's from, never what it says. A log push names the project ("acme_hvac added
+to Furnace's log."). Likes, reposts, comment likes and OneSnap likes
 don't push.
 
 ## Where a notification opens
@@ -49,11 +50,14 @@ Back.
 | Reply | yes | The same, at the reply |
 | Mention | yes | The comment it's in, or the post when the mention is in a caption |
 | Message | yes | The conversation with the sender |
+| Added to a project's log (ONE-143) | yes | The project |
+| Wants to add to a project's log (ONE-143) | yes | The project, where the proposal waits for the owner |
 | Like, repost | no | The post |
 | Comment like | no | The comment |
 | OneSnap like | no | The OneSnap in the viewer, while it hasn't expired |
 
-A row whose post or OneSnap is gone opens nothing. A push with nothing to
+A row whose post, OneSnap or project is gone opens nothing. Declining a
+proposal deletes it, and its notification with it. A push with nothing to
 route by opens Notifications.
 
 Until both Vault secrets below exist, `request_push()` does nothing. That's why

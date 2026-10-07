@@ -7,6 +7,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   addContributor,
+  approveLogEntry,
   createLogEntry,
   createProject,
   deleteLogEntry,
@@ -152,6 +153,8 @@ const invalidateContributor = (
     queryClient.invalidateQueries({ queryKey: projectKeys.contributors(projectId) }),
     queryClient.invalidateQueries({ queryKey: projectKeys.contributed(profileId) }),
     queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) }),
+    // Being Linked, or not, changes what a profile may write to the log (ONE-143).
+    queryClient.invalidateQueries({ queryKey: projectKeys.logAccess(projectId) }),
   ]);
 
 /** Link a profile to a project as a Contributor, with an optional role. */
@@ -251,5 +254,24 @@ export const useRemoveMeFromLogEntry = () => {
   return useMutation({
     mutationFn: (entry: LogEntryRef) => removeMeFromLogEntry(entry.id),
     onSettled: (_data, _error, entry) => queryClient.invalidateQueries({ queryKey: projectKeys.log(entry.projectId) }),
+  });
+};
+
+/**
+ * Approve a proposed entry (ONE-143): it is published, and its author Linked
+ * as a Contributor, so the log, the contributors and the author's projects are
+ * all read again.
+ */
+export const useApproveLogEntry = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (entry: LogEntryRef & Pick<ProjectLogEntry, 'authorProfileId'>) => approveLogEntry(entry.id),
+    onSettled: (_data, _error, entry) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: projectKeys.log(entry.projectId) }),
+        entry.authorProfileId
+          ? invalidateContributor(queryClient, { projectId: entry.projectId, profileId: entry.authorProfileId })
+          : undefined,
+      ]),
   });
 };

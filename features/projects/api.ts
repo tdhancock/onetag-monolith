@@ -29,6 +29,7 @@ import type {
   ProjectDetail,
   ProjectDetailInput,
   ProjectDetailRow,
+  LogEntryStatus,
   ProjectFields,
   ProjectLogEntry,
   ProjectLogEntryFields,
@@ -80,16 +81,22 @@ const mapDetailRow = (row: ProjectDetailRow): ProjectDetail => ({
 
 const bySortOrder = (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order;
 
-/** An entry in a project's log (ONE-141), with who did it and its photos. */
+/** An entry in a project's log (ONE-141), with who did it, who wrote it (ONE-143) and its photos. */
 export const LOG_ENTRY_SELECT =
-  'id, project_id, occurred_on, title, notes, cost_cents, currency, performed_by_profile_id, created_at, updated_at, ' +
-  `performed_by:profiles!performed_by_profile_id(${PROFILE_COLUMNS}), photos:project_log_media(id, url, sort_order)`;
+  'id, project_id, occurred_on, title, notes, cost_cents, currency, performed_by_profile_id, author_profile_id, ' +
+  'status, created_at, updated_at, ' +
+  `performed_by:profiles!performed_by_profile_id(${PROFILE_COLUMNS}), ` +
+  `author:profiles!author_profile_id(${PROFILE_COLUMNS}), photos:project_log_media(id, url, sort_order)`;
 
 export const mapLogEntryRow = (row: ProjectLogEntryRow): ProjectLogEntry => {
   const performedBy = one(row.performed_by);
+  const author = one(row.author);
   return {
     id: row.id,
     projectId: row.project_id,
+    authorProfileId: row.author_profile_id ?? null,
+    author: author ? mapProfileRow(author) : null,
+    status: row.status ?? 'published',
     occurredOn: row.occurred_on,
     title: row.title,
     notes: row.notes,
@@ -402,6 +409,10 @@ const saveLogPhotos = (entryId: string, current: ProjectLogEntry['photos'], urls
 /** What logging an entry takes. */
 export interface NewLogEntryInput {
   projectId: string;
+  /** The active profile: the owner, a Contributor, or a business proposing it (ONE-143). */
+  authorProfileId: string;
+  /** What an entry by that profile is: logEntryStatusFor says. */
+  status: LogEntryStatus;
   fields: ProjectLogEntryFields;
   /** Device URIs, in order: four at most. */
   photoUris: string[];
@@ -416,7 +427,12 @@ export const createLogEntry = async (authUserId: AuthUserId, input: NewLogEntryI
   const urls = await uploadDeviceImages(input.photoUris, authUserId, 'projects');
   const { data, error } = await supabase
     .from('project_log_entries')
-    .insert({ project_id: input.projectId, ...logFieldsToRow(input.fields) })
+    .insert({
+      project_id: input.projectId,
+      author_profile_id: input.authorProfileId,
+      status: input.status,
+      ...logFieldsToRow(input.fields),
+    })
     .select('id')
     .single();
   if (error) throw error;
@@ -470,6 +486,31 @@ export const deleteLogEntry = async (entryId: string): Promise<void> => {
  */
 export const removeMeFromLogEntry = async (entryId: string): Promise<boolean> => {
   const { data, error } = await supabase.rpc('remove_me_from_log_entry', { p_entry_id: entryId });
+  if (error) throw error;
+  return data === true;
+};
+
+/**
+ * What an entry the active profile writes on a project would be (ONE-143):
+ * published for the owner or a Contributor, proposed for a business whose
+ * account scanned one of its tags, or null when it may not write at all.
+ */
+export const logEntryStatusFor = async (projectId: string, authorProfileId: string): Promise<LogEntryStatus | null> => {
+  const { data, error } = await supabase.rpc('log_entry_status_for', {
+    p_project_id: projectId,
+    p_author_profile_id: authorProfileId,
+  });
+  if (error) throw error;
+  return data === 'published' || data === 'proposed' ? data : null;
+};
+
+/**
+ * Publish a proposed entry, the owner's alone, and Link its author as a
+ * Contributor. Resolves to false when it was already published. Declining is
+ * deleting it.
+ */
+export const approveLogEntry = async (entryId: string): Promise<boolean> => {
+  const { data, error } = await supabase.rpc('approve_log_entry', { p_entry_id: entryId });
   if (error) throw error;
   return data === true;
 };

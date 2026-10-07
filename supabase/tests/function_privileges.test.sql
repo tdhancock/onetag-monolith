@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(58);
+SELECT plan(62);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -157,6 +157,17 @@ SELECT ok(NOT has_function_privilege('anon', 'public.remove_me_from_log_entry(uu
   'anon cannot execute remove_me_from_log_entry(): a name is a signed-in profile''s to remove');
 SELECT ok(has_function_privilege('authenticated', 'public.remove_me_from_log_entry(uuid)', 'EXECUTE'),
   'authenticated can execute remove_me_from_log_entry(): the profile named on an entry takes its name off');
+
+-- ─── Writing to someone else's log (ONE-143) ──────────────────────────
+
+SELECT ok(NOT has_function_privilege('anon', 'public.log_entry_status_for(uuid, uuid)', 'EXECUTE'),
+  'anon cannot execute log_entry_status_for(): it answers only about the caller''s own profiles');
+SELECT ok(has_function_privilege('authenticated', 'public.log_entry_status_for(uuid, uuid)', 'EXECUTE'),
+  'authenticated can execute log_entry_status_for(): the log insert policy calls it, and the app asks it what to offer');
+SELECT ok(NOT has_function_privilege('anon', 'public.approve_log_entry(uuid)', 'EXECUTE'),
+  'anon cannot execute approve_log_entry()');
+SELECT ok(has_function_privilege('authenticated', 'public.approve_log_entry(uuid)', 'EXECUTE'),
+  'authenticated can execute approve_log_entry(): the project''s owner publishes a proposal');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -26,6 +26,8 @@ export {
   saveLogEntryEdits,
   deleteLogEntry,
   removeMeFromLogEntry,
+  logEntryStatusFor,
+  approveLogEntry,
   mapProjectRow,
   mapContributorRow,
   mapLogEntryRow,
@@ -54,6 +56,7 @@ export {
   useContributorsQuery,
   useProjectProductsQuery,
   useProjectLogQuery,
+  useLogEntryStatusQuery,
 } from './queries';
 export {
   useCreateProject,
@@ -70,6 +73,7 @@ export {
   useUpdateLogEntry,
   useDeleteLogEntry,
   useRemoveMeFromLogEntry,
+  useApproveLogEntry,
 } from './mutations';
 export type {
   UpdateProjectInput,
@@ -86,6 +90,7 @@ export type {
   ProjectDetailInput,
   ProjectDetailKind,
   ProjectLogEntry,
+  LogEntryStatus,
   ProjectLogEntryFields,
   ProjectLogPhoto,
   ProjectSummary,

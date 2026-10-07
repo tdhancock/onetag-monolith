@@ -34,6 +34,9 @@
 //      entries, naming who did the work from a profile search; the page shows
 //      each one, who did it a tap from their profile; and the profile named
 //      can take its name off.
+//  10. Others write to it (ONE-143): a Contributor adds to it, a business
+//      that scanned its tag proposes an entry, and the owner approves or
+//      declines it from Waiting for you.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -127,10 +130,16 @@ jest.mock('expo-router', () => ({
 const mockToast = jest.fn();
 jest.mock('../../../store/AppContext.native', () => ({ useApp: () => ({ addToast: mockToast }) }));
 
-const mockActing: { profileId: string | undefined; authUserId: string | undefined; status: string } = {
+const mockActing: {
+  profileId: string | undefined;
+  authUserId: string | undefined;
+  status: string;
+  profile: { id: string; name: string; username: string; profilePicture: string | null };
+} = {
   profileId: 'p-builder',
   authUserId: 'a-builder',
   status: 'ready',
+  profile: { id: 'p-builder', name: 'Ana Builds', username: 'ana_builds', profilePicture: null },
 };
 // Who did a log entry's work is found by handle (ONE-141); every search finds these.
 const mockProfileResults = [
@@ -262,6 +271,7 @@ const seed = () => {
     project_log_entries: (row) => ({
       ...row,
       performed_by: profile(row.performed_by_profile_id),
+      author: profile(row.author_profile_id),
       photos: db.tables.project_log_media!.filter((m) => m.entry_id === row.id),
     }),
   };
@@ -283,6 +293,8 @@ const actAs = (profileId: string | null) => {
   mockActing.profileId = profileId ?? undefined;
   mockActing.authUserId = profileId ? `a-${profileId}` : undefined;
   mockActing.status = profileId ? 'ready' : 'signed-out';
+  const row = PROFILES.find((p) => p.id === profileId);
+  mockActing.profile = { id: profileId ?? '', name: row?.full_name ?? '', username: row?.username ?? '', profilePicture: null };
   mockAuth.status = profileId ? 'signed-in' : 'signed-out';
 };
 
@@ -1073,5 +1085,133 @@ describe('the project log', () => {
     const el = await mount(<LogEntryScreen />);
     expect(el.textContent).toContain("You can't change this log");
     expect(byLabel(el, 'What was done')).toBeNull();
+  });
+});
+
+// ─── Writing to someone else's log (ONE-143) ────────────────────────────
+
+describe("writing to someone else's log", () => {
+  // Tile Co is a Contributor on the barn; Oak Studio's account scanned its tag.
+  const statusFor = (author: unknown) => (author === 'p-tiles' ? 'published' : author === 'p-oak' ? 'proposed' : null);
+  const proposal = {
+    id: 'e-boiler',
+    project_id: 'pj-barn',
+    occurred_on: '2026-04-01',
+    title: 'Serviced the boiler',
+    notes: null,
+    cost_cents: 12000,
+    currency: 'USD',
+    performed_by_profile_id: 'p-oak',
+    author_profile_id: 'p-oak',
+    status: 'proposed',
+    created_at: '2026-04-01T10:00:00Z',
+    updated_at: '2026-04-01T10:00:00Z',
+  };
+  const confirmAlert = async () => {
+    const [, , buttons] = (Alert.alert as jest.Mock).mock.calls[0] as [string, string, { onPress?: () => void }[]];
+    act(() => buttons[1]!.onPress!());
+    await settle();
+  };
+
+  beforeEach(() => {
+    db.rpcResults.log_entry_status_for = (args) => statusFor(args.p_author_profile_id);
+    db.rpcResults.approve_log_entry = (args) => {
+      const entry = db.tables.project_log_entries!.find((e) => e.id === args.p_entry_id)!;
+      entry.status = 'published';
+      db.tables.contributors!.push({
+        id: 'c-oak',
+        project_id: entry.project_id,
+        contributor_profile_id: entry.author_profile_id,
+        role: null,
+        is_public: true,
+        added_at: '2026-04-02T00:00:00Z',
+      });
+      return true;
+    };
+    // A proposal reaches only the project's owner and its author, as RLS has it.
+    db.visible.project_log_entries = (e) =>
+      e.status !== 'proposed' || viewer.profileId === 'p-builder' || viewer.profileId === e.author_profile_id;
+  });
+
+  it('lets a Contributor add to the log, as the one who did the work', async () => {
+    actAs('p-tiles');
+    const page = await mount(<ProjectScreen />);
+    expect(byLabel(page, 'Log')!.textContent).toContain('Nothing logged yet');
+    await click(byText(page, 'Add to log'));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/project/pj-barn/log', params: {} });
+
+    const el = await remount(<LogEntryScreen />);
+    expect(byLabel(el, 'Who did it: Tile Co')).not.toBeNull();
+    await type(el, 'What was done', 'Laid the tile');
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.project_log_entries).toEqual([
+      expect.objectContaining({
+        title: 'Laid the tile',
+        author_profile_id: 'p-tiles',
+        status: 'published',
+        performed_by_profile_id: 'p-tiles',
+      }),
+    ]);
+    expect(mockToast).toHaveBeenCalledWith('Added to the log.', 'success');
+  });
+
+  it('lets a business that scanned its tag propose an entry, saying the owner approves it first', async () => {
+    actAs('p-oak');
+    const page = await mount(<ProjectScreen />);
+    await click(byText(page, 'Propose a log entry'));
+
+    const el = await remount(<LogEntryScreen />);
+    expect(el.textContent).toContain('Propose a log entry');
+    expect(el.textContent).toContain("The project's owner approves it before it shows on the log.");
+    await type(el, 'What was done', 'Serviced the boiler');
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.project_log_entries).toEqual([
+      expect.objectContaining({ title: 'Serviced the boiler', author_profile_id: 'p-oak', status: 'proposed' }),
+    ]);
+    expect(mockToast).toHaveBeenCalledWith('Sent to the owner to approve.', 'success');
+  });
+
+  it('offers no way in to anyone else', async () => {
+    actAs('p-stranger');
+    const page = await mount(<ProjectScreen />);
+    expect(byLabel(page, 'Log')).toBeNull();
+    const el = await remount(<LogEntryScreen />);
+    expect(el.textContent).toContain("You can't change this log");
+  });
+
+  it("shows the owner a proposal Waiting for you, which Approve publishes and Links its business", async () => {
+    db.tables.project_log_entries!.push({ ...proposal });
+    const el = await mount(<ProjectScreen />);
+    const waiting = byLabel(el, 'Waiting for you')!;
+    expect(waiting.textContent).toContain('Serviced the boiler');
+    expect(waiting.textContent).toContain('Proposed by Oak Studio');
+    await click(byLabel(el, 'Approve Serviced the boiler'));
+    expect(db.rpcs).toContainEqual({ name: 'approve_log_entry', args: { p_entry_id: 'e-boiler' } });
+    expect(db.tables.project_log_entries![0]).toMatchObject({ status: 'published' });
+    expect(byLabel(el, 'Waiting for you')).toBeNull();
+    expect(byLabel(el, 'Contributors')!.textContent).toContain('Oak Studio');
+  });
+
+  it('declines a proposal only on confirmation, deleting it', async () => {
+    db.tables.project_log_entries!.push({ ...proposal });
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Decline Serviced the boiler'));
+    expect(db.tables.project_log_entries).toHaveLength(1);
+    await confirmAlert();
+    expect(db.tables.project_log_entries).toEqual([]);
+  });
+
+  it("marks a business's own proposal Waiting for approval, which it may edit, and hides it from everyone else", async () => {
+    db.tables.project_log_entries!.push({ ...proposal });
+    actAs('p-oak');
+    const author = await mount(<ProjectScreen />);
+    expect(byLabel(author, 'Log')!.textContent).toContain('Waiting for approval');
+    expect(byLabel(author, 'Approve Serviced the boiler')).toBeNull();
+    await click(byLabel(author, 'Options for Serviced the boiler'));
+    expect(byLabel(author, 'Edit entry')).not.toBeNull();
+
+    actAs('p-stranger');
+    const visitor = await remount(<ProjectScreen />);
+    expect(byLabel(visitor, 'Log')).toBeNull();
   });
 });

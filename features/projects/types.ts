@@ -70,12 +70,23 @@ export interface ProjectLogPhoto {
 }
 
 /**
+ * Whether an entry shows on the log (ONE-143): published, or proposed by a
+ * business that scanned the project's tag, until its owner approves it.
+ */
+export type LogEntryStatus = 'published' | 'proposed';
+
+/**
  * One dated entry in a project's log (ONE-141): what was done, on which day,
  * by whom, and what it cost — "Mar 12: replaced the igniter, Acme HVAC, $180".
  */
 export interface ProjectLogEntry {
   id: string;
   projectId: string;
+  /** Who wrote it (ONE-143): the owner, a Contributor, or a business proposing it. */
+  authorProfileId: string | null;
+  /** That profile, when it could be read. */
+  author: ProjectProfile | null;
+  status: LogEntryStatus;
   /** The day it was done: YYYY-MM-DD. */
   occurredOn: string;
   title: string;
@@ -185,9 +196,12 @@ export interface ProjectLogEntryRow {
   cost_cents: number | null;
   currency: string;
   performed_by_profile_id: string | null;
+  author_profile_id: string | null;
+  status: LogEntryStatus;
   created_at: string;
   updated_at: string;
   performed_by?: ProjectProfileRow | ProjectProfileRow[] | null;
+  author?: ProjectProfileRow | ProjectProfileRow[] | null;
   photos?: { id: string; url: string; sort_order: number }[] | null;
 }
 

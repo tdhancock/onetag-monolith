@@ -153,7 +153,7 @@ SELECT is((SELECT count(*)::int FROM public.project_log_media WHERE entry_id = (
   'and its photos');
 SELECT throws_ok(
   $$INSERT INTO public.project_log_entries (project_id, occurred_on, title) VALUES ((SELECT priv FROM ids), '2026-05-01', 'Mine')$$,
-  '42501', NULL, 'but only its owner writes to it');
+  '42501', NULL, 'and cannot write as its owner (writing as itself is ONE-143''s)');
 
 -- ─── As a stranger without an account ─────────────────────────────────
 

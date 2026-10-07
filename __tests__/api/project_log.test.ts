@@ -51,6 +51,9 @@ const entry = (overrides: Partial<ProjectLogEntryFields> = {}): ProjectLogEntryF
 
 const photo = (n: number) => `https://example.test/log/${n}.jpg`;
 
+/** Written as the owner, whose entries are published (ONE-143). */
+const asOwner = () => ({ authorProfileId: owner.profileId, status: 'published' as const });
+
 beforeAll(async () => {
   [owner, named, contributor, stranger] = await Promise.all(
     ['logowner', 'lognamed', 'logcontrib', 'logstranger'].map(createAccount),
@@ -68,8 +71,9 @@ describe('a project log', () => {
 
   it('is read newest first, with who did it, what it cost and its photos in order', async () => {
     actAs(owner.client);
-    await createLogEntry(owner.userId, { projectId: kitchen, fields: entry({ occurredOn: '2026-01-05', title: 'Changed the filter' }), photoUris: [] });
+    await createLogEntry(owner.userId, { ...asOwner(), projectId: kitchen, fields: entry({ occurredOn: '2026-01-05', title: 'Changed the filter' }), photoUris: [] });
     igniter = await createLogEntry(owner.userId, {
+      ...asOwner(),
       projectId: kitchen,
       fields: entry({ costCents: 18000, performedByProfileId: named.profileId, notes: 'Under warranty' }),
       photoUris: [photo(1), photo(2)],
@@ -97,13 +101,19 @@ describe('a project log', () => {
   it("refuses an entry from an account that doesn't own the project", async () => {
     actAs(stranger.client);
     await expect(
-      createLogEntry(stranger.userId, { projectId: kitchen, fields: entry({ title: 'Sneaky' }), photoUris: [] }),
+      createLogEntry(stranger.userId, {
+        authorProfileId: stranger.profileId,
+        status: 'published',
+        projectId: kitchen,
+        fields: entry({ title: 'Sneaky' }),
+        photoUris: [],
+      }),
     ).rejects.toMatchObject({ code: '42501' });
   });
 
   it("reads a private project's log to its Contributor, and to no one else", async () => {
     actAs(owner.client);
-    await createLogEntry(owner.userId, { projectId: safe, fields: entry({ title: 'New combination' }), photoUris: [] });
+    await createLogEntry(owner.userId, { ...asOwner(), projectId: safe, fields: entry({ title: 'New combination' }), photoUris: [] });
     actAs(stranger.client);
     expect(await fetchProjectLog(safe)).toEqual([]);
     actAs(contributor.client);
@@ -113,6 +123,7 @@ describe('a project log', () => {
   it('swaps a photo on an entry that already has four', async () => {
     actAs(owner.client);
     const id = await createLogEntry(owner.userId, {
+      ...asOwner(),
       projectId: kitchen,
       fields: entry({ title: 'Four photos' }),
       photoUris: [photo(1), photo(2), photo(3), photo(4)],

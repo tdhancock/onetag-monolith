@@ -10,13 +10,14 @@
 --
 -- Account X: individual XI (signup) and business XB. The account deleted.
 --            XI has also reviewed a report, as an admin would, and has
---            liked and commented on XB's post.
+--            liked and commented on XB's post. XB has written in XI's
+--            project log.
 -- Account Y: individual YI, who follows, messages, tags, contributes and
 --            reports alongside X.
 -- Account Z: individual ZI, who receives a message from Y sharing XB.
 
 BEGIN;
-SELECT plan(24);
+SELECT plan(25);
 
 -- ─── Fixtures (as the database owner) ─────────────────────────────────
 
@@ -91,6 +92,14 @@ INSERT INTO public.projects (id, owner_profile_id, name) SELECT project_y, yi, '
 INSERT INTO public.contributors (project_id, contributor_profile_id) SELECT project_xi, yi FROM ids;
 INSERT INTO public.contributors (project_id, contributor_profile_id) SELECT project_y, xb FROM ids;
 INSERT INTO public.project_products (project_id, product_id) SELECT project_y, product_xb FROM ids;
+
+-- An entry in XI's project log that XB wrote and is named on, as a
+-- Contributor's entry is (ONE-143): two set-null keys to the one profile.
+-- Then XI edits their profile, which moves XI's row after XB's, so the delete
+-- reaches XB first and nulls both keys before XI's project goes.
+INSERT INTO public.project_log_entries (project_id, occurred_on, title, author_profile_id, performed_by_profile_id)
+SELECT project_xi, '2026-04-01', 'Hung the door', xb, xb FROM ids;
+UPDATE public.profiles SET full_name = 'X, edited' FROM ids WHERE profiles.id = ids.xi;
 
 -- Tags and Scans: XB's own tag, Y's tag, and Y's post tagging XB's product.
 INSERT INTO public.tags (id, owner_profile_id, tag_type, format, dest_profile_id)
@@ -173,6 +182,9 @@ SELECT is((SELECT count(*) FROM public.projects p, ids WHERE p.owner_profile_id 
         + (SELECT count(*) FROM public.project_products pp, ids WHERE pp.product_id = ids.product_xb), 0::bigint,
   'their projects, their Contributor links, and the product''s links to other projects are gone');
 
+SELECT is((SELECT count(*) FROM public.project_log_entries e, ids WHERE e.project_id = ids.project_xi), 0::bigint,
+  'a log entry one profile wrote on the other''s project goes with the project');
+
 SELECT is((SELECT count(*) FROM public.tags t, ids
            WHERE t.owner_profile_id IN (ids.xi, ids.xb) OR t.dest_profile_id IN (ids.xi, ids.xb)
               OR t.dest_product_id = ids.product_xb), 0::bigint,
@@ -214,7 +226,8 @@ SELECT ok(
 -- The cascade above holds only while each one does. These are the ones that
 -- don't cascade, each set null on purpose. A NO ACTION key here would stop an
 -- account's deletion outright, as reviewed_by did until ONE-98. A log entry
--- (ONE-141) is its project owner's record, so it outlives who did the work.
+-- (ONE-141) is its project owner's record, so it outlives who did the work
+-- and who wrote it (ONE-143).
 
 -- confdeltype: c cascade, n set null, a no action.
 SELECT is(
@@ -230,6 +243,7 @@ SELECT is(
    ) fks),
   ARRAY[
     'messages.shared_profile_id n',
+    'project_log_entries.author_profile_id n',
     'project_log_entries.performed_by_profile_id n',
     'reports.reviewed_by n',
     'scans.scanner_profile_id n'

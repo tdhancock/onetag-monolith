@@ -5,29 +5,45 @@ import { Avatar, Button, IconButton, MonoLabel, Pressable, Sheet, SheetRow } fro
 import { DotsHorizontalIcon } from './Icons';
 import { RowSkeletons, SectionError } from './SectionStates';
 import { useApp } from '../../store/AppContext.native';
-import { useDeleteLogEntry, useRemoveMeFromLogEntry, type ProjectLogEntry } from '../../features/projects';
 import {
+  useApproveLogEntry,
+  useDeleteLogEntry,
+  useRemoveMeFromLogEntry,
+  type ProjectLogEntry,
+} from '../../features/projects';
+import {
+  declineLogEntryConfirm,
   deleteLogEntryConfirm,
   formatLogCost,
+  isAuthorOf,
   LOG_EMPTY,
+  LOG_WRITE_LABEL,
   logEntryActions,
   logEntryDate,
+  proposedBy,
   removeMeFromLogEntryConfirm,
+  splitLog,
+  WAITING_FOR_APPROVAL,
+  WAITING_FOR_YOU,
+  type LogWriteMode,
 } from '../../lib/screens/projectLog';
 import { color, space, type } from '../../theme/tokens';
 
 export interface ProjectLogProps {
+  /** Newest first: published entries, and the proposals the viewer may read. */
   entries: ProjectLogEntry[] | undefined;
   isPending: boolean;
   /** The read failed: say so and offer to retry, rather than claim there is nothing. */
   isError: boolean;
   onRetry: () => void;
-  /** The project's owner adds, edits and deletes entries. */
+  /** The project's owner approves and declines proposals, and edits and deletes any entry. */
   isOwner: boolean;
-  /** The active profile, to find the entries naming it — and offer Remove me. */
+  /** How the viewer writes to the log, if at all (ONE-143): the empty log's button. */
+  writeMode: LogWriteMode | null;
+  /** The active profile, to find the entries it wrote or is named on. */
   profileId: string | undefined;
   onOpenProfile: (username: string) => void;
-  /** Opens Add to log. The owner's alone. */
+  /** Opens Add to log, or Propose a log entry. */
   onAdd: () => void;
   onEdit: (entry: ProjectLogEntry) => void;
 }
@@ -39,9 +55,12 @@ const PHOTO = 64;
  * (one tap from their profile), what it cost, notes and photos. For a home
  * record, the service history; for a build, its progress.
  *
- * The owner edits or deletes an entry from its ⋯ menu. The profile named as
- * who did the work gets Remove me there: being named is a claim about them,
- * and this is how they withdraw it.
+ * Proposals come first (ONE-143): the owner's are Waiting for you, each with
+ * Approve and Decline, and an author sees their own marked Waiting for
+ * approval. Nobody else sees one. The owner edits or deletes a published
+ * entry from its ⋯ menu, and an author their own. The profile named as who
+ * did the work gets Remove me there: being named is a claim about them, and
+ * this is how they withdraw it.
  */
 const ProjectLog: React.FC<ProjectLogProps> = ({
   entries,
@@ -49,6 +68,7 @@ const ProjectLog: React.FC<ProjectLogProps> = ({
   isError,
   onRetry,
   isOwner,
+  writeMode,
   profileId,
   onOpenProfile,
   onAdd,
@@ -57,6 +77,7 @@ const ProjectLog: React.FC<ProjectLogProps> = ({
   const { addToast } = useApp();
   const remove = useDeleteLogEntry();
   const removeMe = useRemoveMeFromLogEntry();
+  const approve = useApproveLogEntry();
   const [selected, setSelected] = useState<ProjectLogEntry | null>(null);
 
   if (isPending) return <RowSkeletons count={2} />;
@@ -64,19 +85,22 @@ const ProjectLog: React.FC<ProjectLogProps> = ({
 
   const list = entries ?? [];
   if (list.length === 0) {
-    // Only the owner sees an empty log; the page leaves it out for anyone else.
+    // Only someone who may write sees an empty log; the page leaves it out for anyone else.
     return (
       <View style={styles.pad}>
         <Text style={styles.emptyTitle}>{LOG_EMPTY.title}</Text>
         <Text style={styles.emptyBody}>{LOG_EMPTY.body}</Text>
-        <Button variant="outline" size="sm" onPress={onAdd} style={styles.emptyAction}>
-          Add to log
-        </Button>
+        {writeMode ? (
+          <Button variant="outline" size="sm" onPress={onAdd} style={styles.emptyAction}>
+            {LOG_WRITE_LABEL[writeMode]}
+          </Button>
+        ) : null}
       </View>
     );
   }
 
-  const actions = selected ? logEntryActions(selected, { isOwner, profileId }) : [];
+  const viewer = { isOwner, profileId };
+  const actions = selected ? logEntryActions(selected, viewer) : [];
   const close = () => setSelected(null);
 
   const edit = (entry: ProjectLogEntry) => {
@@ -118,62 +142,129 @@ const ProjectLog: React.FC<ProjectLogProps> = ({
     ]);
   };
 
+  const approveEntry = (entry: ProjectLogEntry) =>
+    approve.mutate(entry, {
+      onSuccess: () => addToast(`Added to the log. ${entry.author?.name ?? 'Its author'} is now a contributor.`, 'success'),
+      onError: () => addToast("Couldn't approve it. Try again.", 'error'),
+    });
+
+  const confirmDecline = (entry: ProjectLogEntry) => {
+    const confirm = declineLogEntryConfirm(entry);
+    Alert.alert(confirm.title, confirm.body, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: confirm.confirm,
+        style: 'destructive',
+        onPress: () =>
+          remove.mutate(entry, {
+            onSuccess: () => addToast('Declined.', 'info'),
+            onError: () => addToast("Couldn't decline it. Try again.", 'error'),
+          }),
+      },
+    ]);
+  };
+
+  const { waiting, published } = splitLog(list);
+
+  const row = (entry: ProjectLogEntry, last: boolean) => {
+    const cost = formatLogCost(entry.costCents, entry.currency);
+    const date = logEntryDate(entry.occurredOn);
+    const person = entry.performedBy;
+    const proposed = entry.status === 'proposed';
+    const hasMenu = logEntryActions(entry, viewer).length > 0;
+    return (
+      <View
+        key={entry.id}
+        style={[styles.entry, !last && styles.divider]}
+        accessibilityLabel={[date, entry.title, cost, proposed && !isOwner ? WAITING_FOR_APPROVAL : null]
+          .filter(Boolean)
+          .join(', ')}
+      >
+        <View style={styles.head}>
+          <View style={styles.headText}>
+            <MonoLabel color="textMid">{date}</MonoLabel>
+            <Text style={styles.title}>{entry.title}</Text>
+          </View>
+          {cost ? <Text style={styles.cost}>{cost}</Text> : null}
+          {hasMenu ? (
+            <IconButton
+              icon={<DotsHorizontalIcon color={color.textMid} size={18} />}
+              accessibilityLabel={`Options for ${entry.title}`}
+              onPress={() => setSelected(entry)}
+            />
+          ) : null}
+        </View>
+        {proposed && !isOwner && isAuthorOf(profileId, entry) ? (
+          <View style={styles.badge}>
+            <MonoLabel color="inverse">{WAITING_FOR_APPROVAL}</MonoLabel>
+          </View>
+        ) : null}
+        {person ? (
+          <Pressable
+            onPress={() => onOpenProfile(person.username)}
+            accessibilityRole="link"
+            accessibilityLabel={`Done by ${person.name}, @${person.username}`}
+            hitSlop={8}
+            style={styles.person}
+          >
+            <Avatar uri={person.avatarUrl} name={person.name} size={24} />
+            <Text style={styles.personName}>{person.name}</Text>
+          </Pressable>
+        ) : null}
+        {entry.notes ? <Text style={styles.notes}>{entry.notes}</Text> : null}
+        {entry.photos.length > 0 ? (
+          <View style={styles.photos}>
+            {entry.photos.map((photo, photoIndex) => (
+              <Image
+                key={photo.id}
+                source={{ uri: photo.url }}
+                style={styles.photo}
+                contentFit="cover"
+                accessibilityLabel={`${entry.title}, photo ${photoIndex + 1} of ${entry.photos.length}`}
+              />
+            ))}
+          </View>
+        ) : null}
+        {proposed && isOwner ? (
+          <View>
+            <Text style={styles.proposedBy}>{proposedBy(entry)}</Text>
+            <View style={styles.decision}>
+              <Button
+                size="sm"
+                onPress={() => approveEntry(entry)}
+                loading={approve.isPending && approve.variables?.id === entry.id}
+                accessibilityLabel={`Approve ${entry.title}`}
+              >
+                Approve
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onPress={() => confirmDecline(entry)}
+                accessibilityLabel={`Decline ${entry.title}`}
+              >
+                Decline
+              </Button>
+            </View>
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
   return (
     <>
-      {list.map((entry, index) => {
-        const cost = formatLogCost(entry.costCents, entry.currency);
-        const date = logEntryDate(entry.occurredOn);
-        const person = entry.performedBy;
-        const hasMenu = logEntryActions(entry, { isOwner, profileId }).length > 0;
-        return (
-          <View
-            key={entry.id}
-            style={[styles.entry, index < list.length - 1 && styles.divider]}
-            accessibilityLabel={[date, entry.title, cost].filter(Boolean).join(', ')}
-          >
-            <View style={styles.head}>
-              <View style={styles.headText}>
-                <MonoLabel color="textMid">{date}</MonoLabel>
-                <Text style={styles.title}>{entry.title}</Text>
-              </View>
-              {cost ? <Text style={styles.cost}>{cost}</Text> : null}
-              {hasMenu ? (
-                <IconButton
-                  icon={<DotsHorizontalIcon color={color.textMid} size={18} />}
-                  accessibilityLabel={`Options for ${entry.title}`}
-                  onPress={() => setSelected(entry)}
-                />
-              ) : null}
-            </View>
-            {person ? (
-              <Pressable
-                onPress={() => onOpenProfile(person.username)}
-                accessibilityRole="link"
-                accessibilityLabel={`Done by ${person.name}, @${person.username}`}
-                hitSlop={8}
-                style={styles.person}
-              >
-                <Avatar uri={person.avatarUrl} name={person.name} size={24} />
-                <Text style={styles.personName}>{person.name}</Text>
-              </Pressable>
-            ) : null}
-            {entry.notes ? <Text style={styles.notes}>{entry.notes}</Text> : null}
-            {entry.photos.length > 0 ? (
-              <View style={styles.photos}>
-                {entry.photos.map((photo, photoIndex) => (
-                  <Image
-                    key={photo.id}
-                    source={{ uri: photo.url }}
-                    style={styles.photo}
-                    contentFit="cover"
-                    accessibilityLabel={`${entry.title}, photo ${photoIndex + 1} of ${entry.photos.length}`}
-                  />
-                ))}
-              </View>
-            ) : null}
-          </View>
-        );
-      })}
+      {waiting.length > 0 ? (
+        <View style={styles.waiting} accessibilityLabel={isOwner ? WAITING_FOR_YOU : WAITING_FOR_APPROVAL}>
+          {isOwner ? (
+            <MonoLabel color="textMid" style={styles.groupLabel}>
+              {WAITING_FOR_YOU}
+            </MonoLabel>
+          ) : null}
+          {waiting.map((entry, index) => row(entry, index === waiting.length - 1))}
+        </View>
+      ) : null}
+      {published.map((entry, index) => row(entry, index === published.length - 1))}
 
       <Sheet visible={selected !== null} onClose={close}>
         {selected && actions.includes('edit') ? <SheetRow label="Edit entry" onPress={() => edit(selected)} /> : null}
@@ -214,6 +305,14 @@ const styles = StyleSheet.create({
     marginTop: space.md,
     alignSelf: 'flex-start',
   },
+  waiting: {
+    backgroundColor: color.bgPanel,
+    paddingTop: space.sm,
+    marginBottom: space.sm,
+  },
+  groupLabel: {
+    paddingHorizontal: space.lg,
+  },
   entry: {
     marginHorizontal: space.lg,
     paddingVertical: space.md,
@@ -245,6 +344,12 @@ const styles = StyleSheet.create({
     color: color.text,
     paddingTop: space.md,
   },
+  badge: {
+    alignSelf: 'flex-start',
+    backgroundColor: color.text,
+    paddingHorizontal: space.xs,
+    paddingVertical: 2,
+  },
   person: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -271,6 +376,16 @@ const styles = StyleSheet.create({
     width: PHOTO,
     height: PHOTO,
     backgroundColor: color.bgPanel,
+  },
+  proposedBy: {
+    fontFamily: type.body,
+    fontSize: 13,
+    color: color.textMid,
+  },
+  decision: {
+    flexDirection: 'row',
+    gap: space.sm,
+    marginTop: space.sm,
   },
 });
 

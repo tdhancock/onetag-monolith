@@ -10,16 +10,16 @@ import { join } from 'path';
 import {
   MESSAGE_SENTENCE,
   PUSH_NOTIFICATION_TYPES,
-  PUSH_SENTENCES,
   buildPush,
   handleRequest,
+  pushSentence,
   secretMatches,
   type ExpoMessage,
   type ExpoTicket,
   type PushDeps,
   type PushEvent,
 } from '../../supabase/functions/send-push/handler';
-import { notificationSentence } from '../../lib/screens/notifications';
+import { notificationSentence, pushRoute } from '../../lib/screens/notifications';
 
 const ROOT = join(__dirname, '..', '..');
 const SECRET = 'shh-test-secret';
@@ -58,8 +58,28 @@ const post = (body: unknown, secret: string | null = SECRET) =>
 describe('what each push says', () => {
   it('uses the Notifications screen\'s own sentence for every type that pushes', () => {
     for (const type of PUSH_NOTIFICATION_TYPES) {
-      expect(PUSH_SENTENCES[type]).toBe(notificationSentence(type));
+      expect(pushSentence(type, 'Furnace')).toBe(notificationSentence(type, 'Furnace'));
+      expect(pushSentence(type)).toBe(notificationSentence(type));
     }
+  });
+
+  it('names the project whose log someone wrote to, and opens it (ONE-143)', () => {
+    const added: PushEvent = {
+      ...follow,
+      type: 'log_entry_added',
+      senderUsername: 'acme_hvac',
+      projectId: 'pj-furnace',
+      projectName: 'Furnace',
+    };
+    expect(buildPush(added)).toEqual({
+      title: 'OneTag',
+      body: "acme_hvac added to Furnace's log.",
+      data: { type: 'log_entry_added', projectId: 'pj-furnace' },
+      sound: 'default',
+    });
+    const proposed = buildPush({ ...added, type: 'log_entry_proposed' })!;
+    expect(proposed.body).toBe("acme_hvac wants to add to Furnace's log.");
+    expect(pushRoute(proposed.data)).toBe('/project/pj-furnace');
   });
 
   it('routes a tap the way app/_layout.tsx expects', () => {

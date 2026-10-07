@@ -8,6 +8,7 @@ import {
   followRequestsSummary,
   groupNotifications,
   notificationGroupFor,
+  notificationRoute,
   notificationSentence,
 } from '../../lib/screens/notifications';
 
@@ -63,6 +64,29 @@ describe('notificationSentence', () => {
 
   it('says OneSnap, not story', () => {
     expect(notificationSentence('story_like')).toBe('liked your OneSnap.');
+  });
+});
+
+describe("someone writing to a project's log (ONE-143)", () => {
+  const SENDER = { id: 'p-acme', username: 'acme_hvac', avatar_url: null };
+  const row = (type: 'log_entry_added' | 'log_entry_proposed', project: { id: string; name: string } | null) => ({
+    type,
+    sender: SENDER,
+    post: null,
+    comment: null,
+    story: null,
+    project,
+  });
+
+  it('names the project, and says whether the entry is in or waiting', () => {
+    expect(notificationSentence('log_entry_added', 'Furnace')).toBe("added to Furnace's log.");
+    expect(notificationSentence('log_entry_proposed', 'Furnace')).toBe("wants to add to Furnace's log.");
+    expect(notificationSentence('log_entry_added')).toBe("added to your project's log.");
+  });
+
+  it('opens the project, or nothing once it is gone', () => {
+    expect(notificationRoute(row('log_entry_proposed', { id: 'pj-furnace', name: 'Furnace' }))).toBe('/project/pj-furnace');
+    expect(notificationRoute(row('log_entry_added', null))).toBeNull();
   });
 });
 

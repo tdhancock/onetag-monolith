@@ -355,8 +355,10 @@ const SET_NULL_ON_PURPOSE = [
   'messages.shared_profile_id',
   // A report keeps its history when the admin who reviewed it goes (ONE-98).
   'reports.reviewed_by',
-  // A log entry is its project owner's record, and outlives who did the work (ONE-141).
+  // A log entry is its project owner's record, and outlives who did the work (ONE-141)
+  // and who wrote it (ONE-143).
   'project_log_entries.performed_by_profile_id',
+  'project_log_entries.author_profile_id',
 ];
 
 describe('every foreign key to a profile or an account', () => {

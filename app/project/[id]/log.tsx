@@ -8,6 +8,7 @@ import { useApp } from '../../../store/AppContext.native';
 import { useCurrentProfile } from '../../../features/profiles';
 import {
   useCreateLogEntry,
+  useLogEntryStatusQuery,
   useProjectLogQuery,
   useProjectQuery,
   useUpdateLogEntry,
@@ -28,18 +29,25 @@ import { draftValidator } from '../../../lib/formErrors';
 import { canManageProject, PROJECT_NOT_FOUND } from '../../../lib/screens/projects';
 import { newDraftKey } from '../../../lib/screens/products';
 import {
+  canEditLogEntry,
   emptyLogEntryDraft,
   LOG_NOTES_MAX_LENGTH,
   LOG_PHOTO_FAILED,
   LOG_PHOTOS_MAX,
   LOG_SAVE_FAILED,
   LOG_TITLE_MAX_LENGTH,
+  LOG_WRITE_LABEL,
   logEntryDraftChanged,
   logEntryDraftErrors,
   logEntryDraftFrom,
   logEntryEditsFrom,
+  logWriteMode,
   newLogEntryInputFrom,
+  PROPOSAL_NOTE,
+  WAITING_FOR_APPROVAL,
   type LogEntryDraft,
+  type LogPerson,
+  type LogWriteMode,
 } from '../../../lib/screens/projectLog';
 import { color, space, type } from '../../../theme/tokens';
 
@@ -56,7 +64,11 @@ const PHOTO_TILE = 72;
  * Add to log, or edit one entry (ONE-141): what was done, on which day, by
  * whom, what it cost and photos of it. A modal, declared in app/_layout.tsx;
  * who did it is chosen in a Sheet inside it, since a modal never pushes a
- * screen. Only the project's owner gets the form.
+ * screen.
+ *
+ * The owner and the project's Contributors add to the log, and a business
+ * that scanned its tag proposes an entry the owner approves (ONE-143). An
+ * entry is edited by the owner or whoever wrote it.
  */
 export default function LogEntryScreen() {
   const params = useLocalSearchParams<{ id?: string | string[]; entry?: string | string[] }>();
@@ -65,12 +77,16 @@ export default function LogEntryScreen() {
   const router = useRouter();
   const { profileId } = useCurrentProfile();
   const project = useProjectQuery(projectId);
+  const isOwner = canManageProject(profileId, project.data);
   const log = useProjectLogQuery(entryId ? projectId : undefined);
-  const title = entryId ? 'Edit log entry' : 'Add to log';
+  // What someone else's new entry would be; the owner's is always published.
+  const access = useLogEntryStatusQuery(projectId, profileId, !entryId && Boolean(project.data) && !isOwner);
+  const mode = logWriteMode(isOwner, access.data);
+  const title = entryId ? 'Edit log entry' : LOG_WRITE_LABEL[mode ?? 'add'];
 
   const close = () => router.back();
 
-  if (project.isPending || (entryId && log.isPending)) {
+  if (project.isPending || (entryId && log.isPending) || (!entryId && !isOwner && access.isLoading)) {
     return (
       <SafeAreaView style={styles.screen}>
         <ModalHeader title={title} onCancel={close} onSave={() => undefined} canSave={false} />
@@ -80,7 +96,8 @@ export default function LogEntryScreen() {
   }
 
   const entry = entryId ? log.data?.find((candidate) => candidate.id === entryId) : undefined;
-  if (!project.data || !canManageProject(profileId, project.data) || (entryId && !entry)) {
+  const allowed = entryId ? Boolean(entry && canEditLogEntry(entry, { isOwner, profileId })) : mode !== null;
+  if (!project.data || !profileId || (entryId && !entry) || !allowed) {
     return (
       <SafeAreaView style={styles.screen}>
         <ModalHeader title={title} onCancel={close} onSave={() => undefined} canSave={false} />
@@ -93,7 +110,9 @@ export default function LogEntryScreen() {
               ? PROJECT_NOT_FOUND.body
               : entryId && !entry
                 ? 'It may have been deleted.'
-                : "Only the profile that owns the project can add to its log. Switch to it to add one."
+                : entryId
+                  ? "Only the project's owner and whoever wrote an entry can change it."
+                  : "Only the project's owner and its contributors write to its log, and a business that scanned its tag can propose an entry."
           }
           action={{ label: 'Back', onPress: close }}
         />
@@ -101,22 +120,37 @@ export default function LogEntryScreen() {
     );
   }
 
-  return <LogEntryForm project={project.data} entry={entry} title={title} onDone={close} />;
+  return (
+    <LogEntryForm
+      project={project.data}
+      entry={entry}
+      author={{ profileId, mode: mode ?? 'add', isOwner }}
+      title={title}
+      onDone={close}
+    />
+  );
 }
 
 function LogEntryForm({
   project,
   entry,
+  author,
   title,
   onDone,
 }: {
   project: Project;
   entry: ProjectLogEntry | undefined;
+  /** The active profile, how it writes a new entry, and whether it owns the project. */
+  author: { profileId: string; mode: LogWriteMode; isOwner: boolean };
   title: string;
   onDone: () => void;
 }) {
   const { addToast } = useApp();
-  const { authUserId } = useCurrentProfile();
+  const { authUserId, profile } = useCurrentProfile();
+  // A Contributor or a business logging its own visit did the work, most likely.
+  const self: LogPerson | null = author.isOwner
+    ? null
+    : { id: author.profileId, name: profile.name || profile.username, username: profile.username, avatarUrl: profile.profilePicture };
   const create = useCreateLogEntry(authUserId);
   const update = useUpdateLogEntry(authUserId);
   const saving = create.isPending || update.isPending;
@@ -125,18 +159,18 @@ function LogEntryForm({
   const [photoIndex, setPhotoIndex] = useState<number | null>(null);
 
   const done = () => {
-    addToast(entry ? 'Saved.' : 'Added to the log.', 'success');
+    addToast(entry ? 'Saved.' : author.mode === 'propose' ? 'Sent to the owner to approve.' : 'Added to the log.', 'success');
     onDone();
   };
   const failed = (error: unknown) => addToast(error instanceof MediaUploadError ? LOG_PHOTO_FAILED : LOG_SAVE_FAILED, 'error');
 
   const form = useAppForm({
     ...logEntryFormOptions,
-    defaultValues: entry ? logEntryDraftFrom(entry) : emptyLogEntryDraft(),
+    defaultValues: entry ? logEntryDraftFrom(entry) : emptyLogEntryDraft(new Date(), self),
     onSubmit: ({ value }) =>
       entry
         ? update.mutate({ entry, edits: logEntryEditsFrom(value) }, { onSuccess: done, onError: failed })
-        : create.mutate(newLogEntryInputFrom(value, project.id), { onSuccess: done, onError: failed }),
+        : create.mutate(newLogEntryInputFrom(value, project.id, author), { onSuccess: done, onError: failed }),
   });
   const valid = useStore(form.store, (state) => state.canSubmit);
   // An edit waits for something to save, not just for a valid draft.
@@ -168,7 +202,14 @@ function LogEntryForm({
       <KeyboardAvoider style={styles.fill}>
         <FormScrollView style={styles.fill} contentContainerStyle={styles.scroll}>
           <View style={[styles.section, styles.fields]}>
-            <Text style={styles.project}>{project.name}</Text>
+            <View>
+              <Text style={styles.project}>{project.name}</Text>
+              {(!entry && author.mode === 'propose') || entry?.status === 'proposed' ? (
+                <Text style={styles.hint}>
+                  {entry ? `${WAITING_FOR_APPROVAL}. ${PROPOSAL_NOTE}` : PROPOSAL_NOTE}
+                </Text>
+              ) : null}
+            </View>
             <form.Field name="occurredOn">
               {(field) => (
                 <DateField

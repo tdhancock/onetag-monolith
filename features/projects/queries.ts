@@ -8,11 +8,12 @@ import {
   fetchOwnedProjects,
   fetchProject,
   fetchProjectLog,
+  logEntryStatusFor,
   fetchProjectProducts,
   fetchProjectsUsingProduct,
 } from './api';
 import { projectKeys } from './keys';
-import type { Contributor, Project, ProjectLogEntry, ProjectProduct, ProjectSummary } from './types';
+import type { Contributor, LogEntryStatus, Project, ProjectLogEntry, ProjectProduct, ProjectSummary } from './types';
 
 /**
  * One project. `data` is null when there is none the viewer may see — deleted,
@@ -80,4 +81,16 @@ export const useProjectLogQuery = (projectId: string | undefined) =>
     queryKey: projectKeys.log(projectId ?? ''),
     queryFn: () => fetchProjectLog(projectId!),
     enabled: Boolean(projectId),
+  });
+
+/**
+ * What an entry the active profile writes on a project would be (ONE-143):
+ * published, proposed, or null when it may not write. Asked only of someone
+ * other than the owner, whose entries are always published.
+ */
+export const useLogEntryStatusQuery = (projectId: string | undefined, profileId: string | undefined, enabled = true) =>
+  useQuery<LogEntryStatus | null>({
+    queryKey: projectKeys.logAccess(projectId ?? '', profileId ?? ''),
+    queryFn: () => logEntryStatusFor(projectId!, profileId!),
+    enabled: Boolean(projectId && profileId) && enabled,
   });
