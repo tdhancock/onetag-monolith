@@ -9,11 +9,13 @@
 //   * it holds twelve codes in three columns and four rows, each inside its
 //     own cell, inside the margin, at whole pixels a module;
 //   * every cell, cut out along its guide, decodes to its own tag's URL;
+//   * each code's short code is printed beneath it, inside the cell (ONE-144);
 //   * dashed cut guides run along the cell edges and never touch a code;
 //   * a batch of 24 makes two sheets holding every code once.
 
 import jsQR from 'jsqr';
 import { buildTagUrl, TAG_SHORT_CODE_ALPHABET } from '../../lib/tagLinks';
+import { shortCodeTextSize } from '../../lib/bitmapText';
 import {
   CODES_PER_SHEET,
   drawSheet,
@@ -23,6 +25,7 @@ import {
   SHEET_HEIGHT_PX,
   SHEET_MARGIN_PX,
   SHEET_ROWS,
+  SHEET_TEXT_SCALE,
   SHEET_WIDTH_PX,
   sheetCells,
   sheetsOf,
@@ -89,15 +92,32 @@ describe('one sheet of twelve', () => {
     }
   });
 
-  it('draws each code about 1.75 in across, at whole pixels a module, centred in its cell', () => {
+  it('draws each code about 1.75 in across, at whole pixels a module, centred across its cell', () => {
     for (const cell of cells) {
       expect(Number.isInteger(cell.pixelsPerModule)).toBe(true);
       expect(cell.codeSize % cell.pixelsPerModule).toBe(0);
       expect(Math.abs(cell.codeSize - SHEET_CODE_PX)).toBeLessThanOrEqual(cell.codeSize / cell.pixelsPerModule / 2 + 1);
       const inset = cell.codeX - cell.cellX;
       expect(inset).toBeGreaterThan(0);
-      expect(cell.codeY - cell.cellY).toBe(inset);
       expect(Math.abs(SHEET_CELL_PX - cell.codeSize - 2 * inset)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('prints each short code beneath its code, the two centred in the cell together (ONE-144)', () => {
+    for (const cell of cells) {
+      expect(cell.text).toMatchObject(shortCodeTextSize(cell.shortCode, SHEET_TEXT_SCALE));
+      expect(cell.text.top).toBe(cell.codeY + cell.codeSize);
+      const above = cell.codeY - cell.cellY;
+      const below = cell.cellY + SHEET_CELL_PX - (cell.text.top + cell.text.height);
+      expect(Math.abs(above - below)).toBeLessThanOrEqual(1);
+      expect(Math.abs(cell.text.left + cell.text.width / 2 - (cell.cellX + SHEET_CELL_PX / 2))).toBeLessThanOrEqual(1);
+      // Inked, and inside the cell's guides.
+      let ink = 0;
+      for (let y = cell.text.top; y < cell.text.top + cell.text.height; y += 1) {
+        for (let x = cell.text.left; x < cell.text.left + cell.text.width; x += 1) if (isBlack(rows, x, y)) ink += 1;
+      }
+      expect(ink).toBeGreaterThan(0);
+      expect(cell.text.top + cell.text.height).toBeLessThan(cell.cellY + SHEET_CELL_PX);
     }
   });
 

@@ -14,7 +14,8 @@
 //   * a malformed short code is refused, never encoded;
 //   * the OneTag mark sits in a patch cleared in its centre (ONE-136), which
 //     covers no function pattern, and the code still scans: for any short
-//     code, for a longer tag domain, and shrunk to a quarter of its size.
+//     code, for a longer tag domain, and shrunk to a quarter of its size;
+//   * the short code is printed beneath, below the quiet zone (ONE-144).
 
 import { crc32, inflateSync } from 'zlib';
 import jsQR from 'jsqr';
@@ -22,10 +23,12 @@ import QRCode from 'qrcode';
 import { encodeBitmapPng, PNG_SIGNATURE } from '../../lib/png';
 import { buildTagUrl, TAG_SHORT_CODE_ALPHABET } from '../../lib/tagLinks';
 import { isMarkInk } from '../../lib/brandMark';
+import { drawShortCode, shortCodeTextSize } from '../../lib/bitmapText';
 import {
   qrLayoutForPayload,
   TAG_QR_ERROR_CORRECTION,
   TAG_QR_EXPORT_PX,
+  TAG_QR_EXPORT_TEXT_SCALE,
   TAG_QR_MIN_PATCH_MODULES,
   TAG_QR_QUIET_ZONE_MODULES,
   tagQrLayout,
@@ -167,9 +170,10 @@ describe("a tag's exported QR code", () => {
   const image = decodePng(exported.png);
   const matrix = QRCode.create(buildTagUrl(CODE), { errorCorrectionLevel: TAG_QR_ERROR_CORRECTION }).modules;
 
-  it('is a square at least TAG_QR_EXPORT_PX on a side', () => {
-    expect(image).toMatchObject({ width: exported.size, height: exported.size, bitDepth: 1, colourType: 0 });
+  it('is at least TAG_QR_EXPORT_PX wide: the code square on top, the short code beneath', () => {
+    expect(image).toMatchObject({ width: exported.size, height: exported.height, bitDepth: 1, colourType: 0 });
     expect(exported.size).toBeGreaterThanOrEqual(TAG_QR_EXPORT_PX);
+    expect(exported.height).toBeGreaterThan(exported.size);
   });
 
   it('draws every module the same whole number of pixels, with a four-module quiet zone', () => {
@@ -181,7 +185,7 @@ describe("a tag's exported QR code", () => {
   it('fills the image: every pixel outside the centre patch is the module it sits in, and the quiet zone is white', () => {
     const { pixelsPerModule, layout } = exported;
     expect(layout.patch).not.toBeNull();
-    for (let y = 0; y < image.height; y += 1) {
+    for (let y = 0; y < exported.size; y += 1) {
       for (let x = 0; x < image.width; x += 1) {
         const row = Math.floor(y / pixelsPerModule) - TAG_QR_QUIET_ZONE_MODULES;
         const col = Math.floor(x / pixelsPerModule) - TAG_QR_QUIET_ZONE_MODULES;
@@ -327,5 +331,39 @@ describe('the centre patch and the mark (ONE-136)', () => {
     const fitted = qrLayoutForPayload(payload);
     expect(fitted.patch!.size).toBeGreaterThanOrEqual(TAG_QR_MIN_PATCH_MODULES);
     expect(patchCoversNoFunctionPattern(fitted)).toBe(true);
+  });
+});
+
+describe('the short code beneath an exported code (ONE-144)', () => {
+  const exported = tagQrPng(CODE);
+  const image = decodePng(exported.png);
+  const { text, size } = exported;
+
+  it('is drawn below the quiet zone, centred, at the export scale', () => {
+    expect(text.top).toBe(size);
+    expect(text).toMatchObject(shortCodeTextSize(CODE, TAG_QR_EXPORT_TEXT_SCALE));
+    expect(Math.abs(text.left + text.width / 2 - size / 2)).toBeLessThanOrEqual(1);
+    expect(exported.height).toBe(size + text.height + TAG_QR_QUIET_ZONE_MODULES * exported.pixelsPerModule);
+  });
+
+  it('is exactly the short code, drawn from the glyph table', () => {
+    const rowBytes = Math.ceil(size / 8);
+    const expected = Array.from({ length: exported.height - size }, () => new Uint8Array(rowBytes).fill(0xff));
+    drawShortCode(expected, text.left, 0, CODE, TAG_QR_EXPORT_TEXT_SCALE);
+    for (let y = size; y < exported.height; y += 1) {
+      for (let x = 0; x < size; x += 1) {
+        const want = (expected[y - size]![x >> 3]! & (0x80 >> (x & 7))) === 0;
+        if (image.black[y]![x] !== want) throw new Error(`pixel (${x}, ${y}) is wrong`);
+      }
+    }
+  });
+
+  it('leaves the quiet zone under the code white', () => {
+    const q = TAG_QR_QUIET_ZONE_MODULES * exported.pixelsPerModule;
+    for (let y = size - q; y < size; y += 1) expect(image.black[y]!.some(Boolean)).toBe(false);
+  });
+
+  it('still lets the code decode', () => {
+    expect(readQr(image.black)).toBe(buildTagUrl(CODE));
   });
 });

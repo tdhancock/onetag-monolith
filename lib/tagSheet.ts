@@ -1,4 +1,5 @@
-// A printable sheet of tag QR codes (ONE-138).
+// A printable sheet of tag QR codes (ONE-138), each with its short code
+// printed beneath it (ONE-144).
 //
 // Blank Physical Tags are made to be printed many at a time, stuck around a
 // house, and linked one by one as each is first scanned. A sheet is US Letter
@@ -8,6 +9,7 @@
 // at a whole number of pixels a module, as the single export is.
 
 import { encodeBitmapPng } from './png';
+import { drawShortCode, ink, shortCodeTextSize } from './bitmapText';
 import { drawQrBitmap, TAG_QR_QUIET_ZONE_MODULES, tagQrLayout } from './tagQr';
 
 /** Print resolution, in dots per inch. */
@@ -35,6 +37,9 @@ export const SHEET_CELL_PX = Math.min(
   (SHEET_HEIGHT_PX - 2 * SHEET_MARGIN_PX) / SHEET_ROWS,
 );
 
+/** The short code under each code is drawn this many pixels a glyph pixel: about 2.9 mm tall. */
+export const SHEET_TEXT_SCALE = 1;
+
 /** Where one code sits on a sheet, in pixels. */
 export interface SheetCell {
   shortCode: string;
@@ -46,6 +51,8 @@ export interface SheetCell {
   codeY: number;
   codeSize: number;
   pixelsPerModule: number;
+  /** The short code beneath it (ONE-144): its top-left corner and size. */
+  text: { left: number; top: number; width: number; height: number };
 }
 
 /** Split codes into sheets of CODES_PER_SHEET, in order. */
@@ -65,13 +72,14 @@ export const sheetCells = (shortCodes: string[]): SheetCell[] => {
     const codeSize = span * pixelsPerModule;
     const cellX = SHEET_MARGIN_PX + (index % SHEET_COLUMNS) * SHEET_CELL_PX;
     const cellY = SHEET_MARGIN_PX + Math.floor(index / SHEET_COLUMNS) * SHEET_CELL_PX;
-    const inset = Math.floor((SHEET_CELL_PX - codeSize) / 2);
-    return { shortCode, cellX, cellY, codeX: cellX + inset, codeY: cellY + inset, codeSize, pixelsPerModule };
+    // The code and the short code under it, as one block, centred in the cell.
+    // The code's own quiet zone separates the two.
+    const textSize = shortCodeTextSize(shortCode, SHEET_TEXT_SCALE);
+    const codeX = cellX + Math.floor((SHEET_CELL_PX - codeSize) / 2);
+    const codeY = cellY + Math.floor((SHEET_CELL_PX - codeSize - textSize.height) / 2);
+    const text = { left: cellX + Math.floor((SHEET_CELL_PX - textSize.width) / 2), top: codeY + codeSize, ...textSize };
+    return { shortCode, cellX, cellY, codeX, codeY, codeSize, pixelsPerModule, text };
   });
-};
-
-const ink = (row: Uint8Array, x: number) => {
-  row[x >> 3] &= ~(0x80 >> (x & 7));
 };
 
 const isDashed = (offset: number) => offset % (CUT_GUIDE_DASH_PX + CUT_GUIDE_GAP_PX) < CUT_GUIDE_DASH_PX;
@@ -105,6 +113,7 @@ export const drawSheet = (shortCodes: string[]): { rows: Uint8Array[]; cells: Sh
         if ((from[x >> 3]! & (0x80 >> (x & 7))) === 0) ink(to, cell.codeX + x);
       }
     }
+    drawShortCode(rows, cell.text.left, cell.text.top, cell.shortCode, SHEET_TEXT_SCALE);
   }
 
   return { rows, cells };

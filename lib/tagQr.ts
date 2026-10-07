@@ -11,6 +11,7 @@ import QRCode from 'qrcode';
 import { buildTagUrl, isValidShortCode } from './tagLinks';
 import { encodeBitmapPng } from './png';
 import { brandMarkOfWidth, isMarkInk, type BrandMark } from './brandMark';
+import { drawShortCode, shortCodeTextSize } from './bitmapText';
 
 /**
  * Error correction level H recovers 30% of the code. Physical tags get
@@ -148,11 +149,21 @@ export const isQrInk = (layout: TagQrLayout, x: number, y: number): boolean => {
   return layout.dark[row]![col]!;
 };
 
+/**
+ * The short code under an exported code is drawn this many pixels a glyph
+ * pixel: about 5.8 mm tall at 300 dpi, legible on a code printed 10 cm wide.
+ */
+export const TAG_QR_EXPORT_TEXT_SCALE = 2;
+
 export interface TagQrPng {
   /** The PNG file's bytes. */
   png: Uint8Array;
-  /** Width and height in pixels, quiet zone included. */
+  /** The code's square, quiet zone included: the image's width, and the height of its top part. */
   size: number;
+  /** The whole image's height: the code's square, then the short code beneath it (ONE-144). */
+  height: number;
+  /** Where the short code is drawn, below the quiet zone. */
+  text: { left: number; top: number; width: number; height: number };
   /** Modules on a side of the code itself, without the quiet zone. */
   modules: number;
   /** Pixels on a side of each module. */
@@ -211,15 +222,29 @@ export const drawQrBitmap = (layout: TagQrLayout, pixelsPerModule: number): Uint
 /**
  * A Tag's QR code as a PNG for printing: black on white, every module the
  * same whole number of pixels, a quiet zone of TAG_QR_QUIET_ZONE_MODULES all
- * round, the mark in its centre, and at least TAG_QR_EXPORT_PX on a side.
+ * round, the mark in its centre, and at least TAG_QR_EXPORT_PX across.
  * Whole pixels keep every edge sharp; a fractional module size would blur
  * each one.
+ *
+ * Beneath the quiet zone, the short code, centred (ONE-144): what someone
+ * types in when the sticker is too scuffed to scan, as the screen shows it.
+ * A quiet zone's depth of white follows it, so it isn't cut tight.
  */
 export const tagQrPng = (shortCode: string): TagQrPng => {
   const layout = tagQrLayout(shortCode);
   const span = layout.modules + TAG_QR_QUIET_ZONE_MODULES * 2;
   const pixelsPerModule = Math.ceil(TAG_QR_EXPORT_PX / span);
   const size = span * pixelsPerModule;
-  const png = encodeBitmapPng(size, size, drawQrBitmap(layout, pixelsPerModule));
-  return { png, size, modules: layout.modules, pixelsPerModule, layout };
+
+  const textSize = shortCodeTextSize(shortCode, TAG_QR_EXPORT_TEXT_SCALE);
+  const text = { left: Math.floor((size - textSize.width) / 2), top: size, ...textSize };
+  const height = size + text.height + TAG_QR_QUIET_ZONE_MODULES * pixelsPerModule;
+  const rowBytes = Math.ceil(size / 8);
+  // Fresh rows for the text: the code's own rows may be shared between pixel rows.
+  const below = Array.from({ length: height - size }, () => new Uint8Array(rowBytes).fill(0xff));
+  const rows = [...drawQrBitmap(layout, pixelsPerModule), ...below];
+  drawShortCode(rows, text.left, text.top, shortCode, TAG_QR_EXPORT_TEXT_SCALE);
+
+  const png = encodeBitmapPng(size, height, rows);
+  return { png, size, height, text, modules: layout.modules, pixelsPerModule, layout };
 };
