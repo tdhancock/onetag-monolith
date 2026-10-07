@@ -42,6 +42,8 @@ jest.mock('react-native-safe-area-context', () => {
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
 });
 jest.mock('react-native-svg', () => require('../../support/reactNativeSvgStub'));
+// The project form's date details (ONE-140); none is picked here.
+jest.mock('@react-native-community/datetimepicker', () => ({ __esModule: true, default: () => null }));
 jest.mock('expo-image', () => require('../../support/expoImageStub'));
 
 const mockRouter = { back: jest.fn(), replace: jest.fn(), push: jest.fn() };

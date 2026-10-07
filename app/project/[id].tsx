@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -30,6 +30,7 @@ import { DotsHorizontalIcon, XIcon } from '../../components/native/Icons';
 import { onwardActionsFor } from '../../lib/screens/tagResolution';
 import { tagCreateRoute } from '../../lib/screens/tags';
 import { productRoute } from '../../lib/screens/products';
+import { DETAILS_TITLE, detailDisplayValue } from '../../lib/screens/projectDetails';
 import {
   canManageProject,
   deleteProjectConfirm,
@@ -265,6 +266,8 @@ function ProjectDetail({
         {project.description ? <Text style={styles.description}>{project.description}</Text> : null}
       </View>
 
+      {project.details.length > 0 ? <ProjectDetailRows details={project.details} /> : null}
+
       {holdsProjects && (isOwner || insideCount > 0) ? (
         <DetailSection
           title={INCLUDES_TITLE}
@@ -332,6 +335,40 @@ function ProjectDetail({
         />
       </DetailSection>
     </ScrollView>
+  );
+}
+
+/**
+ * A project's details (ONE-140) as label and value rows: a date in the
+ * device's locale, and a link that opens when tapped.
+ */
+function ProjectDetailRows({ details }: { details: Project['details'] }) {
+  return (
+    <DetailSection title={DETAILS_TITLE}>
+      {details.map((detail, index) => {
+        const shown = detailDisplayValue(detail);
+        const rowStyle = [styles.detailRow, index < details.length - 1 && styles.detailDivider];
+        return detail.kind === 'link' ? (
+          <Pressable
+            key={detail.id}
+            onPress={() => void Linking.openURL(detail.value).catch(() => undefined)}
+            accessibilityRole="link"
+            accessibilityLabel={`${detail.label}, ${shown}`}
+            style={rowStyle}
+          >
+            <Text style={styles.detailLabel}>{detail.label}</Text>
+            <Text style={[styles.detailValue, styles.detailLink]} numberOfLines={1}>
+              {shown}
+            </Text>
+          </Pressable>
+        ) : (
+          <View key={detail.id} style={rowStyle} accessible accessibilityLabel={`${detail.label}, ${shown}`}>
+            <Text style={styles.detailLabel}>{detail.label}</Text>
+            <Text style={styles.detailValue}>{shown}</Text>
+          </View>
+        );
+      })}
+    </DetailSection>
   );
 }
 
@@ -604,6 +641,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: color.text,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: space.lg,
+    marginHorizontal: space.lg,
+    paddingVertical: space.md,
+  },
+  detailDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: color.border,
+  },
+  detailLabel: {
+    fontFamily: type.body,
+    fontSize: 14,
+    color: color.textMid,
+  },
+  detailValue: {
+    flexShrink: 1,
+    textAlign: 'right',
+    fontFamily: type.bodyMedium,
+    fontSize: 14,
+    color: color.text,
+  },
+  detailLink: {
+    textDecorationLine: 'underline',
   },
   thumb: {
     width: THUMB,

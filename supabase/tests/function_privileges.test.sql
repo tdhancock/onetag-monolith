@@ -9,7 +9,7 @@
 -- stay open to them.
 
 BEGIN;
-SELECT plan(54);
+SELECT plan(56);
 
 -- ─── Signed-in only: anon refused ─────────────────────────────────────
 
@@ -143,6 +143,13 @@ SELECT ok(NOT has_function_privilege('anon', 'public.can_read_unlisted_project(u
   'anon cannot execute can_read_unlisted_project()');
 SELECT ok(has_function_privilege('authenticated', 'public.can_read_unlisted_project(uuid)', 'EXECUTE'),
   'authenticated can execute can_read_unlisted_project(): the unlisted read policy calls it');
+
+-- ─── Project details (ONE-140) ────────────────────────────────────────
+
+SELECT ok(NOT has_function_privilege('anon', 'public.is_calendar_date(text)', 'EXECUTE'),
+  'anon cannot execute is_calendar_date(): only the signed-in write details');
+SELECT ok(has_function_privilege('authenticated', 'public.is_calendar_date(text)', 'EXECUTE'),
+  'authenticated can execute is_calendar_date(): the date check on project_details calls it');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -14,6 +14,7 @@ export {
   createProject,
   updateProject,
   saveProjectEdits,
+  saveProjectDetails,
   deleteProject,
   linkProduct,
   unlinkProduct,
@@ -27,7 +28,7 @@ export {
 } from './api';
 // A project as a list shows it, shared with other features through services/.
 export { mapProjectSummaryRow, PROJECT_SUMMARY_SELECT } from '../../services/projectRows';
-export type { NewProjectInput, ProjectEdits, NewContributor, ContributorChanges } from './api';
+export type { NewProjectInput, ProjectEdits, ProjectDetailEdit, NewContributor, ContributorChanges } from './api';
 export { projectKeys } from './keys';
 export {
   useProjectQuery,
@@ -60,6 +61,9 @@ export type {
 export type {
   Project,
   ProjectParent,
+  ProjectDetail,
+  ProjectDetailInput,
+  ProjectDetailKind,
   ProjectSummary,
   ProjectSummaryRow,
   ProjectProfile,

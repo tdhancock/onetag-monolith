@@ -30,6 +30,24 @@ export interface ProjectParent {
   name: string;
 }
 
+/** What a detail holds (ONE-140): words, a number, a date or a link. */
+export type ProjectDetailKind = 'text' | 'number' | 'date' | 'link';
+
+/** A detail as the owner edits it: no id until it is stored. */
+export interface ProjectDetailInput {
+  /** "Filter size", "Warranty until". */
+  label: string;
+  kind: ProjectDetailKind;
+  /** As stored: a date YYYY-MM-DD, a number plain digits, a link http(s). */
+  value: string;
+}
+
+/** A fact a project's owner keeps on it (ONE-140), as visible as the project. */
+export interface ProjectDetail extends ProjectDetailInput {
+  id: string;
+  sortOrder: number;
+}
+
 /** A project, with what its page shows beyond a list's summary. */
 export interface Project extends ProjectSummary {
   description: string | null;
@@ -40,6 +58,8 @@ export interface Project extends ProjectSummary {
    * Null at the top level, and for a viewer the parent is hidden from.
    */
   parent: ProjectParent | null;
+  /** Its details (ONE-140), in the owner's order. */
+  details: ProjectDetail[];
 }
 
 /** A Product a project Links: "Products used". */
@@ -110,6 +130,17 @@ export interface ProjectRow {
   parent_project_id?: string | null;
   /** The parent, when the viewer may see it (ONE-134). */
   parent?: ProjectParent | ProjectParent[] | null;
+  /** Its details (ONE-140), in any order. */
+  details?: ProjectDetailRow[] | null;
+}
+
+/** A `project_details` row. */
+export interface ProjectDetailRow {
+  id: string;
+  label: string;
+  kind: ProjectDetailKind;
+  value: string;
+  sort_order: number;
 }
 
 /** A `contributors` row with its profile embedded. */

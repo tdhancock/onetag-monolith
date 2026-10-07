@@ -43,7 +43,8 @@ export const useCreateProject = (authUserId: AuthUserId | undefined) => {
 };
 
 export interface UpdateProjectInput {
-  projectId: string;
+  /** The project as stored: its details are what the edit's are saved against. */
+  project: Pick<Project, 'id' | 'details'>;
   edits: ProjectEdits;
 }
 
@@ -51,10 +52,10 @@ export interface UpdateProjectInput {
 export const useUpdateProject = (authUserId: AuthUserId | undefined) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, edits }: UpdateProjectInput) => saveProjectEdits(signedIn(authUserId), projectId, edits),
-    onSettled: (_data, _error, { projectId }) =>
+    mutationFn: ({ project, edits }: UpdateProjectInput) => saveProjectEdits(signedIn(authUserId), project, edits),
+    onSettled: (_data, _error, { project }) =>
       Promise.all([
-        queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) }),
+        queryClient.invalidateQueries({ queryKey: projectKeys.detail(project.id) }),
         queryClient.invalidateQueries({ queryKey: projectKeys.lists() }),
       ]),
   });

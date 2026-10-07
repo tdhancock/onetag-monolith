@@ -13,6 +13,7 @@
 import { supabase } from '../../services/supabase.native';
 import { uploadDeviceImages } from '../../services/destinationMedia';
 import { mapProductSummaryRow, PRODUCT_SUMMARY_SELECT, type ProductSummaryRow } from '../../services/productRows';
+import { saveOrderedRows } from '../../services/orderedRows';
 import {
   mapProjectSummaryRow,
   newestProjectFirst,
@@ -25,6 +26,9 @@ import type {
   Contributor,
   ContributorRow,
   Project,
+  ProjectDetail,
+  ProjectDetailInput,
+  ProjectDetailRow,
   ProjectFields,
   ProjectProduct,
   ProjectProfile,
@@ -35,9 +39,9 @@ import type {
 const PROFILE_COLUMNS = 'id, username, full_name, avatar_url, is_verified, profile_type';
 
 /**
- * Everything a project page shows of the project, with its owner embedded, and
- * the project it sits inside (ONE-134) — read under the viewer's own RLS, so a
- * parent they may not see comes back null.
+ * Everything a project page shows of the project, with its owner embedded, the
+ * project it sits inside (ONE-134) and its details (ONE-140) — read under the
+ * viewer's own RLS, so a parent they may not see comes back null.
  *
  * The parent is embedded through its column, `parent_project_id(…)`. The
  * table refers to itself, and `projects!parent_project_id(…)` reads the other
@@ -45,7 +49,7 @@ const PROFILE_COLUMNS = 'id, username, full_name, avatar_url, is_verified, profi
  */
 export const PROJECT_SELECT =
   `${PROJECT_SUMMARY_SELECT}, description, owner:profiles!owner_profile_id(${PROFILE_COLUMNS}), ` +
-  'parent:parent_project_id(id, name)';
+  'parent:parent_project_id(id, name), details:project_details(id, label, kind, value, sort_order)';
 
 /** A contributor link with the profile it names. */
 export const CONTRIBUTOR_SELECT =
@@ -63,6 +67,16 @@ const mapProfileRow = (row: ProjectProfileRow): ProjectProfile => ({
   profileType: row.profile_type,
 });
 
+const mapDetailRow = (row: ProjectDetailRow): ProjectDetail => ({
+  id: row.id,
+  label: row.label,
+  kind: row.kind,
+  value: row.value,
+  sortOrder: row.sort_order,
+});
+
+const bySortOrder = (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order;
+
 export const mapProjectRow = (row: ProjectRow): Project => {
   const owner = one(row.owner);
   const parent = one(row.parent);
@@ -71,6 +85,7 @@ export const mapProjectRow = (row: ProjectRow): Project => {
     description: row.description,
     owner: owner ? mapProfileRow(owner) : null,
     parent: parent ? { id: parent.id, name: parent.name } : null,
+    details: [...(row.details ?? [])].sort(bySortOrder).map(mapDetailRow),
   };
 };
 
@@ -215,11 +230,22 @@ export interface NewProjectInput {
   fields: ProjectFields;
   /** A device URI, or null for no cover. */
   coverUri: string | null;
+  /** Its details (ONE-140) in order, each with a value. None when left out. */
+  details?: ProjectDetailInput[];
 }
 
+/** A detail as an edit saves it: `id` when it is already stored. */
+export type ProjectDetailEdit = ProjectDetailInput & { id?: string };
+
+/** Where a project's details live, and what each holds besides its place. */
+const DETAILS = { table: 'project_details', parentColumn: 'project_id' } as const;
+const DETAIL_FIELDS = ['label', 'kind', 'value'] as const;
+
 /**
- * Create a project and return its id. The cover goes up first, keyed by the
- * account, so a failed upload writes nothing.
+ * Create a project with its details, and return its id. The cover goes up
+ * first, keyed by the account, so a failed upload writes nothing. The project
+ * and its details are two inserts; if the second is refused, the project is
+ * deleted again, so a half-made one is never left behind.
  */
 export const createProject = async (authUserId: AuthUserId, input: NewProjectInput): Promise<string> => {
   const coverUrl = await storedCover(authUserId, input.coverUri);
@@ -229,8 +255,25 @@ export const createProject = async (authUserId: AuthUserId, input: NewProjectInp
     .select('id')
     .single();
   if (error) throw error;
-  return (data as { id: string }).id;
+  const projectId = (data as { id: string }).id;
+
+  if (input.details && input.details.length > 0) {
+    try {
+      await saveProjectDetails(projectId, [], input.details);
+    } catch (detailsError) {
+      await supabase.from('projects').delete().eq('id', projectId);
+      throw detailsError;
+    }
+  }
+  return projectId;
 };
+
+/** Write a project's details in the order given (ONE-140). Additions first, removals last. */
+export const saveProjectDetails = (
+  projectId: string,
+  current: ProjectDetail[],
+  details: ProjectDetailEdit[],
+): Promise<void> => saveOrderedRows<ProjectDetailInput>(DETAILS, projectId, current, details, DETAIL_FIELDS);
 
 /**
  * Change a project's fields. RLS filters a project the caller does not own
@@ -248,16 +291,28 @@ export const updateProject = async (
   if (!data || data.length === 0) throw new Error('Project not found.');
 };
 
-/** An edit to a project: its fields and its cover, a device URI, a stored URL, or none. */
+/**
+ * An edit to a project: its fields, its cover (a device URI, a stored URL, or
+ * none) and its details in order.
+ */
 export interface ProjectEdits {
   fields: ProjectFields;
   coverUri: string | null;
+  details: ProjectDetailEdit[];
 }
 
-/** Save an edit: a new cover uploaded first, keyed by the account, then the row. */
-export const saveProjectEdits = async (authUserId: AuthUserId, projectId: string, edits: ProjectEdits): Promise<void> => {
+/**
+ * Save an edit: a new cover uploaded first, keyed by the account, then the
+ * row, then the details against those stored.
+ */
+export const saveProjectEdits = async (
+  authUserId: AuthUserId,
+  project: Pick<Project, 'id' | 'details'>,
+  edits: ProjectEdits,
+): Promise<void> => {
   const coverUrl = await storedCover(authUserId, edits.coverUri);
-  await updateProject(projectId, { ...edits.fields, coverUrl });
+  await updateProject(project.id, { ...edits.fields, coverUrl });
+  await saveProjectDetails(project.id, project.details, edits.details);
 };
 
 /**

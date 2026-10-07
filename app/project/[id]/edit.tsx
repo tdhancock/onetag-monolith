@@ -89,7 +89,7 @@ function EditProjectForm({ project, onDone }: { project: Project; onDone: () => 
     defaultValues: projectDraftFrom(project),
     onSubmit: ({ value }) =>
       updateProject.mutate(
-        { projectId: project.id, edits: projectEditsFrom(value) },
+        { project, edits: projectEditsFrom(value) },
         {
           onSuccess: () => {
             addToast('Saved.', 'success');

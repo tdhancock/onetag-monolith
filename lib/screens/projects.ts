@@ -3,6 +3,13 @@
 // out of the screens so it is tested without mounting anything.
 
 import type { Contributor, Project, ProjectEdits, ProjectFields, ProjectSummary } from '../../features/projects';
+import {
+  detailDraftErrors,
+  detailDraftsFrom,
+  detailEditsFrom,
+  detailInputsFrom,
+  type ProjectDetailDraft,
+} from './projectDetails';
 
 // ─── Routes ─────────────────────────────────────────────────────────────
 
@@ -61,6 +68,8 @@ export interface ProjectDraft {
   interestSlug: string | null;
   /** The project this one sits inside (ONE-134), or null at the top level. */
   parentProjectId: string | null;
+  /** Its details (ONE-140), in order. Any left without a value are not saved. */
+  details: ProjectDetailDraft[];
 }
 
 /** New projects are public: a project is a discovery surface unless its owner says otherwise. */
@@ -73,6 +82,7 @@ export const EMPTY_PROJECT_DRAFT: ProjectDraft = {
   visibility: 'public',
   interestSlug: null,
   parentProjectId: null,
+  details: [],
 };
 
 /** A stored project as the edit form starts. */
@@ -85,15 +95,23 @@ export const projectDraftFrom = (project: Project): ProjectDraft => ({
   visibility: visibilityOf(project),
   interestSlug: project.interestSlug ?? null,
   parentProjectId: project.parentProjectId ?? null,
+  details: detailDraftsFrom(project.details),
 });
 
 export const projectNameError = (draft: Pick<ProjectDraft, 'name'>): string | null =>
   draft.name.trim() === '' ? 'Give the project a name.' : null;
 
-/** What is wrong with a draft, field by field: only a name is required. */
-export const projectDraftErrors = (draft: ProjectDraft): { name: string | null } => ({ name: projectNameError(draft) });
+/**
+ * What is wrong with a draft, field by field: a name is required, and each
+ * detail's value must suit its kind (ONE-140), keyed `details[0].value`.
+ */
+export const projectDraftErrors = (draft: ProjectDraft): { name: string | null } & Record<string, string | null> => ({
+  ...detailDraftErrors(draft.details),
+  name: projectNameError(draft),
+});
 
-export const projectDraftValid = (draft: ProjectDraft): boolean => projectNameError(draft) === null;
+export const projectDraftValid = (draft: ProjectDraft): boolean =>
+  Object.values(projectDraftErrors(draft)).every((error) => error === null);
 
 const textOrNull = (value: string): string | null => value.trim() || null;
 
@@ -113,11 +131,13 @@ export const newProjectInputFrom = (draft: ProjectDraft, ownerProfileId: string)
   ownerProfileId,
   fields: projectFieldsFrom(draft),
   coverUri: draft.coverUri,
+  details: detailInputsFrom(draft.details),
 });
 
 export const projectEditsFrom = (draft: ProjectDraft): ProjectEdits => ({
   fields: projectFieldsFrom(draft),
   coverUri: draft.coverUri,
+  details: detailEditsFrom(draft.details),
 });
 
 /** Whether an edit would save anything different from what is stored. */

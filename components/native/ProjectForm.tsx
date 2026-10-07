@@ -1,45 +1,33 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { formOptions, useStore } from '@tanstack/react-form';
+import { useStore } from '@tanstack/react-form';
 import { Button, MonoLabel, Pressable, SettingsRow, Sheet, SheetRow } from './ui';
 import InterestFilter from './InterestFilter';
+import ProjectDetailsFields from './ProjectDetailsFields';
 import { CheckIcon, ImageIcon } from './Icons';
 import { withForm } from './form';
+import { projectFormOptions } from './projectFormOptions';
 import { pickImageFromLibrary } from '../../services/mediaPicker';
-import { draftValidator } from '../../lib/formErrors';
 import {
-  EMPTY_PROJECT_DRAFT,
   NOT_PART_OF_ANYTHING,
   partOfLabel,
   PROJECT_DESCRIPTION_MAX_LENGTH,
   PROJECT_NAME_MAX_LENGTH,
   PROJECT_TYPE_MAX_LENGTH,
   PROJECT_YEAR_MAX_LENGTH,
-  projectDraftErrors,
   PROJECT_VISIBILITIES,
   projectVisibilityDescription,
-  type ProjectDraft,
   type ProjectParentChoice,
 } from '../../lib/screens/projects';
 import { color, space, type } from '../../theme/tokens';
 
-const validateProject = draftValidator(projectDraftErrors);
-
-/**
- * What Add and Edit build their project form from: the draft's shape, and its
- * rules checked from the start and on every change. Each screen adds its own
- * starting draft and what saving does.
- */
-export const projectFormOptions = formOptions({
-  defaultValues: EMPTY_PROJECT_DRAFT as ProjectDraft,
-  validators: { onMount: validateProject, onChange: validateProject },
-});
+export { projectFormOptions };
 
 /**
  * The fields a project is created and edited with (ONE-41): a cover, its name,
- * type and year, a description, the project it is part of (ONE-134), and
- * whether it is public. The screen around it owns saving.
+ * type and year, a description, its details (ONE-140), the project it is part
+ * of (ONE-134), and who can see it. The screen around it owns saving.
  *
  * `parentChoices` are the projects it may go inside: the profile's own
  * top-level projects. A project that holds others gets none, since nesting is
@@ -156,6 +144,8 @@ const ProjectForm = withForm({
             )}
           </form.AppField>
         </View>
+
+        <ProjectDetailsFields form={form} />
 
         {/* Optional, like the composer's (ONE-49): no forced choice. */}
         <View style={styles.interest}>

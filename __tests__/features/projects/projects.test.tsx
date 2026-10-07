@@ -26,6 +26,10 @@
 //      who may see the house — and deleting the house says what goes with it.
 //   7. A project is Public, Unlisted or Private (ONE-137): the form writes the
 //      choice, the page badges it, and Make public lifts Unlisted too.
+//   8. A project keeps details its owner defines (ONE-140): the form adds them,
+//      from a template or one by one, saves only those with a value, in order,
+//      and the page shows them, a date in the device's locale and a link that
+//      opens.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -66,11 +70,26 @@ jest.mock('react-native', () => {
     ...shim,
     FlatList,
     Switch,
+    Linking: { openURL: (url: string) => mockOpenURL(url) },
     ScrollView: box,
     KeyboardAvoidingView: box,
     RefreshControl: () => null,
     Platform: { OS: 'ios' },
     useWindowDimensions: () => ({ width: 375, height: 812 }),
+  };
+});
+const mockOpenURL = jest.fn((_url: string) => Promise.resolve());
+// The picker hands back whatever date the test puts in mockPickedDate.
+let mockPickedDate = new Date(2026, 2, 4);
+jest.mock('@react-native-community/datetimepicker', () => {
+  const React = require('react');
+  return {
+    __esModule: true,
+    default: (p: { onChange: (e: { type: string }, d?: Date) => void }) =>
+      React.createElement('button', {
+        'aria-label': 'Date picker',
+        onClick: () => p.onChange({ type: 'set' }, mockPickedDate),
+      }),
   };
 });
 jest.mock('react-native-safe-area-context', () => {
@@ -180,6 +199,7 @@ const seed = () => {
     ],
     product_media: [{ id: 'm1', product_id: 'pd-tile', url: 'https://cdn.example/tile.jpg', media_type: 'photo', sort_order: 0 }],
     project_products: [{ id: 'pp-1', project_id: 'pj-barn', product_id: 'pd-tile' }],
+    project_details: [],
     tags: [
       { id: 't-1', owner_profile_id: 'p-builder', dest_project_id: 'pj-barn' },
       { id: 't-2', owner_profile_id: 'p-builder', dest_project_id: 'pj-barn' },
@@ -212,7 +232,12 @@ const seed = () => {
     // The parent embed reads under the viewer's RLS, as PostgREST's does.
     projects: (row) => {
       const parent = row.parent_project_id ? project(row.parent_project_id) : null;
-      return { ...row, owner: profile(row.owner_profile_id), parent: parent ? { id: parent.id, name: parent.name } : null };
+      return {
+        ...row,
+        owner: profile(row.owner_profile_id),
+        parent: parent ? { id: parent.id, name: parent.name } : null,
+        details: db.tables.project_details!.filter((d) => d.project_id === row.id),
+      };
     },
     contributors: (row, select) =>
       select.includes('project:') ? { project: project(row.project_id) } : { ...row, profile: profile(row.contributor_profile_id) },
@@ -274,6 +299,12 @@ async function remount(screen: React.ReactElement): Promise<HTMLDivElement> {
 const buttons = (el: HTMLElement) => Array.from(el.querySelectorAll('button'));
 const byText = (el: HTMLElement, text: string) => buttons(el).find((b) => b.textContent === text);
 const byLabel = (el: HTMLElement, label: string) => el.querySelector(`[aria-label="${label}"]`) as HTMLElement | null;
+const blur = async (el: HTMLElement, label: string) => {
+  act(() => {
+    byLabel(el, label)!.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+  });
+  await settle(2);
+};
 const click = async (target: HTMLElement | null | undefined) => {
   act(() => (target as HTMLElement).click());
   await settle();
@@ -293,7 +324,8 @@ beforeEach(() => {
   seed();
   actAs('p-builder');
   mockParams.current = { id: 'pj-barn' };
-  [mockRouter.push, mockRouter.back, mockRouter.replace, mockToast, mockPick].forEach((m) => m.mockReset());
+  [mockRouter.push, mockRouter.back, mockRouter.replace, mockToast, mockPick, mockOpenURL].forEach((m) => m.mockClear());
+  mockPick.mockReset();
   mockRouter.canGoBack.mockReturnValue(true);
   (Alert.alert as jest.Mock).mockReset();
 });
@@ -746,5 +778,108 @@ describe('an unlisted project', () => {
     await click(byLabel(el, 'Manage project'));
     await click(byLabel(el, 'Make public'));
     expect(db.tables.projects![0]).toMatchObject({ is_public: true, unlisted: false });
+  });
+});
+
+// ─── Details (ONE-140) ──────────────────────────────────────────────────
+
+describe('project details', () => {
+  const detailRows = () =>
+    db.tables
+      .project_details!.filter((d) => d.project_id === 'pj-barn')
+      .sort((a, b) => (a.sort_order as number) - (b.sort_order as number));
+
+  const storeDetails = () => {
+    db.tables.project_details!.push(
+      { id: 'd-make', project_id: 'pj-barn', label: 'Make', kind: 'text', value: 'Acme', sort_order: 0 },
+      { id: 'd-installed', project_id: 'pj-barn', label: 'Installed', kind: 'date', value: '2026-03-04', sort_order: 1 },
+      { id: 'd-manual', project_id: 'pj-barn', label: 'Manual', kind: 'link', value: 'https://acme.test/manual', sort_order: 2 },
+    );
+  };
+
+  it('shows them on the page in order, a date for the locale and a link that opens when tapped', async () => {
+    storeDetails();
+    actAs(null);
+    const el = await mount(<ProjectScreen />);
+    const section = byLabel(el, 'Details')!;
+    expect(section.textContent).toMatch(/Make.*Acme.*Installed.*2026.*Manual.*acme\.test\/manual/);
+    expect(byLabel(el, `Installed, ${new Date(2026, 2, 4).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`)).not.toBeNull();
+    await click(byLabel(el, 'Manual, acme.test/manual'));
+    expect(mockOpenURL).toHaveBeenCalledWith('https://acme.test/manual');
+  });
+
+  it("isn't shown when there are none", async () => {
+    const el = await mount(<ProjectScreen />);
+    expect(byLabel(el, 'Details')).toBeNull();
+  });
+
+  it('saves only the details with a value: the HVAC template with Model number filled stores one row', async () => {
+    const el = await mount(<CreateProjectScreen />);
+    await type(el, 'Name', 'Furnace');
+    await click(byText(el, 'Start from a template'));
+    await click(byLabel(el, 'HVAC'));
+    expect((byLabel(el, 'Detail 2 label') as HTMLInputElement).value).toBe('Model number');
+    // A template is offered only while there are no details.
+    expect(byText(el, 'Start from a template')).toBeUndefined();
+    await type(el, 'Detail 2 value', 'XR-200');
+    await click(byLabel(el, 'Save'));
+
+    const created = db.tables.projects!.find((p) => p.name === 'Furnace')!;
+    expect(db.tables.project_details!.filter((d) => d.project_id === created.id)).toEqual([
+      expect.objectContaining({ label: 'Model number', kind: 'text', value: 'XR-200', sort_order: 0 }),
+    ]);
+  });
+
+  it('adds a detail of a kind, a date from the picker', async () => {
+    mockPickedDate = new Date(2026, 9, 1);
+    const el = await mount(<EditProjectScreen />);
+    await click(byText(el, 'Add a detail'));
+    await click(byLabel(el, 'Date'));
+    await type(el, 'Detail 1 label', 'Last serviced');
+    await click(byLabel(el, 'Detail 1 value, no date yet'));
+    await click(byLabel(el, 'Date picker'));
+    await click(byText(el, 'Done'));
+    await click(byLabel(el, 'Save'));
+    expect(detailRows()).toEqual([expect.objectContaining({ label: 'Last serviced', kind: 'date', value: '2026-10-01' })]);
+  });
+
+  it('follows a new order and forgets a removed detail when saved again', async () => {
+    storeDetails();
+    const el = await mount(<EditProjectScreen />);
+    await click(byLabel(el, 'Options for detail 3'));
+    await click(byLabel(el, 'Move up'));
+    await click(byLabel(el, 'Options for detail 1'));
+    await click(byLabel(el, 'Remove detail'));
+    await click(byLabel(el, 'Save'));
+    expect(detailRows().map((d) => [d.id, d.sort_order])).toEqual([
+      ['d-manual', 0],
+      ['d-installed', 1],
+    ]);
+  });
+
+  it("won't save a value that doesn't suit its kind, and says why once it is left", async () => {
+    const el = await mount(<EditProjectScreen />);
+    await click(byText(el, 'Add a detail'));
+    await click(byLabel(el, 'Number'));
+    await type(el, 'Detail 1 label', 'Capacity (gal)');
+    await type(el, 'Detail 1 value', 'forty');
+    expect((byLabel(el, 'Save') as HTMLButtonElement).disabled).toBe(true);
+    await blur(el, 'Detail 1 value');
+    expect(el.textContent).toContain('A number, like 40 or 2.5.');
+    await type(el, 'Detail 1 value', '40');
+    expect((byLabel(el, 'Save') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('writes nothing when its details are refused: the new project is deleted again', async () => {
+    const el = await mount(<CreateProjectScreen />);
+    await type(el, 'Name', 'Furnace');
+    await click(byText(el, 'Add a detail'));
+    await click(byLabel(el, 'Text'));
+    await type(el, 'Detail 1 label', 'Make');
+    await type(el, 'Detail 1 value', 'Acme');
+    db.failNext = { table: 'project_details', kind: 'insert', error: { message: 'refused' } };
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.projects!.find((p) => p.name === 'Furnace')).toBeUndefined();
+    expect(mockToast).toHaveBeenCalledWith(expect.any(String), 'error');
   });
 });
