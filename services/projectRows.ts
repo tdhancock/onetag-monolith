@@ -18,6 +18,8 @@ export interface ProjectSummary {
   isPublic: boolean;
   /** An interest slug (ONE-49), or null for an untagged project. */
   interestSlug: string | null;
+  /** The project this one sits inside, one level deep (ONE-134), or null. */
+  parentProjectId: string | null;
   createdAt: string;
 }
 
@@ -30,11 +32,13 @@ export interface ProjectSummaryRow {
   cover_url: string | null;
   is_public: boolean;
   interest_slug?: string | null;
+  parent_project_id?: string | null;
   created_at: string;
 }
 
 /** What a list reads of a project. Embeds as `project:projects(…)` from a table that Links one. */
-export const PROJECT_SUMMARY_SELECT = 'id, owner_profile_id, name, project_type, year, cover_url, is_public, interest_slug, created_at';
+export const PROJECT_SUMMARY_SELECT =
+  'id, owner_profile_id, name, project_type, year, cover_url, is_public, interest_slug, parent_project_id, created_at';
 
 export const mapProjectSummaryRow = (row: ProjectSummaryRow): ProjectSummary => ({
   id: row.id,
@@ -45,6 +49,7 @@ export const mapProjectSummaryRow = (row: ProjectSummaryRow): ProjectSummary => 
   coverUrl: row.cover_url,
   isPublic: row.is_public,
   interestSlug: row.interest_slug ?? null,
+  parentProjectId: row.parent_project_id ?? null,
   createdAt: row.created_at,
 });
 

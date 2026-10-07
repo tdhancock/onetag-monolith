@@ -677,6 +677,14 @@ describe('Type-aware tabs (ONE-43)', () => {
     expect(mockPush).toHaveBeenCalledWith('/project/pj-2');
   });
 
+  it('lists only top-level projects as owned; what sits inside a house is reached through it (ONE-134)', async () => {
+    state.owned = [PROJECT, { ...PROJECT, id: 'pj-furnace', name: 'Furnace', parentProjectId: 'pj-1' }];
+    const el = await mount(<OwnProfileScreen />);
+    await selectTab(el, 'Projects');
+    expect(el.querySelector('button[aria-label^="Barn conversion"]')).not.toBeNull();
+    expect(el.querySelector('button[aria-label^="Furnace"]')).toBeNull();
+  });
+
   it('marks a private project, which only those who may see it are shown', async () => {
     state.owned = [{ ...PROJECT, isPublic: false }];
     const el = await mount(<OwnProfileScreen />);

@@ -5,7 +5,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from '@tanstack/react-form';
 import { useApp } from '../../../store/AppContext.native';
 import { useCurrentProfile } from '../../../features/profiles';
-import { useProjectQuery, useUpdateProject, type Project } from '../../../features/projects';
+import {
+  useChildProjectsQuery,
+  useOwnedProjectsQuery,
+  useProjectQuery,
+  useUpdateProject,
+  type Project,
+} from '../../../features/projects';
 import { MediaUploadError } from '../../../services/mediaUpload';
 import KeyboardAvoider from '../../../components/native/KeyboardAvoider';
 import FormScrollView from '../../../components/native/FormScrollView';
@@ -15,6 +21,7 @@ import { useAppForm } from '../../../components/native/form';
 import { EmptyState } from '../../../components/native/ui';
 import {
   canManageProject,
+  parentChoices,
   PROJECT_NOT_FOUND,
   PROJECT_PHOTO_FAILED,
   PROJECT_SAVE_FAILED,
@@ -72,6 +79,11 @@ function EditProjectForm({ project, onDone }: { project: Project; onDone: () => 
   const { addToast } = useApp();
   const { authUserId } = useCurrentProfile();
   const updateProject = useUpdateProject(authUserId);
+  // Part of (ONE-134): the owner's other top-level projects — and none for a
+  // project that holds others, since nesting is one level deep.
+  const owned = useOwnedProjectsQuery(project.ownerProfileId);
+  const inside = useChildProjectsQuery(project.id);
+  const choices = (inside.data ?? []).length > 0 ? [] : parentChoices(owned.data ?? [], project.id);
   const form = useAppForm({
     ...projectFormOptions,
     defaultValues: projectDraftFrom(project),
@@ -108,7 +120,7 @@ function EditProjectForm({ project, onDone }: { project: Project; onDone: () => 
       />
       <KeyboardAvoider style={styles.fill}>
         <FormScrollView style={styles.fill} contentContainerStyle={styles.scroll}>
-          <ProjectForm form={form} />
+          <ProjectForm form={form} parentChoices={choices} />
         </FormScrollView>
       </KeyboardAvoider>
     </SafeAreaView>

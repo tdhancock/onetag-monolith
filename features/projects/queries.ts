@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import {
+  fetchChildProjects,
   fetchContributedProjects,
   fetchContributors,
   fetchOwnedProjects,
@@ -29,6 +30,14 @@ export const useOwnedProjectsQuery = (ownerProfileId: string | undefined) =>
     queryKey: projectKeys.owned(ownerProfileId ?? ''),
     queryFn: () => fetchOwnedProjects(ownerProfileId!),
     enabled: Boolean(ownerProfileId),
+  });
+
+/** The projects inside one (ONE-134) that the viewer may see, newest first. */
+export const useChildProjectsQuery = (parentProjectId: string | undefined) =>
+  useQuery<ProjectSummary[]>({
+    queryKey: projectKeys.children(parentProjectId ?? ''),
+    queryFn: () => fetchChildProjects(parentProjectId!),
+    enabled: Boolean(parentProjectId),
   });
 
 /** The projects a profile contributed to that the viewer may see, newest first. */

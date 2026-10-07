@@ -10,6 +10,8 @@ export const projectKeys = {
   owned: (ownerProfileId: string) => base.list({ ownerProfileId }),
   /** The projects one profile contributed to. */
   contributed: (contributorProfileId: string) => base.list({ contributorProfileId }),
+  /** The projects inside one (ONE-134). A list, so creating or moving one reaches it. */
+  children: (parentProjectId: string) => base.list({ parentProjectId }),
   /** The projects that Link one product. A list, so a project's change reaches it. */
   usingProduct: (productId: string) => base.list({ productId }),
   /** One project's contributors. */

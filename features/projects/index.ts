@@ -6,6 +6,7 @@
 export {
   fetchProject,
   fetchOwnedProjects,
+  fetchChildProjects,
   fetchContributedProjects,
   fetchProjectsUsingProduct,
   fetchContributors,
@@ -31,6 +32,7 @@ export { projectKeys } from './keys';
 export {
   useProjectQuery,
   useOwnedProjectsQuery,
+  useChildProjectsQuery,
   useContributedProjectsQuery,
   useProjectsUsingProductQuery,
   useContributorsQuery,
@@ -57,6 +59,7 @@ export type {
 } from './mutations';
 export type {
   Project,
+  ProjectParent,
   ProjectSummary,
   ProjectSummaryRow,
   ProjectProfile,

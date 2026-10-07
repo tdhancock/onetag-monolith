@@ -24,11 +24,22 @@ export interface ProjectProfile {
   profileType: 'individual' | 'business';
 }
 
+/** The project another sits inside: enough to name it and link to it. */
+export interface ProjectParent {
+  id: string;
+  name: string;
+}
+
 /** A project, with what its page shows beyond a list's summary. */
 export interface Project extends ProjectSummary {
   description: string | null;
   /** Null only if the owning profile could not be read. */
   owner: ProjectProfile | null;
+  /**
+   * The project this one sits inside (ONE-134), when the viewer may see it.
+   * Null at the top level, and for a viewer the parent is hidden from.
+   */
+  parent: ProjectParent | null;
 }
 
 /** A Product a project Links: "Products used". */
@@ -65,6 +76,8 @@ export interface ProjectFields {
   isPublic: boolean;
   /** Optional (ONE-49): one of the fixed interests, or null. */
   interestSlug: string | null;
+  /** The project this one sits inside (ONE-134), or null at the top level. */
+  parentProjectId: string | null;
 }
 
 // ─── Rows ────────────────────────────────────────────────────────────────
@@ -91,6 +104,9 @@ export interface ProjectRow {
   description: string | null;
   /** A one-to-one embed arrives as an object; an older server or a mock may hand back an array. */
   owner?: ProjectProfileRow | ProjectProfileRow[] | null;
+  parent_project_id?: string | null;
+  /** The parent, when the viewer may see it (ONE-134). */
+  parent?: ProjectParent | ProjectParent[] | null;
 }
 
 /** A `contributors` row with its profile embedded. */

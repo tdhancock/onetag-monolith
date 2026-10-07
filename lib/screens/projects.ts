@@ -2,7 +2,7 @@
 // who may do what, the create and edit form, and what each screen says. Kept
 // out of the screens so it is tested without mounting anything.
 
-import type { Contributor, Project, ProjectEdits, ProjectFields } from '../../features/projects';
+import type { Contributor, Project, ProjectEdits, ProjectFields, ProjectSummary } from '../../features/projects';
 
 // ─── Routes ─────────────────────────────────────────────────────────────
 
@@ -19,6 +19,15 @@ export const projectAddContributorRoute = (projectId: string): string =>
   `/project/${encodeURIComponent(projectId)}/add-contributor`;
 
 export const PROJECT_CREATE_ROUTE = '/project/create';
+
+/**
+ * Project create, starting inside another project (ONE-134) when one is
+ * given: "Add a project" on a house's page.
+ */
+export const projectCreateRoute = (parentProjectId?: string) => ({
+  pathname: PROJECT_CREATE_ROUTE,
+  params: parentProjectId ? { parent: parentProjectId } : ({} as Record<string, string>),
+});
 
 // ─── Who may do what ────────────────────────────────────────────────────
 
@@ -49,6 +58,8 @@ export interface ProjectDraft {
   isPublic: boolean;
   /** Optional: an interest slug, or null (ONE-49). */
   interestSlug: string | null;
+  /** The project this one sits inside (ONE-134), or null at the top level. */
+  parentProjectId: string | null;
 }
 
 /** New projects are public: a project is a discovery surface unless its owner says otherwise. */
@@ -60,6 +71,7 @@ export const EMPTY_PROJECT_DRAFT: ProjectDraft = {
   coverUri: null,
   isPublic: true,
   interestSlug: null,
+  parentProjectId: null,
 };
 
 /** A stored project as the edit form starts. */
@@ -71,6 +83,7 @@ export const projectDraftFrom = (project: Project): ProjectDraft => ({
   coverUri: project.coverUrl,
   isPublic: project.isPublic,
   interestSlug: project.interestSlug ?? null,
+  parentProjectId: project.parentProjectId ?? null,
 });
 
 export const projectNameError = (draft: Pick<ProjectDraft, 'name'>): string | null =>
@@ -90,6 +103,7 @@ export const projectFieldsFrom = (draft: ProjectDraft): ProjectFields => ({
   description: textOrNull(draft.description),
   isPublic: draft.isPublic,
   interestSlug: draft.interestSlug,
+  parentProjectId: draft.parentProjectId,
 });
 
 /** What creating a project from a draft writes. */
@@ -174,11 +188,13 @@ export const PROJECT_NOT_FOUND = {
 /**
  * What deleting a project means, said before anything is removed (ONE-41):
  * its contributors lose the link, and a Tag pointing at it may already be
- * printed. Making it private is the reversible alternative.
+ * printed. Making it private is the reversible alternative. The projects
+ * inside it go with it (ONE-134), and it says how many.
  */
-export const deleteProjectConfirm = (project: Pick<Project, 'name'>) => ({
+export const deleteProjectConfirm = (project: Pick<Project, 'name'>, inside = 0) => ({
   title: `Delete ${project.name}?`,
   body:
+    (inside > 0 ? `This also deletes the ${counted(inside, 'project', 'projects')} inside it. ` : '') +
     'Its contributors lose the link to it, and its product links and saves are deleted with it. ' +
     'Any tag pointing at it stops working for good, including one already printed. ' +
     'To hide it for now, make it private instead: that can be undone.',
@@ -266,3 +282,45 @@ export const contributorVisibilityAction = (isPublic: boolean) =>
   isPublic
     ? { label: 'Hide from visitors', hint: 'Only you and they will see them listed.' }
     : { label: 'Show to visitors', hint: 'Everyone who can see the project will see them listed.' };
+
+// ─── Projects inside a project (ONE-134) ────────────────────────────────
+
+/** A project another can go inside: one of the owner's, at the top level. */
+export interface ProjectParentChoice {
+  id: string;
+  name: string;
+}
+
+/**
+ * What "Part of" offers: the profile's own top-level projects, newest first,
+ * never the project itself. One level only, so a project inside another is
+ * never offered as a parent.
+ */
+export const parentChoices = (
+  owned: Pick<ProjectSummary, 'id' | 'name' | 'parentProjectId'>[],
+  projectId?: string,
+): ProjectParentChoice[] =>
+  owned.filter((p) => !p.parentProjectId && p.id !== projectId).map(({ id, name }) => ({ id, name }));
+
+/** What "Part of" reads when a project sits inside nothing. */
+export const NOT_PART_OF_ANYTHING = 'None';
+
+/** The name "Part of" shows for a parent, or None. */
+export const partOfLabel = (choices: ProjectParentChoice[], parentProjectId: string | null): string =>
+  (parentProjectId && choices.find((choice) => choice.id === parentProjectId)?.name) || NOT_PART_OF_ANYTHING;
+
+/** Top-level projects only: what a profile's Projects tab lists (ONE-134). */
+export const topLevelProjects = <T extends Pick<ProjectSummary, 'parentProjectId'>>(projects: T[]): T[] =>
+  projects.filter((project) => !project.parentProjectId);
+
+/** The section on a project's page listing the projects inside it. */
+export const INCLUDES_TITLE = 'Includes';
+
+/** An empty Includes section, which only its owner sees. */
+export const INCLUDES_EMPTY = {
+  title: 'Nothing inside it yet',
+  body: 'Add the things this project holds, like the furnace in a house. Each gets its own page and its own tag.',
+} as const;
+
+/** "Part of House" — how a project inside another names it. */
+export const partOfText = (parentName: string): string => `Part of ${parentName}`;

@@ -34,8 +34,18 @@ import type {
 
 const PROFILE_COLUMNS = 'id, username, full_name, avatar_url, is_verified, profile_type';
 
-/** Everything a project page shows of the project, with its owner embedded. */
-export const PROJECT_SELECT = `${PROJECT_SUMMARY_SELECT}, description, owner:profiles!owner_profile_id(${PROFILE_COLUMNS})`;
+/**
+ * Everything a project page shows of the project, with its owner embedded, and
+ * the project it sits inside (ONE-134) — read under the viewer's own RLS, so a
+ * parent they may not see comes back null.
+ *
+ * The parent is embedded through its column, `parent_project_id(…)`. The
+ * table refers to itself, and `projects!parent_project_id(…)` reads the other
+ * way: the projects inside this one.
+ */
+export const PROJECT_SELECT =
+  `${PROJECT_SUMMARY_SELECT}, description, owner:profiles!owner_profile_id(${PROFILE_COLUMNS}), ` +
+  'parent:parent_project_id(id, name)';
 
 /** A contributor link with the profile it names. */
 export const CONTRIBUTOR_SELECT =
@@ -55,10 +65,12 @@ const mapProfileRow = (row: ProjectProfileRow): ProjectProfile => ({
 
 export const mapProjectRow = (row: ProjectRow): Project => {
   const owner = one(row.owner);
+  const parent = one(row.parent);
   return {
     ...mapProjectSummaryRow(row),
     description: row.description,
     owner: owner ? mapProfileRow(owner) : null,
+    parent: parent ? { id: parent.id, name: parent.name } : null,
   };
 };
 
@@ -102,6 +114,20 @@ export const fetchOwnedProjects = async (ownerProfileId: string): Promise<Projec
     .from('projects')
     .select(PROJECT_SUMMARY_SELECT)
     .eq('owner_profile_id', ownerProfileId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as unknown as ProjectSummaryRow[]).map(mapProjectSummaryRow);
+};
+
+/**
+ * The projects inside one (ONE-134) that the viewer may see, newest first: a
+ * house's furnace, AC and water heater. Each keeps its own visibility.
+ */
+export const fetchChildProjects = async (parentProjectId: string): Promise<ProjectSummary[]> => {
+  const { data, error } = await supabase
+    .from('projects')
+    .select(PROJECT_SUMMARY_SELECT)
+    .eq('parent_project_id', parentProjectId)
     .order('created_at', { ascending: false });
   if (error) throw error;
   return ((data ?? []) as unknown as ProjectSummaryRow[]).map(mapProjectSummaryRow);
@@ -173,6 +199,7 @@ const fieldsToRow = (fields: Partial<ProjectFields>): Record<string, unknown> =>
   if (fields.year !== undefined) row.year = fields.year;
   if (fields.isPublic !== undefined) row.is_public = fields.isPublic;
   if (fields.interestSlug !== undefined) row.interest_slug = fields.interestSlug;
+  if (fields.parentProjectId !== undefined) row.parent_project_id = fields.parentProjectId;
   return row;
 };
 

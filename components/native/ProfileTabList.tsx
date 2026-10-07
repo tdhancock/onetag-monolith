@@ -24,7 +24,7 @@ import {
   type SavesFilter,
 } from '../../lib/screens/profile';
 import { productKindLabel, productRoute } from '../../lib/screens/products';
-import { PRIVATE_LABEL, projectKindLabel, projectRoute, projectRowSubtitle } from '../../lib/screens/projects';
+import { PRIVATE_LABEL, projectKindLabel, projectRoute, projectRowSubtitle, topLevelProjects } from '../../lib/screens/projects';
 import {
   publicScanHistoryDescription,
   routeForEntry,
@@ -213,7 +213,9 @@ function ProjectsList({
 }: ProfileTabListProps & { query: TabQuery & { data?: ProjectSummary[] }; view: ProfileProjectsView }) {
   const router = useRouter();
   const refreshControl = useTabRefresh(onRefreshHeader, query);
-  const projects = query.data ?? [];
+  // A profile's own projects are its top-level ones; what sits inside a house
+  // is reached through the house (ONE-134).
+  const projects = view === 'owned' ? topLevelProjects(query.data ?? []) : query.data ?? [];
 
   return (
     <FlatList

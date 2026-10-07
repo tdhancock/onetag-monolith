@@ -7,6 +7,7 @@ import { useApp } from '../../store/AppContext.native';
 import { useAuthStatus } from '../../features/auth';
 import { useCurrentProfile } from '../../features/profiles';
 import {
+  useChildProjectsQuery,
   useContributorsQuery,
   useDeleteProject,
   useProjectProductsQuery,
@@ -20,6 +21,7 @@ import { useDestinationScanCountQuery } from '../../features/tags';
 import DestinationActions from '../../components/native/DestinationActions';
 import DetailSection from '../../components/native/DetailSection';
 import ProjectContributors from '../../components/native/ProjectContributors';
+import ProjectIncludes from '../../components/native/ProjectIncludes';
 import { homeBackHeaderLeft } from '../../components/native/HomeBackButton';
 import { useBackOrHome } from '../../lib/useBackOrHome';
 import { RowSkeletons, SectionError } from '../../components/native/SectionStates';
@@ -31,10 +33,13 @@ import { productRoute } from '../../lib/screens/products';
 import {
   canManageProject,
   deleteProjectConfirm,
+  INCLUDES_TITLE,
+  partOfText,
   PRIVATE_LABEL,
   PROJECT_NOT_FOUND,
   productsEmptyState,
   projectAddContributorRoute,
+  projectCreateRoute,
   projectEditRoute,
   projectKindLabel,
   projectLinkProductRoute,
@@ -150,6 +155,10 @@ function ProjectDetail({
   const { profileId } = useCurrentProfile();
   const contributors = useContributorsQuery(project.id);
   const products = useProjectProductsQuery(project.id);
+  // One level deep (ONE-134): a project inside another holds nothing itself.
+  const holdsProjects = !project.parentProjectId;
+  const inside = useChildProjectsQuery(holdsProjects ? project.id : undefined);
+  const insideCount = inside.data?.length ?? 0;
   // Only the owner sees how often their tags pointing here were scanned.
   const scans = useDestinationScanCountQuery(profileId, { kind: 'project', id: project.id }, isOwner);
   const owner = project.owner;
@@ -178,6 +187,7 @@ function ProjectDetail({
         onRefreshProject(),
         contributors.refetch(),
         products.refetch(),
+        holdsProjects ? inside.refetch() : undefined,
         isOwner ? scans.refetch() : undefined,
       ]);
     } finally {
@@ -211,6 +221,19 @@ function ProjectDetail({
             </View>
           )}
         </View>
+        {project.parent ? (
+          <Pressable
+            onPress={() => router.push(projectRoute(project.parent!.id))}
+            accessibilityRole="link"
+            accessibilityLabel={partOfText(project.parent.name)}
+            hitSlop={12}
+            style={styles.partOfHit}
+          >
+            <Text style={styles.partOf}>
+              Part of <Text style={styles.partOfName}>{project.parent.name}</Text>
+            </Text>
+          </Pressable>
+        ) : null}
         <Text style={styles.name} accessibilityRole="header">
           {project.name}
         </Text>
@@ -241,6 +264,29 @@ function ProjectDetail({
         </View>
         {project.description ? <Text style={styles.description}>{project.description}</Text> : null}
       </View>
+
+      {holdsProjects && (isOwner || insideCount > 0) ? (
+        <DetailSection
+          title={INCLUDES_TITLE}
+          trailing={
+            isOwner && insideCount > 0 ? (
+              <Button variant="outline" size="sm" onPress={() => router.push(projectCreateRoute(project.id))}>
+                Add a project
+              </Button>
+            ) : null
+          }
+        >
+          <ProjectIncludes
+            projects={inside.data}
+            isPending={inside.isPending}
+            isError={inside.isError}
+            onRetry={() => void inside.refetch()}
+            isOwner={isOwner}
+            onOpen={(id) => router.push(projectRoute(id))}
+            onAdd={() => router.push(projectCreateRoute(project.id))}
+          />
+        </DetailSection>
+      ) : null}
 
       <DetailSection
         title="Contributors"
@@ -401,6 +447,8 @@ function OwnerMenu({
   const router = useRouter();
   const { addToast } = useApp();
   const setPublic = useSetProjectPublic();
+  // Deleting it deletes what is inside it (ONE-134); the confirmation says how much.
+  const inside = useChildProjectsQuery(project.parentProjectId ? undefined : project.id);
 
   const toggleVisibility = () => {
     onClose();
@@ -415,7 +463,7 @@ function OwnerMenu({
 
   const confirmDelete = () => {
     onClose();
-    const confirm = deleteProjectConfirm(project);
+    const confirm = deleteProjectConfirm(project, inside.data?.length ?? 0);
     Alert.alert(confirm.title, confirm.body, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -516,6 +564,19 @@ const styles = StyleSheet.create({
   ownerHit: {
     alignSelf: 'flex-start',
     marginTop: space.xs,
+  },
+  partOfHit: {
+    alignSelf: 'flex-start',
+    marginTop: space.sm,
+  },
+  partOf: {
+    fontFamily: type.body,
+    fontSize: 14,
+    color: color.textMid,
+  },
+  partOfName: {
+    fontFamily: type.bodyBold,
+    color: color.text,
   },
   owner: {
     fontFamily: type.body,

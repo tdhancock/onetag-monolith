@@ -37,8 +37,8 @@ export const useCreateProject = (authUserId: AuthUserId | undefined) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: NewProjectInput) => createProject(signedIn(authUserId), input),
-    onSuccess: (_projectId, input) =>
-      queryClient.invalidateQueries({ queryKey: projectKeys.owned(input.ownerProfileId) }),
+    // Every list: the owner's projects, and the projects inside its parent (ONE-134).
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: projectKeys.lists() }),
   });
 };
 

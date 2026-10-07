@@ -21,6 +21,9 @@
 //      it destroys first. Only the owner sees scan counts.
 //   4. Empty sections prompt the owner and explain to a visitor.
 //   5. Create and edit write the project, its cover filed under the account.
+//   6. A project can sit inside another, one level deep (ONE-134): the house
+//      lists what it includes, each names the house it is part of — to those
+//      who may see the house — and deleting the house says what goes with it.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -204,7 +207,11 @@ const seed = () => {
     project_products: (pp) => project(pp.project_id) !== null,
   };
   db.embeds = {
-    projects: (row) => ({ ...row, owner: profile(row.owner_profile_id) }),
+    // The parent embed reads under the viewer's RLS, as PostgREST's does.
+    projects: (row) => {
+      const parent = row.parent_project_id ? project(row.parent_project_id) : null;
+      return { ...row, owner: profile(row.owner_profile_id), parent: parent ? { id: parent.id, name: parent.name } : null };
+    },
     contributors: (row, select) =>
       select.includes('project:') ? { project: project(row.project_id) } : { ...row, profile: profile(row.contributor_profile_id) },
     project_products: (row, select) =>
@@ -610,5 +617,100 @@ describe('creating and editing a project', () => {
     const el = await mount(<EditProjectScreen />);
     expect(el.textContent).toContain("You can't edit this project");
     expect(byLabel(el, 'Name')).toBeNull();
+  });
+});
+
+// ─── Projects inside a project (ONE-134) ────────────────────────────────
+
+describe('projects inside a project', () => {
+  const FURNACE = {
+    ...BARN,
+    id: 'pj-furnace',
+    name: 'Furnace',
+    project_type: 'HVAC',
+    description: null,
+    cover_url: null,
+    parent_project_id: 'pj-barn',
+    created_at: '2026-02-01T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    db.tables.projects!.push({ ...FURNACE });
+  });
+
+  it("lists what the house includes, each leading to its page, with the owner's Add a project", async () => {
+    const el = await mount(<ProjectScreen />);
+    expect(el.textContent).toContain('Includes');
+    await click(byLabel(el, 'Furnace, HVAC · 2025'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/project/pj-furnace');
+    await click(byText(el, 'Add a project'));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/project/create', params: { parent: 'pj-barn' } });
+  });
+
+  it("names the house a project is part of, leading back to it", async () => {
+    mockParams.current = { id: 'pj-furnace' };
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Part of Barn conversion'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/project/pj-barn');
+    // One level deep: a project inside another includes nothing itself.
+    expect(el.textContent).not.toContain('Includes');
+  });
+
+  it("doesn't name a house the viewer may not see", async () => {
+    db.tables.projects!.find((p) => p.id === 'pj-barn')!.is_public = false;
+    actAs('p-stranger');
+    mockParams.current = { id: 'pj-furnace' };
+    const el = await mount(<ProjectScreen />);
+    expect(el.textContent).toContain('Furnace');
+    expect(el.textContent).not.toContain('Part of');
+  });
+
+  it('shows a visitor what a house includes, without the owner\'s controls', async () => {
+    actAs('p-stranger');
+    const el = await mount(<ProjectScreen />);
+    expect(el.textContent).toContain('Includes');
+    expect(byText(el, 'Add a project')).toBeUndefined();
+  });
+
+  it('shows an owner an empty Includes, with a prompt, and a visitor nothing', async () => {
+    db.tables.projects = db.tables.projects!.filter((p) => p.id !== 'pj-furnace');
+    const owner = await mount(<ProjectScreen />);
+    expect(owner.textContent).toContain('Nothing inside it yet');
+    actAs('p-stranger');
+    const visitor = await remount(<ProjectScreen />);
+    expect(visitor.textContent).not.toContain('Includes');
+  });
+
+  it('says what goes with the house when it is deleted', async () => {
+    const el = await mount(<ProjectScreen />);
+    await click(byLabel(el, 'Manage project'));
+    await click(byText(el, 'Delete project'));
+    const [, body] = (Alert.alert as jest.Mock).mock.calls[0];
+    expect(body).toMatch(/^This also deletes the 1 project inside it\. /);
+  });
+
+  it('creates a project inside the house it was started from', async () => {
+    mockParams.current = { parent: 'pj-barn' };
+    const el = await mount(<CreateProjectScreen />);
+    expect(byLabel(el, 'Part of: Barn conversion')).not.toBeNull();
+    await type(el, 'Name', 'Water heater');
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.projects!.find((p) => p.name === 'Water heater')).toMatchObject({ parent_project_id: 'pj-barn' });
+  });
+
+  it('moves a project into another of the owner\'s from its edit form', async () => {
+    db.tables.projects!.push({ ...BARN, id: 'pj-shed', name: 'Shed', created_at: '2026-03-01T00:00:00Z' });
+    mockParams.current = { id: 'pj-shed' };
+    const el = await mount(<EditProjectScreen />);
+    await click(byLabel(el, 'Part of: None'));
+    await click(byText(el, 'Barn conversion'));
+    await click(byLabel(el, 'Save'));
+    expect(db.tables.projects!.find((p) => p.id === 'pj-shed')).toMatchObject({ parent_project_id: 'pj-barn' });
+  });
+
+  it("doesn't offer Part of on a project that holds others: one level only", async () => {
+    db.tables.projects!.push({ ...BARN, id: 'pj-shed', name: 'Shed', created_at: '2026-03-01T00:00:00Z' });
+    const el = await mount(<EditProjectScreen />);
+    expect(el.querySelector('[aria-label^="Part of"]')).toBeNull();
   });
 });

@@ -1,15 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { formOptions, useStore } from '@tanstack/react-form';
-import { Button, MonoLabel, Pressable, SettingsRow } from './ui';
+import { Button, MonoLabel, Pressable, SettingsRow, Sheet, SheetRow } from './ui';
 import InterestFilter from './InterestFilter';
-import { ImageIcon } from './Icons';
+import { CheckIcon, ImageIcon } from './Icons';
 import { withForm } from './form';
 import { pickImageFromLibrary } from '../../services/mediaPicker';
 import { draftValidator } from '../../lib/formErrors';
 import {
   EMPTY_PROJECT_DRAFT,
+  NOT_PART_OF_ANYTHING,
+  partOfLabel,
   PROJECT_DESCRIPTION_MAX_LENGTH,
   PROJECT_NAME_MAX_LENGTH,
   PROJECT_TYPE_MAX_LENGTH,
@@ -17,6 +19,7 @@ import {
   projectDraftErrors,
   projectVisibilityDescription,
   type ProjectDraft,
+  type ProjectParentChoice,
 } from '../../lib/screens/projects';
 import { color, space, type } from '../../theme/tokens';
 
@@ -34,15 +37,27 @@ export const projectFormOptions = formOptions({
 
 /**
  * The fields a project is created and edited with (ONE-41): a cover, its name,
- * type and year, a description, and whether it is public. The screen around
- * it owns saving.
+ * type and year, a description, the project it is part of (ONE-134), and
+ * whether it is public. The screen around it owns saving.
+ *
+ * `parentChoices` are the projects it may go inside: the profile's own
+ * top-level projects. A project that holds others gets none, since nesting is
+ * one level deep, and then Part of isn't offered at all.
  */
 const ProjectForm = withForm({
   ...projectFormOptions,
-  render: function ProjectFields({ form }) {
+  props: { parentChoices: [] as ProjectParentChoice[] },
+  render: function ProjectFields({ form, parentChoices }) {
     const coverUri = useStore(form.store, (state) => state.values.coverUri);
     const interestSlug = useStore(form.store, (state) => state.values.interestSlug);
     const isPublic = useStore(form.store, (state) => state.values.isPublic);
+    const parentProjectId = useStore(form.store, (state) => state.values.parentProjectId);
+    const [choosingParent, setChoosingParent] = useState(false);
+
+    const chooseParent = (id: string | null) => {
+      form.setFieldValue('parentProjectId', id);
+      setChoosingParent(false);
+    };
 
     const pickCover = async () => {
       const result = await pickImageFromLibrary({ aspect: [4, 3] });
@@ -151,6 +166,32 @@ const ProjectForm = withForm({
             label="Interest"
           />
         </View>
+
+        {parentChoices.length > 0 ? (
+          <SettingsRow
+            title="Part of"
+            subtitle={partOfLabel(parentChoices, parentProjectId)}
+            onPress={() => setChoosingParent(true)}
+            accessibilityLabel={`Part of: ${partOfLabel(parentChoices, parentProjectId)}`}
+            divider
+          />
+        ) : null}
+        <Sheet visible={choosingParent} onClose={() => setChoosingParent(false)} title="Part of">
+          <SheetRow
+            label={NOT_PART_OF_ANYTHING}
+            hint="It stands on its own."
+            icon={parentProjectId === null ? <CheckIcon color={color.text} size={18} strokeWidth={2} /> : undefined}
+            onPress={() => chooseParent(null)}
+          />
+          {parentChoices.map((choice) => (
+            <SheetRow
+              key={choice.id}
+              label={choice.name}
+              icon={parentProjectId === choice.id ? <CheckIcon color={color.text} size={18} strokeWidth={2} /> : undefined}
+              onPress={() => chooseParent(choice.id)}
+            />
+          ))}
+        </Sheet>
 
         <SettingsRow
           title="Public"
