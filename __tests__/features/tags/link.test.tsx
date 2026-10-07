@@ -13,7 +13,10 @@
 //     a name, and Link writes that destination and name, once;
 //   * on success it replaces itself with the destination's screen;
 //   * a failed link says so and keeps the choice to retry;
-//   * a tag that is already linked, or isn't the profile's, says so.
+//   * a tag that is already linked, or isn't the profile's, says so;
+//   * a New project is made right here and the tag linked to it (ONE-142),
+//     Part of starting where the last tag went, and a failed link retried
+//     without making a second project.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -25,7 +28,14 @@ jest.mock('react-native', () => {
   const React = require('react');
   const shim = require('../../support/reactNativeDom');
   const box = (props: { children?: React.ReactNode }) => React.createElement('div', null, props.children);
-  return { ...shim, ScrollView: box, KeyboardAvoidingView: box, Platform: { OS: 'ios' } };
+  const Switch = (props: { value: boolean; onValueChange: (v: boolean) => void; accessibilityLabel?: string }) =>
+    React.createElement('button', {
+      role: 'switch',
+      'aria-checked': props.value,
+      'aria-label': props.accessibilityLabel,
+      onClick: () => props.onValueChange(!props.value),
+    });
+  return { ...shim, Switch, ScrollView: box, KeyboardAvoidingView: box, Platform: { OS: 'ios' } };
 });
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
@@ -58,17 +68,17 @@ jest.mock('../../../features/products', () => ({
     isLoading: false,
   }),
 }));
+const mockOwnedProjects: Record<string, unknown>[] = [];
+const mockCreateProject = jest.fn();
 jest.mock('../../../features/projects', () => ({
   useOwnedProjectsQuery: (ownerProfileId?: string) => ({
-    data:
-      ownerProfileId === 'p-ana'
-        ? [{ id: 'pj-furnace', name: 'Furnace', projectType: null, coverUrl: null, isPublic: false }]
-        : ownerProfileId
-          ? []
-          : undefined,
+    data: ownerProfileId === 'p-ana' ? mockOwnedProjects : ownerProfileId ? [] : undefined,
     isLoading: false,
   }),
+  useCreateProject: () => ({ mutateAsync: (...args: unknown[]) => mockCreateProject(...args), isPending: false }),
 }));
+jest.mock('../../../features/interests', () => ({ useInterestsQuery: () => ({ data: [], isLoading: false }) }));
+jest.mock('../../../services/mediaPicker', () => ({ pickImageFromLibrary: jest.fn() }));
 
 // ─── The database ───────────────────────────────────────────────────────
 
@@ -128,6 +138,10 @@ jest.mock('../../../services/supabase.native', () => ({
 
 import LinkTagScreen from '../../../app/tags/[id]/link';
 import { LINK_TAG_FAILED } from '../../../lib/screens/tags';
+import { forgetLinkedProject, rememberLinkedProject } from '../../../lib/linkParentMemory';
+
+const FURNACE = { id: 'pj-furnace', ownerProfileId: 'p-ana', name: 'Furnace', projectType: null, coverUrl: null, isPublic: false, parentProjectId: null };
+const HOME = { id: 'pj-home', ownerProfileId: 'p-ana', name: 'Home', projectType: null, coverUrl: null, isPublic: false, parentProjectId: null };
 
 // ─── Mounting ───────────────────────────────────────────────────────────
 
@@ -180,6 +194,10 @@ beforeEach(() => {
   mockTags.push(tagRow({}));
   mockUpdates.length = 0;
   mockUpdateFails = false;
+  mockOwnedProjects.length = 0;
+  mockOwnedProjects.push({ ...FURNACE });
+  mockCreateProject.mockReset().mockResolvedValue('pj-new');
+  forgetLinkedProject();
   [mockRouter.back, mockRouter.replace, mockRouter.push, mockToast].forEach((m) => m.mockClear());
 });
 
@@ -263,5 +281,72 @@ describe('a tag that can\'t be linked here', () => {
     mockParams.current = { id: 't-someone-elses' };
     const el = await mount();
     expect(el.textContent).toContain('Tag not found');
+  });
+});
+
+describe('a new project, made while linking (ONE-142)', () => {
+  beforeEach(() => {
+    mockOwnedProjects.length = 0;
+    mockOwnedProjects.push({ ...HOME });
+  });
+
+  it('makes the project inside the one chosen, links the tag to it, and opens it', async () => {
+    const el = await mount();
+    await click(byText(el, 'New project'));
+    typeInto(el.querySelector('input[aria-label="Name"]') as HTMLInputElement, 'Furnace');
+    await click(byLabel(el, 'Part of: None'));
+    await click(byText(el, 'Home'));
+    await click(byText(el, 'Make project and link tag'));
+
+    expect(mockCreateProject).toHaveBeenCalledTimes(1);
+    expect(mockCreateProject.mock.calls[0]![0]).toMatchObject({
+      ownerProfileId: 'p-ana',
+      fields: { name: 'Furnace', parentProjectId: 'pj-home' },
+    });
+    expect(mockUpdates).toEqual([{ id: 't-blank', payload: { dest_project_id: 'pj-new', name: 'Furnace' } }]);
+    expect(mockRouter.replace).toHaveBeenCalledWith('/project/pj-new');
+  });
+
+  it('starts the next one inside the project the last tag went into', async () => {
+    rememberLinkedProject({ id: 'pj-furnace', parentProjectId: 'pj-home' });
+    const el = await mount();
+    await click(byText(el, 'New project'));
+    expect(byLabel(el, 'Part of: Home')).not.toBeNull();
+  });
+
+  it('starts inside a top-level project the last tag went to, so the walk never picks Home twice', async () => {
+    const el = await mount();
+    await click(byLabel(el, 'Home'));
+    await click(byText(el, 'Link tag'));
+    expect(mockRouter.replace).toHaveBeenCalledWith('/project/pj-furnace');
+    act(() => root!.unmount());
+    root = null;
+    container?.remove();
+    const next = await mount();
+    await click(byText(next, 'New project'));
+    expect(byLabel(next, 'Part of: Home')).not.toBeNull();
+  });
+
+  it('retries a failed link without making a second project', async () => {
+    mockUpdateFails = true;
+    const el = await mount();
+    await click(byText(el, 'New project'));
+    typeInto(el.querySelector('input[aria-label="Name"]') as HTMLInputElement, 'Water heater');
+    await click(byText(el, 'Make project and link tag'));
+    expect(mockToast).toHaveBeenCalledWith(LINK_TAG_FAILED, 'error');
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+
+    mockUpdateFails = false;
+    await click(byText(el, 'Link tag'));
+    expect(mockCreateProject).toHaveBeenCalledTimes(1);
+    expect(mockRouter.replace).toHaveBeenCalledWith('/project/pj-new');
+  });
+
+  it('goes back to the list without making anything', async () => {
+    const el = await mount();
+    await click(byText(el, 'New project'));
+    await click(byText(el, 'Back to the list'));
+    expect(byText(el, 'Link tag')).toBeDefined();
+    expect(mockCreateProject).not.toHaveBeenCalled();
   });
 });

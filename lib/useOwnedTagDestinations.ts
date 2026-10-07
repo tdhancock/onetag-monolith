@@ -7,7 +7,7 @@
 import { useMemo } from 'react';
 import { useCurrentProfile, useMyProfilesQuery, useProfilePostsQuery } from '../features/profiles';
 import { useBusinessProductsQuery } from '../features/products';
-import { useOwnedProjectsQuery } from '../features/projects';
+import { useOwnedProjectsQuery, type ProjectSummary } from '../features/projects';
 import { destinationSections, postChoices, type DestinationSection } from './screens/tags';
 
 export interface OwnedTagDestinations {
@@ -15,6 +15,8 @@ export interface OwnedTagDestinations {
   sections: DestinationSection[];
   /** Everything has been read, so a pre-fill can be checked against it. */
   loaded: boolean;
+  /** Every project the account owns, children included, as read for the picker. */
+  projects: ProjectSummary[];
 }
 
 /**
@@ -39,16 +41,14 @@ export const useOwnedTagDestinations = (wantedPost?: string): OwnedTagDestinatio
     !individualProjects.isLoading &&
     !posts.isLoading;
 
+  const projects = useMemo(
+    () => [...(businessProjects.data ?? []), ...(individualProjects.data ?? [])],
+    [businessProjects.data, individualProjects.data],
+  );
   const sections = useMemo(
-    () =>
-      destinationSections(
-        profiles ?? [],
-        products.data ?? [],
-        [...(businessProjects.data ?? []), ...(individualProjects.data ?? [])],
-        postChoices(posts.data ?? [], wantedPost),
-      ),
-    [profiles, products.data, businessProjects.data, individualProjects.data, posts.data, wantedPost],
+    () => destinationSections(profiles ?? [], products.data ?? [], projects, postChoices(posts.data ?? [], wantedPost)),
+    [profiles, products.data, projects, posts.data, wantedPost],
   );
 
-  return { sections, loaded };
+  return { sections, loaded, projects };
 };
