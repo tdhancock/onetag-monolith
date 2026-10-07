@@ -13,10 +13,12 @@ Supabase (Auth, Postgres with RLS, Storage, Realtime, Edge Functions) · TypeScr
 
 ## Getting started
 
-Needs Node 22, and Docker Desktop for the local Supabase stack.
+Needs Node 22.13 or newer, pnpm (`npm install -g pnpm`, or `corepack enable`; the version
+in `package.json`'s `packageManager` is the one used), and Docker Desktop for the local
+Supabase stack.
 
 ```bash
-npm install
+pnpm install
 ```
 
 ```bash
@@ -38,18 +40,18 @@ npx expo start
 Scan the QR code with Expo Go. Testers get published builds instead; see
 [docs/testing-with-expo-go.md](docs/testing-with-expo-go.md).
 
-An empty database shows an empty app. `npm run db:seed` loads made-up people, posts, products,
-projects and tags into the local stack, and `npm run db:seed:hosted` loads them into the hosted
+An empty database shows an empty app. `pnpm db:seed` loads made-up people, posts, products,
+projects and tags into the local stack, and `pnpm db:seed:hosted` loads them into the hosted
 dev project; see [docs/seed-data.md](docs/seed-data.md).
 
 ## Checks
 
 ```bash
-npm run verify
+pnpm verify
 ```
 
 Typecheck, lint, Jest and the no-raw-colour gate: what CI runs. Against a local stack
-(`npm run db:start`) there's also `npm run db:test` for the pgTAP suite and `npm run check:api`
+(`pnpm db:start`) there's also `pnpm db:test` for the pgTAP suite and `pnpm check:api`
 for the data layer against a real database.
 
 Migrations and edge functions reach production only through their deploy workflows on merge.

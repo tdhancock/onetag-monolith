@@ -1,6 +1,6 @@
 -- explore_items: the Explore grid (ONE-47). Runs against a real database:
 --
---   npm run db:test      (npx supabase test db — the LOCAL stack)
+--   pnpm db:test      (npx supabase test db — the LOCAL stack)
 --
 -- Everything runs in one transaction and rolls back.
 --

@@ -1,6 +1,6 @@
 -- Who may call which function (ONE-85). Runs against a real database:
 --
---   npm run db:test      (npx supabase test db — the LOCAL stack)
+--   pnpm db:test      (npx supabase test db — the LOCAL stack)
 --
 -- Supabase grants EXECUTE on every new public function to anon directly, so
 -- a function only signed-in callers should run revokes FROM PUBLIC, anon —

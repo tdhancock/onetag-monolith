@@ -1,7 +1,7 @@
 -- Lists that don't stop at 1,000 rows (ONE-110). Runs against a real
 -- database:
 --
---   npm run db:test      (npx supabase test db — the LOCAL stack)
+--   pnpm db:test      (npx supabase test db — the LOCAL stack)
 --
 -- Everything runs in one transaction and rolls back. The 1,000-row cap is
 -- the API's, so these pin what each function returns; the API check proves

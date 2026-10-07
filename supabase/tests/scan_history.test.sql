@@ -1,6 +1,6 @@
 -- Scan History, private by default (ONE-35). Runs against a real database:
 --
---   npm run db:test      (npx supabase test db — the LOCAL stack)
+--   pnpm db:test      (npx supabase test db — the LOCAL stack)
 --
 -- Everything runs in one transaction and rolls back. This is the API-level
 -- privacy suite: each check reads as the role and account PostgREST would.

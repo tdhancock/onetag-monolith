@@ -10,7 +10,7 @@
 //      the database owner — so nobody loosens it later without the diff being
 //      obvious.
 //   2. supabase/tests/protect_profile_type.test.sql pins the *behaviour*
-//      against a real database (`npm run db:test`, local stack). This suite
+//      against a real database (`pnpm db:test`, local stack). This suite
 //      checks that file still carries each case.
 
 import { readFileSync, readdirSync } from 'fs';

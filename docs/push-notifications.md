@@ -124,4 +124,4 @@ travel the whole way without reaching Expo:
    and watch the stand-in receive it. (Clients can't write notifications
    since ONE-107; the follow writes it.)
 
-Delete the Vault secrets afterwards, or `npm run db:reset`.
+Delete the Vault secrets afterwards, or `pnpm db:reset`.

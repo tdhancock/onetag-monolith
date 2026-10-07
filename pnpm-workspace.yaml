@@ -1,0 +1,9 @@
+# pnpm's settings (ONE-147). pnpm 11 reads them here, never from package.json.
+#
+# A dependency's install script runs only when it is named below. These are
+# the only two in the tree: fsevents, macOS file watching, which EAS installs
+# when it builds iOS on macOS; and unrs-resolver, which checks that its native
+# binding is in place.
+allowBuilds:
+  fsevents: true
+  unrs-resolver: true

@@ -32,7 +32,7 @@ Expo Go only opens a published project for people in the Expo organization that 
 ## Publishing what they see
 
 ```bash
-npm run publish:preview -- --message "What changed"
+pnpm publish:preview --message "What changed"
 ```
 
 This bundles the app on your machine and publishes it to the `preview` branch. Testers get it the

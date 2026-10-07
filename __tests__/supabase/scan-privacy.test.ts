@@ -10,7 +10,7 @@
 //      that returns where tags led and nothing of the tags themselves.
 //   2. supabase/tests/scan_history.test.sql is the API-level privacy suite:
 //      every check reads as the role and account PostgREST would, against a
-//      real database (`npm run db:test`, local stack). This suite checks that
+//      real database (`pnpm db:test`, local stack). This suite checks that
 //      file still carries each case the ticket names.
 
 import { readFileSync, readdirSync } from 'fs';

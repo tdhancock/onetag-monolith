@@ -9,7 +9,7 @@
 //      loosens a policy later without the diff being obvious — the approach
 //      blocks.test.ts set.
 //   2. supabase/tests/rls_multi_profile.test.sql pins the *behaviour* against
-//      a real database (`npm run db:test`, local stack): an account with two
+//      a real database (`pnpm db:test`, local stack): an account with two
 //      profiles edits both; it cannot edit another account's profile; a post
 //      by profile A is editable while acting as profile B; a post attributed
 //      to a profile the account does not own is rejected; and blocks hold

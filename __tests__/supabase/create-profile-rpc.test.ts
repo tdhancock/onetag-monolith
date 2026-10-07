@@ -10,7 +10,7 @@
 //      violations through, and is executable by signed-in callers alone — so
 //      nobody loosens it later without the diff being obvious.
 //   2. supabase/tests/create_profile.test.sql pins the *behaviour* against a
-//      real database (`npm run db:test`, local stack). This suite checks that
+//      real database (`pnpm db:test`, local stack). This suite checks that
 //      file still carries each case.
 
 import { readFileSync, readdirSync } from 'fs';

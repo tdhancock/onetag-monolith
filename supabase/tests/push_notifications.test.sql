@@ -1,7 +1,7 @@
 -- Push notifications (ONE-103): what the database queues for send-push.
 -- Runs against a real database:
 --
---   npm run db:test      (npx supabase test db — the LOCAL stack)
+--   pnpm db:test      (npx supabase test db — the LOCAL stack)
 --
 -- Everything runs in one transaction and rolls back, so nothing queued here is
 -- ever sent: pg_net only sends what a committed transaction queued.

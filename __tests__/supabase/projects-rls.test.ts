@@ -11,7 +11,7 @@
 //      project destinations everywhere a destination is read or checked — so
 //      nobody loosens it later without the diff being obvious.
 //   2. supabase/tests/projects.test.sql pins the *behaviour* against a real
-//      database (`npm run db:test`, local stack), with resolve_tag.test.sql
+//      database (`pnpm db:test`, local stack), with resolve_tag.test.sql
 //      and protect_tag_identity.test.sql extended for the new destinations.
 //      This suite checks those files still carry each case.
 

@@ -168,7 +168,7 @@ curl -sS -A "facebookexternalhit/1.1" https://onetag.app/t/<code>
 
 Look for `og:title` and `og:image` in the output.
 
-To run it locally against `npm run db:start`:
+To run it locally against `pnpm db:start`:
 
 ```bash
 npx supabase functions serve tag-resolve

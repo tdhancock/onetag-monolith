@@ -10,9 +10,9 @@ Thank you for your interest in contributing! This document covers the process an
    git clone https://github.com/<your-username>/onetag-monolith.git
    cd onetag-monolith
    ```
-3. **Install dependencies:**
+3. **Install dependencies** with pnpm (`npm install -g pnpm`, or `corepack enable`):
    ```bash
-   npm install
+   pnpm install
    ```
 4. **Set up environment variables:**
    ```bash
@@ -58,7 +58,7 @@ Examples:
 - **TypeScript** is required — all new files must be `.ts` or `.tsx`.
 - **React Native** conventions: functional components with hooks, no class components.
 - **NativeWind** for styling — use Tailwind utility classes via `className`, avoid inline styles where possible.
-- **Linting:** Run `npx expo lint` before committing and fix all warnings/errors.
+- **Linting:** Run `pnpm lint` before committing and fix all warnings/errors.
 - **Formatting:** Use consistent indentation (2 spaces), trailing commas, and single quotes.
 - **Imports:** Group imports by external packages, then internal modules, then types.
 

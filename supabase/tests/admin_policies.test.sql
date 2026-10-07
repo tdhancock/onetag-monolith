@@ -1,6 +1,6 @@
 -- What admins may do, and nobody else (ONE-105). Runs against a real database:
 --
---   npm run db:test      (npx supabase test db — the LOCAL stack)
+--   pnpm db:test      (npx supabase test db — the LOCAL stack)
 --
 -- Everything runs in one transaction and rolls back. ONE-105 changed how the
 -- three admin-aware policies call is_admin() — once per query instead of once

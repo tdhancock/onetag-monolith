@@ -1,7 +1,7 @@
 -- Tags and Scans (ONE-27, with ONE-82's read model and ONE-83's
 -- destinations). Runs against a real database:
 --
---   npm run db:test      (npx supabase test db — the LOCAL stack)
+--   pnpm db:test      (npx supabase test db — the LOCAL stack)
 --
 -- Everything runs in one transaction and rolls back.
 --

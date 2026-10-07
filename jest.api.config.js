@@ -1,9 +1,9 @@
 // OneTag — the API checks (ONE-114): the app's own data layer against the
 // local Supabase stack, signed in as throwaway accounts.
 //
-// Not part of `npm test`. With the local stack running (`npm run db:start`):
+// Not part of `pnpm test`. With the local stack running (`pnpm db:start`):
 //
-//   npm run check:api
+//   pnpm check:api
 //
 // Every import of services/supabase.native resolves to a live client for that
 // stack (__tests__/api/support/liveSupabase.ts). The harness refuses any host

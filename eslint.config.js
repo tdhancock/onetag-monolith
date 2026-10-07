@@ -1,4 +1,4 @@
-// ESLint, run by `npm run lint`, `npm run verify` and CI, with no warnings
+// ESLint, run by `pnpm lint`, `pnpm verify` and CI, with no warnings
 // allowed through.
 //
 // Expo's config, with the two classic hooks rules as errors. A OneSnap
