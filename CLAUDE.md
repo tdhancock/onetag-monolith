@@ -33,7 +33,7 @@ supabase/seeds/dev.sql     made-up people and content for the local stack and th
 supabase/functions/        edge functions: delete-user-account, tag-resolve (the tag host's web page),
                            and send-push (the database calls it to send push notifications)
 __tests__/                 Jest
-  api/                     the API checks, against a running local stack (npm run check:api)
+  api/                     the API checks, against a running local stack (pnpm check:api)
 types.ts                   shared domain types (repo root)
 app.config.ts              app.json plus universal links for the tag host (repo root)
 public/.well-known/        the files the tag host serves so the OS opens the app for /t/*
@@ -58,18 +58,31 @@ over from a web fork deleted in ONE-5. Neither has a non-native twin — import 
 ## Commands
 
 ```
-npx expo start          # or npm start / npm run ios / npm run android
-npm test                # jest
-npm run test:watch
-npx tsc --noEmit        # or npm run typecheck
-npm run lint            # eslint, no warnings allowed
-npm run verify          # typecheck + lint + test + raw-hex gate — what CI runs
-npm run db:start        # local Supabase; also db:stop, db:status, db:reset, db:diff
-npm run db:test         # the pgTAP suite in supabase/tests, against the local stack
-npm run check:api       # the API checks in __tests__/api, against the local stack
-npm run db:seed         # the seed into the local stack; db:seed:hosted for the dev project (docs/seed-data.md)
-npm run publish:preview # publish for testers in Expo Go (docs/testing-with-expo-go.md)
+pnpm install            # pnpm, at the version package.json's packageManager pins
+npx expo start          # or pnpm start / pnpm ios / pnpm android
+pnpm test               # jest
+pnpm test:watch
+npx tsc --noEmit        # or pnpm typecheck
+pnpm lint               # eslint, no warnings allowed
+pnpm verify             # typecheck + lint + test + raw-hex gate — what CI runs
+pnpm db:start           # local Supabase; also db:stop, db:status, db:reset, db:diff
+pnpm db:test            # the pgTAP suite in supabase/tests, against the local stack
+pnpm check:api          # the API checks in __tests__/api, against the local stack
+pnpm db:seed            # the seed into the local stack; db:seed:hosted for the dev project (docs/seed-data.md)
+pnpm publish:preview    # publish for testers in Expo Go (docs/testing-with-expo-go.md)
 ```
+
+**pnpm, with a flat `node_modules`** (ONE-147). `pnpm-workspace.yaml` sets
+`nodeLinker: hoisted`, so packages sit where npm would put them. pnpm's isolated layout broke
+bundles: React Native's build tooling reaches for packages it doesn't declare, and NativeWind's
+Babel preset naming `@babel/plugin-transform-react-jsx` failed `publish:preview`. Still declare
+what the app uses, including what a Babel transform imports on its behalf: NativeWind compiles
+every screen's JSX to import `react-native-css-interop`, so it and the JSX plugin are direct
+dependencies. A package Metro or Babel can't resolve passes typecheck, lint and Jest, so CI
+bundles the app (`expo export`) on every PR to catch it. A dependency's install script runs
+only when `pnpm-workspace.yaml` names it under `allowBuilds`. One-off CLIs that aren't
+dependencies (the Supabase CLI, `eas-cli`) still run through `npx`. CI and EAS use the same
+pnpm, pinned in `package.json` and `eas.json`; change both together.
 
 Tests run on **ts-jest** in a `node` environment with no React Native preset (`jest.config.js`);
 `jest-expo` is a devDependency but is *not* wired up. A suite touching a native component must
@@ -80,12 +93,12 @@ Mocked suites can't see what happens between the app and the database: a select 
 PostgREST refuses, an id list too long for a URL, a read past the 1,000-row cap, a permission
 reopened. **The API checks do** (ONE-114): they drive the app's own data layer against the
 local stack as throwaway accounts, and CI runs them with pgTAP whenever `supabase/`,
-`features/` or `services/` change. They're kept out of `npm test`. A new exported select
+`features/` or `services/` change. They're kept out of `pnpm test`. A new exported select
 string goes in `__tests__/api/select_strings.test.ts`; a change to a read's reach or a
 permission gets a check beside the others. The harness refuses any host but the local one.
 
-**Never run `supabase db push`.** Migrations apply against a local stack (`npm run db:start`,
-`npm run db:reset`) and reach production only via the `deploy-migrations` workflow on merge,
+**Never run `supabase db push`.** Migrations apply against a local stack (`pnpm db:start`,
+`pnpm db:reset`) and reach production only via the `deploy-migrations` workflow on merge,
 behind a required review. Edge functions go the same way, through `deploy-functions`, which
 deploys every function whenever one changes on `main`; their secrets are set once by hand.
 
@@ -157,7 +170,7 @@ folder. When a feature's `api.ts` needs something another feature has, move it t
 
 `theme/tokens.ts` is the single source of truth, and NativeWind classes and inline styles both
 resolve to it. The whole app is on the tokens (M1c closed in ONE-77), and it is gated: **no raw
-colours and no old-skin classes anywhere.** `npm run verify` and CI run
+colours and no old-skin classes anywhere.** `pnpm verify` and CI run
 `scripts/check-no-raw-hex.sh` over `theme/`, `lib/`, `features/`, `app/` and `components/`,
 failing on a hex literal, a hand-written `rgb()`/`rgba()`/`hsl()`, a quoted named colour
 (`"white"`, `'black'`; `'transparent'` is fine), or the old dark skin's NativeWind classes
@@ -227,7 +240,7 @@ Agreement, along with the rest.
   The types enforce it: `ProfileId` and `AuthUserId` are branded (repo-root `types.ts`). Hooks
   that act as someone take a `ProfileId` from `useCurrentProfile()`; account-scoped ones — push
   tokens, blocks, admin, storage paths — take an `AuthUserId`. RLS ownership goes through
-  `public.owns_profile()`; `npm run db:test` runs the pgTAP RLS suite against the local stack.
+  `public.owns_profile()`; `pnpm db:test` runs the pgTAP RLS suite against the local stack.
 - **Tag URLs are built in exactly one place**, `lib/tagLinks.ts`, from
   `EXPO_PUBLIC_TAG_BASE_URL`. Never hardcode or assemble one elsewhere — these get printed onto
   physical objects and cannot be changed afterwards. `app.config.ts` derives the universal-link
@@ -250,7 +263,7 @@ If a ticket seems to lead toward any of these, stop at the boundary and note it 
 ## Definition of done
 
 1. `npx tsc --noEmit` passes
-2. `npm test` passes
+2. `pnpm test` passes
 3. Every acceptance criterion on the ticket demonstrably met
 4. No new raw hex, no new server state in `AppContext`
 5. App boots: `npx expo start`

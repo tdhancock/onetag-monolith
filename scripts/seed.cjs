@@ -2,18 +2,18 @@
 // Loads the development seed, supabase/seeds/dev.sql, into the local stack or
 // the hosted dev project. docs/seed-data.md says what's in it.
 //
-//   npm run db:seed                       the local stack (npm run db:start)
-//   npm run db:seed:hosted                the hosted dev project
-//   npm run db:seed:hosted -- --follow <username>
-//                                         and that account follows every seed
-//                                         profile, so its home feed fills
+//   pnpm db:seed                       the local stack (pnpm db:start)
+//   pnpm db:seed:hosted                the hosted dev project
+//   pnpm db:seed:hosted --follow <username>
+//                                      and that account follows every seed
+//                                      profile, so its home feed fills
 //
 // The seed is made-up people and posts, and production will be a separate,
 // empty project. So the hosted run names the dev project's ref on every call
 // rather than trusting whatever the CLI is linked to: linking the CLI to
 // production one day can't send the seed there.
 //
-// Node rather than sh, so `npm run` works from PowerShell too.
+// Node rather than sh, so `pnpm db:seed` works from PowerShell too.
 
 /* global __dirname -- a CommonJS script, which the app's lint config doesn't expect */
 

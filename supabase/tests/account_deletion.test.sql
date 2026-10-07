@@ -4,7 +4,7 @@
 -- Individual and a Business profile, with content on both, and checks nothing
 -- either profile owned is left. Runs against a real database:
 --
---   npm run db:test      (npx supabase test db — the LOCAL stack)
+--   pnpm db:test      (npx supabase test db — the LOCAL stack)
 --
 -- Everything runs in one transaction and rolls back.
 --

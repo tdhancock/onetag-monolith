@@ -1,8 +1,8 @@
 -- Development seed: made-up people, businesses and content, so the app has
 -- something to show. For the local stack and the hosted dev project only.
 --
---   npm run db:seed           the local stack
---   npm run db:seed:hosted    the hosted dev project, and nothing else
+--   pnpm db:seed           the local stack
+--   pnpm db:seed:hosted    the hosted dev project, and nothing else
 --
 -- scripts/seed.cjs runs it; docs/seed-data.md says what's in it. Production
 -- starts empty and must stay that way: never run this against it.

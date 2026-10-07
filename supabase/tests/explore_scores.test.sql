@@ -1,7 +1,7 @@
 -- explore_items reads stored scores (ONE-104), and counts everyone's saves
 -- (ONE-101). Runs against a real database:
 --
---   npm run db:test      (npx supabase test db — the LOCAL stack)
+--   pnpm db:test      (npx supabase test db — the LOCAL stack)
 --
 -- Everything runs in one transaction and rolls back.
 --

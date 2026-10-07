@@ -1,0 +1,17 @@
+# pnpm's settings (ONE-147). pnpm 11 reads them here, never from package.json.
+
+# A flat node_modules, laid out as npm lays it out, rather than pnpm's
+# isolated one. React Native's build tooling (Babel presets, Metro, Expo's
+# own CLI) reaches for packages it doesn't declare, and isolated installs
+# turned each one into a failed bundle. The first, NativeWind's preset naming
+# @babel/plugin-transform-react-jsx, broke pnpm publish:preview. CI bundles
+# the app on every PR, which catches what a flat layout still can't.
+nodeLinker: hoisted
+
+# A dependency's install script runs only when it is named below. These are
+# the only two in the tree: fsevents, macOS file watching, which EAS installs
+# when it builds iOS on macOS; and unrs-resolver, which checks that its native
+# binding is in place.
+allowBuilds:
+  fsevents: true
+  unrs-resolver: true

@@ -1,7 +1,7 @@
 -- Embedded Tags: their positions, who reads them, who makes and removes
 -- them, and resolve_tag refusing them (ONE-44). Runs against a real database:
 --
---   npm run db:test      (npx supabase test db — the LOCAL stack)
+--   pnpm db:test      (npx supabase test db — the LOCAL stack)
 --
 -- Everything runs in one transaction and rolls back.
 --

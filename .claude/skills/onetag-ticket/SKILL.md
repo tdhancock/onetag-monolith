@@ -105,7 +105,7 @@ confirm each actually holds — they are written to be mechanically checkable, s
 them rather than assuming.
 
 ```
-npx tsc --noEmit && npm test
+npx tsc --noEmit && pnpm test
 ```
 
 **If something fails, fix it.** Do not open a PR with a failing gate and a note
@@ -182,7 +182,7 @@ anchors the batch, and what you considered and left out, and why.
   in commit order). The PR's `Closes ONE-x` lines link the rest.
 - **Stacked work.** If this batch builds on a previous batch whose PR hasn't merged, branch
   from that branch but **do not open the PR** until the parent merges. Then
-  `git rebase --onto origin/main <parent tip>`, re-run `npm run verify`, and open it
+  `git rebase --onto origin/main <parent tip>`, re-run `pnpm verify`, and open it
   against `main`. The owner squash-merges, so a PR stacked on an unmerged branch shows
   the parent's diff as new work, or is closed when the parent's branch is deleted. Only
   the PR waits — keep working and committing meanwhile.
@@ -194,7 +194,7 @@ anchors the batch, and what you considered and left out, and why.
   carries changes for two tickets, commit the first ticket's part, then the rest.
   **Check `git status` before every commit** — `git commit` takes everything already
   staged, not just the paths you added last.
-- **Verify once for the whole batch** (`npm run verify`, plus `npm run db:test` if any
+- **Verify once for the whole batch** (`pnpm verify`, plus `pnpm db:test` if any
   migration changed), then walk **every** ticket's acceptance criteria.
 - **Record per ticket**: one Linear comment on each, with its own decisions and deviations
   (step 6).

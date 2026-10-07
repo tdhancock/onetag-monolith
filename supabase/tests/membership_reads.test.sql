@@ -1,7 +1,7 @@
 -- Reads that no longer put an id list in the URL (ONE-106). Runs against a
 -- real database:
 --
---   npm run db:test      (npx supabase test db — the LOCAL stack)
+--   pnpm db:test      (npx supabase test db — the LOCAL stack)
 --
 -- Everything runs in one transaction and rolls back. Each function returns
 -- what the read it replaced returned, under the caller's own RLS.

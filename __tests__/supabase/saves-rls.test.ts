@@ -10,7 +10,7 @@
 //      kind, saved_posts moved across and counted before it is dropped, and
 //      saves private to the profile that made them.
 //   2. supabase/tests/saves.test.sql pins the *behaviour* against a real
-//      database (`npm run db:test`, local stack). This suite checks that file
+//      database (`pnpm db:test`, local stack). This suite checks that file
 //      still carries each case.
 
 import { readFileSync, readdirSync } from 'fs';

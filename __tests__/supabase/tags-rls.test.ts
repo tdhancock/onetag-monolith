@@ -12,7 +12,7 @@
 //      see counts but never who scanned (ONE-82) — so nobody loosens it later
 //      without the diff being obvious.
 //   2. supabase/tests/tags_and_scans.test.sql pins the *behaviour* against a
-//      real database (`npm run db:test`, local stack), including the 10,000
+//      real database (`pnpm db:test`, local stack), including the 10,000
 //      generated codes. This suite checks that file still carries each case.
 
 import { readFileSync, readdirSync } from 'fs';

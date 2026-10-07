@@ -9,14 +9,14 @@ The data is `supabase/seeds/dev.sql`, and `scripts/seed.cjs` runs it.
 ## Loading it
 
 ```bash
-npm run db:seed
+pnpm db:seed
 ```
 
-That's the local stack, which has to be running (`npm run db:start`). For the hosted dev
+That's the local stack, which has to be running (`pnpm db:start`). For the hosted dev
 project:
 
 ```bash
-npm run db:seed:hosted
+pnpm db:seed:hosted
 ```
 
 The hosted run names the dev project's ref on every call instead of using whatever the CLI
@@ -27,7 +27,7 @@ Your own account doesn't follow anyone in the seed, and Home shows only the peop
 follow. To fill it, name your account:
 
 ```bash
-npm run db:seed:hosted -- --follow <your username>
+pnpm db:seed:hosted --follow <your username>
 ```
 
 `account_found: 0` in the output means no profile has that username.

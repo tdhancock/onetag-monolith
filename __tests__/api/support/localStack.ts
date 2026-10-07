@@ -39,7 +39,7 @@ const resolveStack = () => {
     serviceKey ??= status.SERVICE_ROLE_KEY;
   }
   if (!url || !anonKey || !serviceKey) {
-    throw new Error('No local Supabase stack found. Start one with `npm run db:start`.');
+    throw new Error('No local Supabase stack found. Start one with `pnpm db:start`.');
   }
   const host = new URL(url).hostname;
   if (!LOCAL_HOSTS.includes(host)) {

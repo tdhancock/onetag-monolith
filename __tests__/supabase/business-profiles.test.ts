@@ -9,7 +9,7 @@
 //      profile, the type guard, and every policy going through the ownership
 //      helper — so nobody loosens it later without the diff being obvious.
 //   2. supabase/tests/business_profiles.test.sql pins the *behaviour* against
-//      a real database (`npm run db:test`, local stack): the guard rejects a
+//      a real database (`pnpm db:test`, local stack): the guard rejects a
 //      row for an individual profile; the owner updates the category and
 //      another account cannot. This suite checks that file still carries
 //      each of those cases.

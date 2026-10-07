@@ -53,7 +53,7 @@ and adds one to `queries.ts` if there isn't one. A read in an effect is
 uncached, starts over on every visit, and never refetches when the app
 returns. Six screens did that beside hooks that already existed.
 
-ESLint enforces all four (`eslint.config.js`), in `npm run lint`, `verify`
+ESLint enforces all four (`eslint.config.js`), in `pnpm lint`, `verify`
 and CI. Tests are exempt: they reach inside a domain on purpose.
 
 ## Why the key shape matters

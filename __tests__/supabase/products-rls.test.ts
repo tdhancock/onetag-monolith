@@ -10,7 +10,7 @@
 //      ownership helper, and the search groundwork — so nobody loosens it
 //      later without the diff being obvious.
 //   2. supabase/tests/products.test.sql pins the *behaviour* against a real
-//      database (`npm run db:test`, local stack). This suite checks that file
+//      database (`pnpm db:test`, local stack). This suite checks that file
 //      still carries each case.
 
 import { readFileSync, readdirSync } from 'fs';

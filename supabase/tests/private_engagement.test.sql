@@ -1,7 +1,7 @@
 -- A private post's comments, likes and reposts are as private as the post
 -- (ONE-109), to read and to write (ONE-115). Runs against a real database:
 --
---   npm run db:test      (npx supabase test db — the LOCAL stack)
+--   pnpm db:test      (npx supabase test db — the LOCAL stack)
 --
 -- Everything runs in one transaction and rolls back.
 --

@@ -1,7 +1,7 @@
 -- The feed chosen from the follow list returns what the time walk did
 -- (ONE-116). Runs against a real database:
 --
---   npm run db:test      (npx supabase test db — the LOCAL stack)
+--   pnpm db:test      (npx supabase test db — the LOCAL stack)
 --
 -- Everything runs in one transaction and rolls back. The reference below is
 -- feed_posts as ONE-113 left it, verbatim, run under the same RLS.
