@@ -9,8 +9,8 @@ import { gradientFor, latestOneSnap } from '../../lib/oneSnaps';
 import { color, radius, space, type } from '../../theme/tokens';
 import type { Story } from '../../types';
 
-// OneSnaps render as square-cornered portrait cards, never circles. They are
-// still `stories` in code and tables (ONE-19); only what the user reads says
+// OneSnaps render as small square cards, never circles. They are still
+// `stories` in code and tables (ONE-19); only what the user reads says
 // OneSnap.
 
 export interface StoryGroup {
@@ -27,13 +27,17 @@ interface StoryReelProps {
   leading?: React.ReactElement | null;
 }
 
-/** Reel card size, in points: a portrait 3:4 card. */
-export const REEL_CARD_WIDTH = 72;
-export const REEL_CARD_HEIGHT = 96;
+/**
+ * Reel card size, in points: a small square. OneSnaps are a light feature, so
+ * the strip keeps to the top of the feed (ONE-146).
+ */
+export const REEL_CARD_SIZE = 56;
+/** Each reel column's width, wider than its card so the name under it fits. */
+export const REEL_ITEM_WIDTH = 72;
 /** Opacity of a card whose OneSnaps have all been seen on this device. */
 export const VIEWED_OPACITY = 0.6;
 /** The author's avatar on the card's bottom-left corner. */
-const CARD_AVATAR_SIZE = 24;
+const CARD_AVATAR_SIZE = 20;
 
 // ─── The card ──────────────────────────────────────
 
@@ -63,7 +67,7 @@ const CardFace: React.FC<{ story?: Story; dimmed: boolean }> = ({ story, dimmed 
     return (
       <View style={styles.emptyFace}>
         <View style={styles.plusSquare}>
-          <PlusIcon color={color.inverse} size={16} strokeWidth={2} />
+          <PlusIcon color={color.inverse} size={14} strokeWidth={2} />
         </View>
       </View>
     );
@@ -84,7 +88,7 @@ const CardFace: React.FC<{ story?: Story; dimmed: boolean }> = ({ story, dimmed 
 
   return (
     <LinearGradient colors={[...gradientFor(story)]} style={[styles.textFace, { opacity }]}>
-      <Text style={styles.textFaceCopy} numberOfLines={4}>
+      <Text style={styles.textFaceCopy} numberOfLines={3}>
         {story.content}
       </Text>
     </LinearGradient>
@@ -193,8 +197,8 @@ export const StoryReelSkeleton: React.FC = () => (
   <View style={[styles.reel, styles.skeletonRow]}>
     {Array.from({ length: REEL_SKELETON_COUNT }, (_, i) => (
       <View key={i} style={styles.item}>
-        <Skeleton width={REEL_CARD_WIDTH} height={REEL_CARD_HEIGHT} />
-        <Skeleton width={REEL_CARD_WIDTH * 0.7} height={10} style={styles.skeletonLabel} />
+        <Skeleton width={REEL_CARD_SIZE} height={REEL_CARD_SIZE} style={styles.skeletonCard} />
+        <Skeleton width={REEL_ITEM_WIDTH * 0.7} height={10} style={styles.skeletonLabel} />
       </View>
     ))}
   </View>
@@ -211,14 +215,15 @@ const styles = StyleSheet.create({
     width: space.sm,
   },
   item: {
-    width: REEL_CARD_WIDTH,
+    width: REEL_ITEM_WIDTH,
   },
   pressed: {
     opacity: 0.7,
   },
   card: {
-    width: REEL_CARD_WIDTH,
-    height: REEL_CARD_HEIGHT,
+    width: REEL_CARD_SIZE,
+    height: REEL_CARD_SIZE,
+    alignSelf: 'center',
     borderRadius: radius.none,
     overflow: 'hidden',
     backgroundColor: color.bgPanel,
@@ -238,8 +243,8 @@ const styles = StyleSheet.create({
     backgroundColor: color.bgPanel,
   },
   plusSquare: {
-    width: 28,
-    height: 28,
+    width: 24,
+    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: color.text,
@@ -248,7 +253,7 @@ const styles = StyleSheet.create({
   textFace: {
     flex: 1,
     justifyContent: 'center',
-    padding: space.sm,
+    padding: space.xs,
   },
   textFaceCopy: {
     fontFamily: type.bodyBold,
@@ -290,6 +295,9 @@ const styles = StyleSheet.create({
   skeletonRow: {
     flexDirection: 'row',
     gap: space.sm,
+  },
+  skeletonCard: {
+    alignSelf: 'center',
   },
   skeletonLabel: {
     marginTop: space.xs,

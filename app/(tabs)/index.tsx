@@ -455,7 +455,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.bg,
   },
   strip: {
-    paddingVertical: space.md,
+    paddingVertical: space.sm,
     backgroundColor: color.bg,
     borderBottomWidth: 1,
     borderBottomColor: color.border,
