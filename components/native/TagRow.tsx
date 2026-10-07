@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import { MonoLabel, Pressable } from './ui';
 import type { OwnedTag } from '../../features/tags';
-import { destinationLabel, scanSummary, TAG_TYPE_LABEL, tagStateLabel, tagTitle } from '../../lib/screens/tags';
+import { scanSummary, TAG_TYPE_LABEL, tagDestinationLabel, tagStateLabel, tagTitle } from '../../lib/screens/tags';
 import { color, space, type } from '../../theme/tokens';
 
 export interface TagActiveSwitchProps {
@@ -77,7 +77,7 @@ const TagRow: React.FC<TagRowProps> = ({ tag, onPress, onToggleActive, divider =
           {title}
         </Text>
         <Text style={styles.destination} numberOfLines={1}>
-          {destinationLabel(tag.destination)}
+          {tagDestinationLabel(tag)}
         </Text>
         <Text style={styles.scans}>{scanSummary(tag)}</Text>
       </View>

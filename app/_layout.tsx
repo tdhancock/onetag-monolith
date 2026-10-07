@@ -178,6 +178,7 @@ function RootLayoutNav() {
       <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
       <Stack.Screen name="create-profile" options={{ presentation: 'modal' }} />
       <Stack.Screen name="tags/create" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="tags/print" options={{ presentation: 'modal' }} />
       <Stack.Screen name="product/create" options={{ presentation: 'modal' }} />
       <Stack.Screen name="product/[id]/edit" options={{ presentation: 'modal' }} />
       <Stack.Screen name="project/create" options={{ presentation: 'modal' }} />

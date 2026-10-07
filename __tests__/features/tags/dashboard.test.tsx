@@ -342,6 +342,29 @@ describe('the dashboard', () => {
     expect(rowTitles(el)).toHaveLength(4);
   });
 
+  it('lists a blank tag as not linked, with its short code (ONE-138)', async () => {
+    mockDb.tags['p-studio'].push(row({
+        id: 't-blank',
+        name: null,
+        short_code: 'BLANK234',
+        dest_profile_id: null,
+        dest_profile: null,
+        created_at: '2026-10-06T12:00:00Z',
+      }));
+    const el = await mount(<TagsDashboardScreen />);
+    expect(byLabel(el, 'Blank tag, Physical tag, Active')).not.toBeNull();
+    expect(el.textContent).toContain('Physical · BLANK234');
+    expect(el.textContent).toContain('Not linked');
+    expect(el.textContent).not.toContain('Destination removed');
+  });
+
+  it('opens Print blank tags from the header, even with no tags yet', async () => {
+    mockDb.tags['p-studio'] = [];
+    const el = await mount(<TagsDashboardScreen />);
+    click(byLabel(el, 'Print blank tags'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/tags/print');
+  });
+
   it('opens a tag, and the create flow from the header', async () => {
     const el = await mount(<TagsDashboardScreen />);
     click(byLabel(el, 'Front door, Physical tag, Active'));
@@ -412,6 +435,23 @@ describe("a tag's detail", () => {
     expect(el.querySelector('[data-qr]')!.getAttribute('data-qr')).toBe(buildTagUrl('ABC23XYZ'));
     click(byText(el, 'Export QR code'));
     expect(mockRouter.push).toHaveBeenCalledWith('/tags/t1/export');
+  });
+
+  it('says a blank tag is not linked, and offers no replacement for it', async () => {
+    mockDb.tags['p-studio'].push(row({
+        id: 't-blank',
+        name: null,
+        short_code: 'BLANK234',
+        dest_profile_id: null,
+        dest_profile: null,
+        created_at: '2026-10-06T12:00:00Z',
+      }));
+    mockParams.current = { id: 't-blank' };
+    const el = await mount(<TagDetailScreen />);
+    expect(el.textContent).toContain('Not linked');
+    expect(el.textContent).toContain("Once it's linked, scanning it goes there.");
+    expect(el.textContent).not.toContain('Create a replacement');
+    expect(el.querySelector('[data-qr]')!.getAttribute('data-qr')).toBe(buildTagUrl('BLANK234'));
   });
 
   it('shows a Digital Tag its link, and no replacement', async () => {

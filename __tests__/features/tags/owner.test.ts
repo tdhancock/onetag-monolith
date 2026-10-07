@@ -128,6 +128,7 @@ describe('fetchMyTags', () => {
       active: true,
       createdAt: '2026-09-24T10:00:00Z',
       destination: { kind: 'profile', profileId: 'p-studio', username: 'ana_studio', name: 'Ana Studio', profileType: 'business' },
+      linked: true,
       hostPostId: null,
       scanCount: 0,
       lastScannedAt: null,
@@ -137,6 +138,13 @@ describe('fetchMyTags', () => {
     // A one-element array embed reads the same; a missing one is no destination.
     expect(mapTagRow({ ...ROW, dest_profile: [ROW.dest_profile as never] }).destination).toMatchObject({ username: 'ana_studio' });
     expect(mapTagRow({ ...ROW, dest_profile: null }).destination).toBeNull();
+  });
+
+  it('reads a tag whose destination is gone as linked, and a blank one as not (ONE-135)', () => {
+    // Gone: the column is set, the embed is not.
+    expect(mapTagRow({ ...ROW, dest_profile: null })).toMatchObject({ destination: null, linked: true });
+    // Blank: no destination column set at all.
+    expect(mapTagRow({ ...ROW, dest_profile_id: null, dest_profile: null })).toMatchObject({ destination: null, linked: false });
   });
 
   it('maps a product or project destination by its name (ONE-89)', () => {

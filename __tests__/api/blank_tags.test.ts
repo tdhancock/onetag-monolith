@@ -1,15 +1,16 @@
 //
 // target: __tests__/api/blank_tags.test.ts
 //
-// Blank Physical Tags (ONE-135), against the local stack, through the app's
-// own data layer: a tag printed before it points anywhere resolves as
-// unlinked — to its owner with the id to link it by, to anyone else with
-// nothing — and records no Scan.
+// Blank Physical Tags (ONE-135, ONE-138), against the local stack, through
+// the app's own data layer: a batch is made in one insert and listed as not
+// linked, and a tag printed before it points anywhere resolves as unlinked —
+// to its owner with the id to link it by, to anyone else with nothing — and
+// records no Scan.
 
 import { actAs } from './support/liveSupabase';
 import { anonClient, sql } from './support/localStack';
 import { createAccount, deleteAccounts, type Account } from './support/accounts';
-import { recordScan, resolveTag } from '../../features/tags/api';
+import { createBlankTags, fetchMyTags, recordScan, resolveTag } from '../../features/tags/api';
 
 let owner: Account;
 let other: Account;
@@ -46,5 +47,34 @@ describe('a blank Physical Tag', () => {
     actAs(anonClient());
     await expect(recordScan(tagId, null)).rejects.toBeTruthy();
     expect(sql(`SELECT count(*) FROM public.scans WHERE tag_id = '${tagId}';`)).toBe('0');
+  });
+});
+
+describe('a batch of blank tags (ONE-138)', () => {
+  it('makes twelve for the acting profile, each pointing nowhere, with its own code', async () => {
+    actAs(owner.client);
+    const made = await createBlankTags(owner.profileId, 12);
+    expect(made).toHaveLength(12);
+    expect(made.every((tag) => tag.tagType === 'physical' && tag.format === 'qr' && !tag.linked)).toBe(true);
+    expect(new Set(made.map((tag) => tag.shortCode)).size).toBe(12);
+    expect(
+      sql(`
+        SELECT count(*) FROM public.tags
+        WHERE id IN (${made.map((tag) => `'${tag.id}'`).join(', ')})
+          AND owner_profile_id = '${owner.profileId}'
+          AND num_nonnulls(dest_profile_id, dest_product_id, dest_project_id, dest_post_id) = 0;
+      `),
+    ).toBe('12');
+  });
+
+  it("lists them on the owner's tags as not linked", async () => {
+    actAs(owner.client);
+    const mine = await fetchMyTags(owner.profileId);
+    expect(mine.filter((tag) => !tag.linked).length).toBeGreaterThanOrEqual(12);
+  });
+
+  it("refuses a batch for someone else's profile", async () => {
+    actAs(other.client);
+    await expect(createBlankTags(owner.profileId, 12)).rejects.toBeTruthy();
   });
 });

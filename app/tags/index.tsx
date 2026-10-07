@@ -6,13 +6,14 @@ import { useApp } from '../../store/AppContext.native';
 import { useCurrentProfile } from '../../features/profiles';
 import { useMyTagsQuery, useTagActiveToggle, type OwnedTag } from '../../features/tags';
 import { EmptyState, IconButton, Skeleton } from '../../components/native/ui';
-import { PlusIcon } from '../../components/native/Icons';
+import { GridIcon, PlusIcon } from '../../components/native/Icons';
 import FilterChips from '../../components/native/FilterChips';
 import TagRow from '../../components/native/TagRow';
 import {
   filterTags,
   TAG_STATE_FILTERS,
   TAG_TYPE_FILTERS,
+  TAG_PRINT_ROUTE,
   tagCreateRoute,
   tagDetailRoute,
   TAGS_EMPTY_STATE,
@@ -48,6 +49,7 @@ export default function TagsDashboardScreen() {
   );
 
   const createTag = () => router.push(tagCreateRoute());
+  const printBlankTags = () => router.push(TAG_PRINT_ROUTE);
 
   const handleToggle = (tag: OwnedTag) =>
     toggleActive.mutate(tag.id, {
@@ -69,12 +71,21 @@ export default function TagsDashboardScreen() {
       options={{
         headerShown: true,
         title: 'Tags',
+        // Print blank tags is here, not only in the list, so an empty dashboard
+        // offers it too: a house is often tagged before anything is in the app.
         headerRight: () => (
-          <IconButton
-            icon={<PlusIcon color={color.text} size={24} strokeWidth={1.8} />}
-            accessibilityLabel="Create a tag"
-            onPress={createTag}
-          />
+          <View style={styles.headerActions}>
+            <IconButton
+              icon={<GridIcon color={color.text} size={22} strokeWidth={1.8} />}
+              accessibilityLabel="Print blank tags"
+              onPress={printBlankTags}
+            />
+            <IconButton
+              icon={<PlusIcon color={color.text} size={24} strokeWidth={1.8} />}
+              accessibilityLabel="Create a tag"
+              onPress={createTag}
+            />
+          </View>
         ),
       }}
     />
@@ -166,6 +177,10 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: color.bg,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   list: {
     flexGrow: 1,

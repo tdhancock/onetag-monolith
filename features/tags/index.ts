@@ -13,6 +13,8 @@ export {
   TagResolutionError,
   fetchMyTags,
   createTag,
+  createBlankTags,
+  MAX_BLANK_TAGS,
   updateTag,
   setTagActive,
   deleteTag,
@@ -26,13 +28,14 @@ export {
   useRecordScan,
   useCreateEmbeddedTags,
   useCreateTag,
+  useCreateBlankTags,
   useUpdateTag,
   useDeleteTag,
   useTagActiveToggle,
   activeAfterFlip,
   embeddedTagWriter,
 } from './mutations';
-export type { RecordScanInput, UpdateTagInput, CreateEmbeddedTagsInput } from './mutations';
+export type { RecordScanInput, UpdateTagInput, CreateEmbeddedTagsInput, CreateBlankTagsInput } from './mutations';
 export type {
   TagDestination,
   TagDestinationKind,

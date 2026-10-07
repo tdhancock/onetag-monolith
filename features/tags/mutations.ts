@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  createBlankTags,
   createEmbeddedTags,
   createTag,
   deleteTag,
@@ -64,6 +65,33 @@ export const useCreateTag = () => {
     onSuccess: (tag) => {
       queryClient.setQueryData<OwnedTag[]>(tagKeys.mine(tag.ownerProfileId), (list) =>
         list ? [tag, ...list.filter((existing) => existing.id !== tag.id)] : list,
+      );
+      void queryClient.invalidateQueries({ queryKey: tagKeys.lists() });
+    },
+  });
+};
+
+export interface CreateBlankTagsInput {
+  /** The active profile: the tags are attributed to it, never to the account. */
+  ownerProfileId: ProfileId;
+  count: number;
+}
+
+/**
+ * Create a batch of blank Physical Tags to print (ONE-138).
+ *
+ * Not optimistic, as a single tag isn't: a code is worthless until the
+ * database has issued it. On success the batch joins its owner's cached list
+ * at once, and the lists are invalidated to pick up the server's copy.
+ */
+export const useCreateBlankTags = () => {
+  const queryClient = useQueryClient();
+  return useMutation<OwnedTag[], unknown, CreateBlankTagsInput>({
+    mutationFn: ({ ownerProfileId, count }) => createBlankTags(ownerProfileId, count),
+    onSuccess: (tags, { ownerProfileId }) => {
+      const made = new Set(tags.map((tag) => tag.id));
+      queryClient.setQueryData<OwnedTag[]>(tagKeys.mine(ownerProfileId), (list) =>
+        list ? [...tags, ...list.filter((existing) => !made.has(existing.id))] : list,
       );
       void queryClient.invalidateQueries({ queryKey: tagKeys.lists() });
     },

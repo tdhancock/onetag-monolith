@@ -14,14 +14,15 @@ import { copyTagLink, shareTagLink } from '../../services/tagSharing';
 import { buildTagUrl } from '../../lib/tagLinks';
 import { routeForDestination } from '../../lib/screens/tagResolution';
 import {
+  canReplaceTag,
   deleteTagConfirm,
-  destinationLabel,
   replacementRoute,
   scanSummary,
   TAG_NAME_MAX_LENGTH,
   TAG_NOTE_MAX_LENGTH,
   TAG_TYPE_LABEL,
   TAGS_DASHBOARD_ROUTE,
+  tagDestinationLabel,
   tagExportRoute,
   tagTextOrNull,
   tagTitle,
@@ -224,9 +225,11 @@ function TagDetail({
           <SettingsRow
             title="Active"
             subtitle={
-              tag.active
-                ? 'Scanning or opening it goes to its destination.'
-                : 'It shows as no longer active. Turn it back on at any time.'
+              !tag.active
+                ? 'It shows as no longer active. Turn it back on at any time.'
+                : tag.linked
+                  ? 'Scanning or opening it goes to its destination.'
+                  : "Once it's linked, scanning it goes there."
             }
             control={<TagActiveSwitch active={tag.active} onToggle={handleToggle} tagName={tagTitle(tag)} />}
           />
@@ -240,7 +243,7 @@ function TagDetail({
           )}
           <SettingsRow
             title="Destination"
-            subtitle={destinationLabel(tag.destination)}
+            subtitle={tagDestinationLabel(tag)}
             onPress={onOpenDestination}
             divider
           />
@@ -274,7 +277,7 @@ function TagDetail({
         </SettingsSection>
 
         <SettingsSection>
-          {tag.tagType === 'physical' ? (
+          {canReplaceTag(tag) ? (
             <SettingsRow
               title="Create a replacement"
               subtitle="A new tag with the same destination, for one that's lost or damaged. This one stays until you deactivate it."

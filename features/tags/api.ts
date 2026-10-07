@@ -151,6 +151,7 @@ export const mapTagRow = (row: TagRow, counts?: TagScanCountRow): OwnedTag => ({
   active: row.active,
   createdAt: row.created_at,
   destination: destinationFromRow(row),
+  linked: Boolean(row.dest_profile_id || row.dest_product_id || row.dest_project_id || row.dest_post_id),
   hostPostId: row.host_post_id ?? null,
   scanCount: counts ? Number(counts.scan_count) || 0 : 0,
   lastScannedAt: counts?.last_scanned_at ?? null,
@@ -237,6 +238,29 @@ export const createTag = async (tag: NewTag): Promise<OwnedTag> => {
 
   if (error) throw error;
   return mapTagRow(data as unknown as TagRow);
+};
+
+/** The most blank tags made at once: two sheets of twelve (lib/tagSheet.ts). */
+export const MAX_BLANK_TAGS = 24;
+
+/**
+ * Create `count` blank Physical Tags for a profile and read them back
+ * (ONE-138): printed first, each Linked to a Destination later, once
+ * (ONE-135). One insert, so a batch lands whole or not at all and a failed
+ * one can be retried without doubling any. Their short codes are the
+ * database's to issue, as every tag's are.
+ */
+export const createBlankTags = async (ownerProfileId: ProfileId, count: number): Promise<OwnedTag[]> => {
+  if (!Number.isInteger(count) || count < 1 || count > MAX_BLANK_TAGS) {
+    throw new Error(`Make between 1 and ${MAX_BLANK_TAGS} blank tags, not ${count}`);
+  }
+  const { data, error } = await supabase
+    .from('tags')
+    .insert(Array.from({ length: count }, () => ({ owner_profile_id: ownerProfileId, tag_type: 'physical', format: 'qr' })))
+    .select(TAG_SELECT);
+
+  if (error) throw error;
+  return ((data ?? []) as unknown as TagRow[]).map((row) => mapTagRow(row));
 };
 
 /**

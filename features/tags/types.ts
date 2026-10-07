@@ -117,8 +117,14 @@ export interface OwnedTag {
   shortCode: string;
   active: boolean;
   createdAt: string;
-  /** Null when the destination is gone, or is a kind this build doesn't read. */
+  /** Null when the destination is gone, or is a kind this build doesn't read — or the tag is blank. */
   destination: OwnedTagDestination | null;
+  /**
+   * Whether the tag points anywhere. False only for a blank Physical Tag,
+   * printed and not yet Linked (ONE-135). A linked tag whose destination is
+   * gone is still linked, with a null `destination`.
+   */
+  linked: boolean;
   /** The post an Embedded Tag sits on. Physical and Digital Tags have none. */
   hostPostId?: string | null;
   scanCount: number;

@@ -36,6 +36,12 @@ import {
   tagExportRoute,
   tagTitle,
   type TagDraft,
+  BLANK_TAG_BATCHES,
+  blankTagsReadyMessage,
+  canReplaceTag,
+  sheetLabel,
+  TAG_PRINT_ROUTE,
+  tagDestinationLabel,
 } from '../../lib/screens/tags';
 
 const ANA = { id: 'p-ana', name: 'Ana Reyes', username: 'ana', profileType: 'individual' as const, profilePicture: null };
@@ -53,6 +59,7 @@ const tag = (overrides: Partial<OwnedTag> = {}): OwnedTag => ({
   active: true,
   createdAt: '2026-09-20T10:00:00Z',
   destination: { kind: 'profile', profileId: 'p-studio', username: 'ana_studio', name: 'Ana Studio', profileType: 'business' },
+  linked: true,
   scanCount: 0,
   lastScannedAt: null,
   ...overrides,
@@ -207,6 +214,29 @@ describe('the dashboard', () => {
     expect(tagTitle(tag({ name: null, destination: null }))).toBe('Untitled tag');
     expect(destinationLabel(tag().destination)).toBe('Ana Studio · @ana_studio');
     expect(destinationLabel(null)).toBe('Destination removed');
+  });
+
+  it('says a blank tag is not linked, and calls it a blank tag until it is named (ONE-138)', () => {
+    const blank = tag({ name: null, destination: null, linked: false });
+    expect(tagDestinationLabel(blank)).toBe('Not linked');
+    expect(tagTitle(blank)).toBe('Blank tag');
+    expect(tagTitle({ ...blank, name: 'Spare' })).toBe('Spare');
+    // A linked tag whose destination is gone still reads as removed.
+    expect(tagDestinationLabel(tag({ destination: null }))).toBe('Destination removed');
+    expect(tagDestinationLabel(tag())).toBe('Ana Studio · @ana_studio');
+  });
+
+  it('offers a replacement only for a linked Physical Tag', () => {
+    expect(canReplaceTag(tag())).toBe(true);
+    expect(canReplaceTag(tag({ linked: false, destination: null }))).toBe(false);
+    expect(canReplaceTag(tag({ tagType: 'digital', format: null }))).toBe(false);
+  });
+
+  it('labels sheets and the ready message for printing blank tags', () => {
+    expect(BLANK_TAG_BATCHES.map((batch) => batch.count)).toEqual([12, 24]);
+    expect(sheetLabel(0, 2)).toBe('Sheet 1 of 2');
+    expect(blankTagsReadyMessage(24)).toContain('24 blank tags made');
+    expect(TAG_PRINT_ROUTE).toBe('/tags/print');
   });
 
   it('names a product or project destination, never as removed (ONE-89)', () => {
