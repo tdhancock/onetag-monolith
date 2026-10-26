@@ -1,60 +1,67 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { Pressable } from './ui';
+import { StyleSheet, Text, View } from 'react-native';
+import { Button, IconButton } from './ui';
+import { XIcon } from './Icons';
 import { color, space, type } from '../../theme/tokens';
 
 export interface ModalHeaderProps {
   title: string;
-  /** Omitted on a screen whose only exit is its action, such as a picker's Done. */
-  onCancel?: () => void;
-  onSave: () => void;
-  /** Save stays greyed out and inert until there is something valid to save. */
-  canSave: boolean;
-  /** A save is under way: a spinner stands in for Save. */
+  /** The X on the left. Omitted on a screen whose only exit is its action, such as a picker's Done. */
+  onClose?: () => void;
+  /** The action on the right. Omitted on a screen whose action sits in its content, below the form. */
+  onSave?: () => void;
+  /** The action stays dimmed and inert until there is something valid to save. */
+  canSave?: boolean;
+  /** A save is under way: a spinner stands in for the label. */
   saving?: boolean;
-  /** Defaults to Save. */
+  /** Defaults to Save. Post, Add and Done are the others. */
   saveLabel?: string;
 }
 
+/** Each side's minimum width: the widest action, a four-letter label on a small Button. */
+const SIDE_MIN_WIDTH = 64;
+
 /**
- * The bar across the top of a form presented as a modal: Cancel, the title,
- * and Save — the layout Edit profile uses, for the product and project forms
- * and the project's picker (ONE-40, ONE-41).
+ * The bar across the top of every screen presented as a modal: an X to close,
+ * the title in the middle, and the screen's action as a small ink Button.
+ * One bar, so every screen that slides up opens the same way — Compose's
+ * Post is the model the rest follow.
  */
 const ModalHeader: React.FC<ModalHeaderProps> = ({
   title,
-  onCancel,
+  onClose,
   onSave,
-  canSave,
+  canSave = true,
   saving = false,
   saveLabel = 'Save',
 }) => (
   <View style={styles.header}>
-    {onCancel ? (
-      <Pressable onPress={onCancel} accessibilityRole="button" hitSlop={12} style={styles.side}>
-        <Text style={styles.cancel}>Cancel</Text>
-      </Pressable>
-    ) : (
-      <View style={styles.side} />
-    )}
+    <View style={styles.side}>
+      {onClose ? (
+        <IconButton
+          icon={<XIcon color={color.text} size={22} strokeWidth={1.8} />}
+          accessibilityLabel="Close"
+          onPress={onClose}
+          style={styles.close}
+        />
+      ) : null}
+    </View>
     <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
       {title}
     </Text>
     <View style={[styles.side, styles.right]}>
-      {saving ? (
-        <ActivityIndicator size="small" color={color.text} accessibilityLabel="Saving" />
-      ) : (
-        <Pressable
-          onPress={canSave ? onSave : undefined}
-          disabled={!canSave}
-          accessibilityRole="button"
+      {onSave ? (
+        <Button
+          size="sm"
+          onPress={onSave}
+          // At full strength while saving: under way, not unavailable.
+          disabled={!canSave && !saving}
+          loading={saving}
           accessibilityLabel={saveLabel}
-          accessibilityState={{ disabled: !canSave }}
-          hitSlop={12}
         >
-          <Text style={[styles.save, !canSave && styles.saveDisabled]}>{saveLabel}</Text>
-        </Pressable>
-      )}
+          {saveLabel}
+        </Button>
+      ) : null}
     </View>
   </View>
 );
@@ -63,37 +70,34 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     minHeight: 52,
     paddingHorizontal: space.lg,
     borderBottomWidth: 1,
     borderBottomColor: color.border,
     backgroundColor: color.bg,
   },
+  // Both sides hold the same width, so the title stays in the middle of the
+  // bar whichever of them is empty.
   side: {
-    minWidth: 64,
+    minWidth: SIDE_MIN_WIDTH,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   right: {
-    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
   },
-  cancel: {
-    fontFamily: type.body,
-    fontSize: 16,
-    color: color.text,
+  // The X's 44pt target runs out to the screen's edge, so the glyph itself
+  // lines up with the 16pt gutter the content below keeps.
+  close: {
+    marginLeft: -space.lg,
   },
   title: {
-    flexShrink: 1,
+    flex: 1,
+    marginHorizontal: space.sm,
+    textAlign: 'center',
     fontFamily: type.bodyBold,
     fontSize: 17,
     color: color.text,
-  },
-  save: {
-    fontFamily: type.bodyBold,
-    fontSize: 16,
-    color: color.text,
-  },
-  saveDisabled: {
-    color: color.textMuted,
   },
 });
 

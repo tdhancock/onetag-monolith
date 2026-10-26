@@ -63,7 +63,7 @@ export default function CreateProjectScreen() {
     <SafeAreaView style={styles.screen}>
       <ModalHeader
         title="New project"
-        onCancel={() => router.back()}
+        onClose={() => router.back()}
         onSave={handleSave}
         canSave={canSave}
         saving={createProject.isPending}

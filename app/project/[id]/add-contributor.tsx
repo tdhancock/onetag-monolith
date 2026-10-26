@@ -56,7 +56,7 @@ export default function AddContributorScreen() {
   if (isPending) {
     return (
       <SafeAreaView style={styles.screen}>
-        <ModalHeader title="Add a contributor" onCancel={close} onSave={() => undefined} canSave={false} saveLabel="Add" />
+        <ModalHeader title="Add a contributor" onClose={close} onSave={() => undefined} canSave={false} saveLabel="Add" />
         <ActivityIndicator style={styles.loading} color={color.textMuted} accessibilityLabel="Loading" />
       </SafeAreaView>
     );
@@ -65,7 +65,7 @@ export default function AddContributorScreen() {
   if (!project || !canManageProject(profileId, project)) {
     return (
       <SafeAreaView style={styles.screen}>
-        <ModalHeader title="Add a contributor" onCancel={close} onSave={() => undefined} canSave={false} saveLabel="Add" />
+        <ModalHeader title="Add a contributor" onClose={close} onSave={() => undefined} canSave={false} saveLabel="Add" />
         <EmptyState
           title={project ? "You can't change this project" : PROJECT_NOT_FOUND.title}
           body={project ? 'Only the profile that owns it can add contributors.' : PROJECT_NOT_FOUND.body}
@@ -92,7 +92,7 @@ export default function AddContributorScreen() {
   const header = (
     <ModalHeader
       title="Add a contributor"
-      onCancel={close}
+      onClose={close}
       onSave={submit}
       canSave={Boolean(chosen) && !add.isPending}
       saving={add.isPending}

@@ -47,7 +47,7 @@ export default function EditProjectScreen() {
   if (isPending) {
     return (
       <SafeAreaView style={styles.screen}>
-        <ModalHeader title="Edit project" onCancel={close} onSave={() => undefined} canSave={false} />
+        <ModalHeader title="Edit project" onClose={close} onSave={() => undefined} canSave={false} />
         <ActivityIndicator style={styles.loading} color={color.textMuted} accessibilityLabel="Loading" />
       </SafeAreaView>
     );
@@ -56,7 +56,7 @@ export default function EditProjectScreen() {
   if (!project || !canManageProject(profileId, project)) {
     return (
       <SafeAreaView style={styles.screen}>
-        <ModalHeader title="Edit project" onCancel={close} onSave={() => undefined} canSave={false} />
+        <ModalHeader title="Edit project" onClose={close} onSave={() => undefined} canSave={false} />
         <EmptyState
           title={project ? "You can't edit this project" : PROJECT_NOT_FOUND.title}
           body={
@@ -113,7 +113,7 @@ function EditProjectForm({ project, onDone }: { project: Project; onDone: () => 
     <SafeAreaView style={styles.screen}>
       <ModalHeader
         title="Edit project"
-        onCancel={onDone}
+        onClose={onDone}
         onSave={handleSave}
         canSave={canSave}
         saving={updateProject.isPending}

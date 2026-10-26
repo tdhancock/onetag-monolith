@@ -89,7 +89,7 @@ export default function LogEntryScreen() {
   if (project.isPending || (entryId && log.isPending) || (!entryId && !isOwner && access.isLoading)) {
     return (
       <SafeAreaView style={styles.screen}>
-        <ModalHeader title={title} onCancel={close} onSave={() => undefined} canSave={false} />
+        <ModalHeader title={title} onClose={close} onSave={() => undefined} canSave={false} />
         <ActivityIndicator style={styles.loading} color={color.textMuted} accessibilityLabel="Loading" />
       </SafeAreaView>
     );
@@ -100,7 +100,7 @@ export default function LogEntryScreen() {
   if (!project.data || !profileId || (entryId && !entry) || !allowed) {
     return (
       <SafeAreaView style={styles.screen}>
-        <ModalHeader title={title} onCancel={close} onSave={() => undefined} canSave={false} />
+        <ModalHeader title={title} onClose={close} onSave={() => undefined} canSave={false} />
         <EmptyState
           title={
             !project.data ? PROJECT_NOT_FOUND.title : entryId && !entry ? 'Entry not found' : "You can't change this log"
@@ -198,7 +198,7 @@ function LogEntryForm({
 
   return (
     <SafeAreaView style={styles.screen}>
-      <ModalHeader title={title} onCancel={onDone} onSave={handleSave} canSave={canSave} saving={saving} />
+      <ModalHeader title={title} onClose={onDone} onSave={handleSave} canSave={canSave} saving={saving} />
       <KeyboardAvoider style={styles.fill}>
         <FormScrollView style={styles.fill} contentContainerStyle={styles.scroll}>
           <View style={[styles.section, styles.fields]}>

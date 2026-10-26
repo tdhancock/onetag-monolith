@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
@@ -7,6 +7,7 @@ import { useCurrentProfile } from '../../features/profiles';
 import { useCreateTag, type OwnedTag } from '../../features/tags';
 import { Button, Card, MonoLabel, TextField } from '../../components/native/ui';
 import { CheckIcon } from '../../components/native/Icons';
+import ModalHeader from '../../components/native/ModalHeader';
 import KeyboardAvoider from '../../components/native/KeyboardAvoider';
 import FormScrollView from '../../components/native/FormScrollView';
 import TagQRCode from '../../components/native/TagQRCode';
@@ -105,16 +106,11 @@ export default function CreateTagScreen() {
     }
   };
 
-  const header = (
-    <View style={styles.header}>
-      <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={12} style={styles.headerSide}>
-        <Text style={styles.headerAction}>{created ? 'Done' : 'Cancel'}</Text>
-      </Pressable>
-      <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
-        {created ? 'Tag created' : 'New tag'}
-      </Text>
-      <View style={styles.headerSide} />
-    </View>
+  // Once the tag exists there is nothing left to cancel: Done takes the X's place.
+  const header = created ? (
+    <ModalHeader title="Tag created" onSave={() => router.back()} saveLabel="Done" />
+  ) : (
+    <ModalHeader title="New tag" onClose={() => router.back()} />
   );
 
   if (created) {
@@ -358,29 +354,6 @@ const styles = StyleSheet.create({
   },
   fill: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 52,
-    paddingHorizontal: space.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: color.border,
-  },
-  headerSide: {
-    minWidth: 64,
-  },
-  headerAction: {
-    fontFamily: type.body,
-    fontSize: 16,
-    color: color.text,
-  },
-  headerTitle: {
-    flexShrink: 1,
-    fontFamily: type.bodyBold,
-    fontSize: 17,
-    color: color.text,
   },
   loading: {
     marginTop: space.xxl,

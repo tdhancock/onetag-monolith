@@ -41,7 +41,7 @@ export default function EditProductScreen() {
   if (isPending) {
     return (
       <SafeAreaView style={styles.screen}>
-        <ModalHeader title="Edit product" onCancel={close} onSave={() => undefined} canSave={false} />
+        <ModalHeader title="Edit product" onClose={close} onSave={() => undefined} canSave={false} />
         <ActivityIndicator style={styles.loading} color={color.textMuted} accessibilityLabel="Loading" />
       </SafeAreaView>
     );
@@ -50,7 +50,7 @@ export default function EditProductScreen() {
   if (!product || !canManageProduct(profileId, product)) {
     return (
       <SafeAreaView style={styles.screen}>
-        <ModalHeader title="Edit product" onCancel={close} onSave={() => undefined} canSave={false} />
+        <ModalHeader title="Edit product" onClose={close} onSave={() => undefined} canSave={false} />
         <EmptyState
           title={product ? "You can't edit this product" : 'Product not found'}
           body={
@@ -104,7 +104,7 @@ function EditProductForm({ product, onDone }: { product: Product; onDone: () => 
     <SafeAreaView style={styles.screen}>
       <ModalHeader
         title="Edit product"
-        onCancel={onDone}
+        onClose={onDone}
         onSave={handleSave}
         canSave={canSave}
         saving={updateProduct.isPending}

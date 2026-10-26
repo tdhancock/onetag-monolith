@@ -1,7 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
-  Text,
   Pressable,
   TextInput,
   Alert,
@@ -21,6 +20,7 @@ import { useCurrentProfile } from '../features/profiles';
 import { cleanHtml } from '../lib/cleanHtml';
 import { useUploadStory } from '../features/stories';
 import { Button, IconButton, ListRow, TextField } from '../components/native/ui';
+import ModalHeader from '../components/native/ModalHeader';
 import {
   CameraIcon,
   FlipCameraIcon,
@@ -167,14 +167,7 @@ export default function StoryCreateScreen() {
         <Stack.Screen options={{ headerShown: false }} />
         <StatusBar style="dark" />
 
-        <View style={styles.optionsHeader}>
-          <Text style={styles.optionsTitle} accessibilityRole="header">New OneSnap</Text>
-          <IconButton
-            icon={<XIcon color={color.text} size={22} />}
-            accessibilityLabel="Close"
-            onPress={() => router.back()}
-          />
-        </View>
+        <ModalHeader title="New OneSnap" onClose={() => router.back()} />
 
         <View style={styles.options}>
           <ListRow
@@ -401,19 +394,6 @@ const styles = StyleSheet.create({
   },
 
   // Options
-  optionsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 52,
-    paddingLeft: space.lg,
-    paddingRight: space.xs,
-  },
-  optionsTitle: {
-    fontFamily: type.bodyBold,
-    fontSize: 17,
-    color: color.text,
-  },
   options: {
     marginTop: space.sm,
   },

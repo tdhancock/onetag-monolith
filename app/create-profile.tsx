@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from '@tanstack/react-form';
@@ -24,6 +24,7 @@ import {
   type ProfileKind,
 } from '../lib/screens/profile';
 import { Button, EmptyState, MonoLabel } from '../components/native/ui';
+import ModalHeader from '../components/native/ModalHeader';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
 import FormScrollView from '../components/native/FormScrollView';
 import { useAppForm, useUsernameCheck } from '../components/native/form';
@@ -93,17 +94,7 @@ export default function CreateProfileScreen() {
   const canSubmit = useStore(form.store, (state) => state.canSubmit);
   const submitting = useStore(form.store, (state) => state.isSubmitting);
 
-  const header = (title: string) => (
-    <View style={styles.header}>
-      <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={12} style={styles.headerSide}>
-        <Text style={styles.cancel}>Cancel</Text>
-      </Pressable>
-      <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
-        {title}
-      </Text>
-      <View style={styles.headerSide} />
-    </View>
-  );
+  const header = (title: string) => <ModalHeader title={title} onClose={() => router.back()} />;
 
   if (isPending || !profiles) {
     return (
@@ -216,29 +207,6 @@ const styles = StyleSheet.create({
   },
   fill: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 52,
-    paddingHorizontal: space.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: color.border,
-  },
-  headerSide: {
-    minWidth: 64,
-  },
-  cancel: {
-    fontFamily: type.body,
-    fontSize: 16,
-    color: color.text,
-  },
-  title: {
-    flexShrink: 1,
-    fontFamily: type.bodyBold,
-    fontSize: 17,
-    color: color.text,
   },
   loading: {
     marginTop: space.xxl,

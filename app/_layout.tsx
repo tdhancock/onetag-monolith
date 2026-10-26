@@ -175,7 +175,7 @@ function RootLayoutNav() {
           which the native stack cannot do in place; one that changes its
           header's visibility inside a modal is remounted, losing its state.
           A modal never pushes a screen onward, for the reason above. */}
-      <Stack.Screen name="share-post" options={{ presentation: 'modal', headerShown: true }} />
+      <Stack.Screen name="share-post" options={{ presentation: 'modal' }} />
       <Stack.Screen name="compose" options={{ presentation: 'modal' }} />
       <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
       <Stack.Screen name="create-profile" options={{ presentation: 'modal' }} />

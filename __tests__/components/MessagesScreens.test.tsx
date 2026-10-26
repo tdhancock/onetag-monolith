@@ -496,11 +496,14 @@ describe('Messages — thread', () => {
 describe('Share picker', () => {
   const flush = () => act(async () => { await Promise.resolve(); });
 
-  it('is titled "Send to" and previews the post being shared', async () => {
+  it('is titled "Send to", with a Close, and previews the post being shared', async () => {
     mockParams.current = { id: 'post-9' };
     const el = mount(<SharePostScreen />);
     await flush();
-    expect(el.querySelector('h1')!.textContent).toBe('Send to');
+    // The modal's own bar, not the native header, which had no way to close it.
+    expect(el.querySelector('header')).toBeNull();
+    expect(Array.from(el.querySelectorAll('span')).some((s) => s.textContent === 'Send to')).toBe(true);
+    expect(el.querySelector('button[aria-label="Close"]')).not.toBeNull();
     expect(el.textContent).toContain('Kitchen install');
     expect(el.textContent).not.toContain('second line');
   });
