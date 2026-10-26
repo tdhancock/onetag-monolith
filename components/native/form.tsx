@@ -8,7 +8,7 @@
 // them to the form and decides when a field shows its error.
 
 import React, { forwardRef, useMemo, useState } from 'react';
-import type { TextInput } from 'react-native';
+import type { TextInputInstance } from 'react-native';
 import { createFormHook, createFormHookContexts, useStore } from '@tanstack/react-form';
 import { TextField, type TextFieldProps } from './ui';
 import PasswordField from './PasswordField';
@@ -42,12 +42,12 @@ const useBoundProps = ({ format, errorWhileTyping, onBlur, ...props }: BoundFiel
   };
 };
 
-const BoundTextField = forwardRef<TextInput, BoundFieldProps>((props, ref) => (
+const BoundTextField = forwardRef<TextInputInstance, BoundFieldProps>((props, ref) => (
   <TextField ref={ref} {...useBoundProps(props)} />
 ));
 BoundTextField.displayName = 'BoundTextField';
 
-const BoundPasswordField = forwardRef<TextInput, Omit<BoundFieldProps, 'secureTextEntry' | 'trailing'>>(
+const BoundPasswordField = forwardRef<TextInputInstance, Omit<BoundFieldProps, 'secureTextEntry' | 'trailing'>>(
   (props, ref) => <PasswordField ref={ref} {...useBoundProps(props)} />,
 );
 BoundPasswordField.displayName = 'BoundPasswordField';
@@ -94,7 +94,7 @@ export type UsernameCheck = ReturnType<typeof useUsernameCheck>;
  * live check's status inside the field — a spinner, then Available or Taken.
  */
 const BoundUsernameField = forwardRef<
-  TextInput,
+  TextInputInstance,
   Omit<BoundFieldProps, 'format' | 'errorWhileTyping' | 'trailing'> & { check: UsernameCheck }
 >(({ check, ...props }, ref) => {
   const field = useFieldContext<string>();

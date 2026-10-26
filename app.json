@@ -77,7 +77,9 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-image",
+      "expo-status-bar"
     ],
     "extra": {
       "router": {},

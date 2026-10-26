@@ -50,10 +50,11 @@ jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return { SafeAreaView: (p: { children?: React.ReactNode }) => React.createElement('div', null, p.children) };
 });
-jest.mock('react-native-gesture-handler', () => {
+jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => {
   const React = require('react');
   return {
-    Swipeable: (p: { children?: React.ReactNode; renderRightActions: () => React.ReactNode }) =>
+    __esModule: true,
+    default: (p: { children?: React.ReactNode; renderRightActions: () => React.ReactNode }) =>
       React.createElement('div', { 'data-swipeable': 'true' }, p.children, p.renderRightActions()),
   };
 });

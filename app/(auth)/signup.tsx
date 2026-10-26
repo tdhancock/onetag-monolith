@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { View, Text, ActivityIndicator, Keyboard, StyleSheet } from 'react-native';
-import type { TextInput } from 'react-native';
+import type { TextInputInstance } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -26,10 +26,10 @@ export default function SignupScreen() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
 
-  const usernameRef = useRef<TextInput>(null);
-  const emailRef = useRef<TextInput>(null);
-  const passwordRef = useRef<TextInput>(null);
-  const confirmRef = useRef<TextInput>(null);
+  const usernameRef = useRef<TextInputInstance>(null);
+  const emailRef = useRef<TextInputInstance>(null);
+  const passwordRef = useRef<TextInputInstance>(null);
+  const confirmRef = useRef<TextInputInstance>(null);
 
   // "Taken" shows inside the field before the form is sent; sending checks
   // again, so a handle claimed meanwhile never reaches the server.

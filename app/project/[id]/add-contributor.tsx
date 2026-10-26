@@ -173,7 +173,7 @@ export default function AddContributorScreen() {
           />
         )}
         ListEmptyComponent={
-          !searching ? null : search.isFetching && !search.data ? (
+          !searching ? undefined : search.isFetching && !search.data ? (
             <RowSkeletons />
           ) : search.isError ? (
             <SectionError message="Couldn't search profiles." onRetry={() => void search.refetch()} />

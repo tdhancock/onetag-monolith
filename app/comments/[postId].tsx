@@ -2,13 +2,13 @@ import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import {
   View,
   Text,
-  TextInput,
   Pressable,
   FlatList,
   RefreshControl,
   Alert,
   StyleSheet,
 } from 'react-native';
+import type { TextInputInstance } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
@@ -43,7 +43,7 @@ export default function CommentsScreen() {
   const router = useRouter();
   const { isUserBlocked, addToast } = useApp();
   const { profile: userProfile, profileId } = useCurrentProfile();
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   const listRef = useRef<FlatList<Comment>>(null);
 
   const [newCommentText, setNewCommentText] = useState('');

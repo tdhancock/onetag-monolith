@@ -7,6 +7,7 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
+import type { TextInputInstance } from 'react-native';
 import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
@@ -81,7 +82,7 @@ export default function ComposeScreen() {
   // draft intact (ONE-56).
   const createPost = useCreatePost(profileId);
   const createTags = useCreateEmbeddedTags();
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
 
   const [content, setContent] = useState('');
   const [isPosting, setIsPosting] = useState(false);

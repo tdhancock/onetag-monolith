@@ -4,13 +4,18 @@
 // style objects, so react-dom can mount native components for assertions.
 // An Animated.Value landing in a flattened style is dropped (jsdom rejects
 // non-primitive style values) and replaced with a `data-has-opacity-driver`
-// marker instead.
+// marker instead. A font family is quoted on the way in, because jsdom
+// drops an unquoted name like DMMono_500Medium; read it back with
+// `fontFamilyOf`.
 //
 // This is the DOM-mounting shim — distinct from the Platform-only mock in
 // __tests__/services/notifications.test.ts, which has no DOM concerns and
 // stays separate.
 
 import React from 'react';
+
+/** The font family an element was given, without the quotes the shim adds. */
+export const fontFamilyOf = (el: HTMLElement): string => el.style.fontFamily.replace(/^"|"$/g, '');
 
 export const flattenStyle = (style: unknown): Record<string, unknown> => {
   if (!style) return {};
@@ -52,7 +57,9 @@ const passthroughProps = (props: Record<string, unknown>) => {
     domProps['data-has-opacity-driver'] = 'true';
     delete flat.opacity;
   }
-  domProps.style = flat;
+  // A copy: a lone style is the stylesheet's own object, shared by every render.
+  domProps.style =
+    typeof flat.fontFamily === 'string' ? { ...flat, fontFamily: `"${flat.fontFamily}"` } : flat;
   return domProps;
 };
 

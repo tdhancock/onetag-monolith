@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, TextInput, FlatList, RefreshControl, StyleSheet } from 'react-native';
+import { View, Text, FlatList, RefreshControl, StyleSheet } from 'react-native';
+import type { TextInputInstance } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
@@ -73,7 +74,7 @@ export default function MessagesScreen() {
   // The conversation a long press picked, for the delete sheet.
   const [userToDelete, setUserToDelete] = useState<SimpleUser | null>(null);
 
-  const searchRef = useRef<TextInput>(null);
+  const searchRef = useRef<TextInputInstance>(null);
 
   const focusSearch = useCallback(() => searchRef.current?.focus(), []);
 

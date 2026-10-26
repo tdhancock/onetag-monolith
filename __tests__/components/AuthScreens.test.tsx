@@ -79,6 +79,7 @@ import {
   USERNAME_CHECK_DEBOUNCE_MS,
 } from '../../lib/screens/auth';
 import { color, type } from '../../theme/tokens';
+import { fontFamilyOf } from '../support/reactNativeDom';
 
 // ─── 3. Helpers ─────────────────────────────────────────────────────────
 
@@ -152,7 +153,7 @@ describe('Sign in', () => {
     const el = mount(<LoginScreen />);
     const wordmark = el.querySelector('[aria-label="OneTag"]')!;
     expect(wordmark).not.toBeNull();
-    expect(span(el, 'netag')!.style.fontFamily).toBe(type.mono);
+    expect(fontFamilyOf(span(el, 'netag')!)).toBe(type.mono);
     expect(el.textContent).toContain('Sign in to continue');
     expect(span(el, 'Email or username')).toBeDefined();
     expect(span(el, 'Password')).toBeDefined();

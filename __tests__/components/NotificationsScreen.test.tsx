@@ -103,6 +103,7 @@ jest.mock('../../features/profiles', () => ({
 }));
 
 import NotificationsScreen from '../../app/notifications';
+import { fontFamilyOf } from '../support/reactNativeDom';
 
 // ─── 3. Helpers ─────────────────────────────────────────────────────────
 
@@ -182,7 +183,7 @@ describe('Notifications — rows', () => {
     const el = mount();
     const row = rowFor(el, 'ana', 'liked your post.')!;
     const sender = Array.from(row.querySelectorAll('span')).find(s => s.textContent === 'ana') as HTMLElement;
-    expect(sender.style.fontFamily).toContain('Bold');
+    expect(fontFamilyOf(sender)).toContain('Bold');
     expect(row.querySelector('img')?.getAttribute('src')).toBe('https://example.test/p.jpg');
     act(() => row.click());
     expect(mockPush).toHaveBeenCalledWith('/post/post-1');

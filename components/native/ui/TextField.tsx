@@ -1,6 +1,6 @@
 import React, { forwardRef, useState } from 'react';
 import { TextInput, View, Text, StyleSheet } from 'react-native';
-import type { LayoutChangeEvent, StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
+import type { LayoutChangeEvent, StyleProp, TextInputProps, TextStyle, ViewStyle, TextInputInstance } from 'react-native';
 import { color, radius, space, type, withAlpha } from '../../../theme/tokens';
 import MonoLabel from './MonoLabel';
 
@@ -81,7 +81,7 @@ export const TEXT_FIELD_COLORS: Record<
  * alone keeps the fill, border and focus colour; each one's measured width is
  * added to the input's padding so text never runs underneath it.
  */
-const TextField = forwardRef<TextInput, TextFieldProps>(
+const TextField = forwardRef<TextInputInstance, TextFieldProps>(
   (
     {
       variant = 'panel',

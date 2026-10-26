@@ -194,7 +194,7 @@ export default function NotificationsScreen() {
               onPress={() => router.push('/follow-requests')}
               divider
             />
-          ) : null
+          ) : undefined
         }
         refreshControl={
           <RefreshControl
