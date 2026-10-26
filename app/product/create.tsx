@@ -58,7 +58,7 @@ export default function CreateProductScreen() {
   if (!canCreateProduct(profile)) {
     return (
       <SafeAreaView style={styles.screen}>
-        <ModalHeader title="New product" onCancel={() => router.back()} onSave={() => undefined} canSave={false} />
+        <ModalHeader title="New product" onClose={() => router.back()} onSave={() => undefined} canSave={false} />
         <EmptyState
           title="Products belong to business profiles"
           body="Switch to your business profile to list a product."
@@ -72,7 +72,7 @@ export default function CreateProductScreen() {
     <SafeAreaView style={styles.screen}>
       <ModalHeader
         title="New product"
-        onCancel={() => router.back()}
+        onClose={() => router.back()}
         onSave={handleSave}
         canSave={canSave}
         saving={createProduct.isPending}

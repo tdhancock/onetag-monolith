@@ -3,7 +3,6 @@ import {
   View,
   Text,
   Pressable,
-  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -21,6 +20,7 @@ import {
 import { cleanHtml } from '../lib/cleanHtml';
 import { draftValidator } from '../lib/formErrors';
 import { Avatar } from '../components/native/ui';
+import ModalHeader from '../components/native/ModalHeader';
 import KeyboardAvoider from '../components/native/KeyboardAvoider';
 import FormScrollView from '../components/native/FormScrollView';
 import { useAppForm, useUsernameCheck } from '../components/native/form';
@@ -136,35 +136,13 @@ export default function EditProfileScreen() {
     // card; the native stack cannot convert a pushed screen into a modal in
     // place, and the screen reloaded instead of opening.
     <SafeAreaView style={styles.screen}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          hitSlop={12}
-          style={styles.headerSide}
-        >
-          <Text style={styles.cancel}>Cancel</Text>
-        </Pressable>
-        <Text style={styles.title} accessibilityRole="header">
-          Edit profile
-        </Text>
-        <View style={[styles.headerSide, styles.headerRight]}>
-          {saving ? (
-            <ActivityIndicator size="small" color={color.text} accessibilityLabel="Saving" />
-          ) : (
-            <Pressable
-              onPress={handleSave}
-              disabled={!canSave}
-              accessibilityRole="button"
-              accessibilityLabel="Save"
-              accessibilityState={{ disabled: !canSave }}
-              hitSlop={12}
-            >
-              <Text style={[styles.save, !canSave && styles.saveDisabled]}>Save</Text>
-            </Pressable>
-          )}
-        </View>
-      </View>
+      <ModalHeader
+        title="Edit profile"
+        onClose={() => router.back()}
+        onSave={handleSave}
+        canSave={canSave}
+        saving={saving}
+      />
 
       <KeyboardAvoider style={styles.fill}>
         <FormScrollView style={styles.fill} contentContainerStyle={styles.scroll}>
@@ -256,39 +234,6 @@ const styles = StyleSheet.create({
   },
   fill: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 52,
-    paddingHorizontal: space.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: color.border,
-  },
-  headerSide: {
-    minWidth: 64,
-  },
-  headerRight: {
-    alignItems: 'flex-end',
-  },
-  cancel: {
-    fontFamily: type.body,
-    fontSize: 16,
-    color: color.text,
-  },
-  title: {
-    fontFamily: type.bodyBold,
-    fontSize: 17,
-    color: color.text,
-  },
-  save: {
-    fontFamily: type.bodyBold,
-    fontSize: 16,
-    color: color.text,
-  },
-  saveDisabled: {
-    color: color.textMuted,
   },
   scroll: {
     paddingBottom: space.xxl,

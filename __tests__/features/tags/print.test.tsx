@@ -262,8 +262,10 @@ describe('the sheets', () => {
 
   it('closes with Done, back to the dashboard', async () => {
     const el = await mount();
-    expect(byText(el, 'Cancel')).toBeDefined();
+    expect(byLabel(el, 'Close')).not.toBeNull();
     await click(byText(el, 'Make 12 tags'));
+    // Made, there is nothing left to cancel: Done takes the X's place.
+    expect(byLabel(el, 'Close')).toBeNull();
     await click(byText(el, 'Done'));
     expect(mockRouter.back).toHaveBeenCalled();
   });

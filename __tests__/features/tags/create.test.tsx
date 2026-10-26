@@ -421,9 +421,9 @@ describe('products and projects as destinations (ONE-89)', () => {
 });
 
 describe('leaving', () => {
-  it('cancels from the header', () => {
+  it('closes from the header', () => {
     const el = mount();
-    click(byText(el, 'Cancel'));
+    click(byLabel(el, 'Close'));
     expect(mockRouter.back).toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ import { useCurrentProfile } from '../../features/profiles';
 import { useCreateBlankTags, type OwnedTag } from '../../features/tags';
 import { Button, MonoLabel, Pressable } from '../../components/native/ui';
 import { CheckIcon } from '../../components/native/Icons';
+import ModalHeader from '../../components/native/ModalHeader';
 import TagQRCode from '../../components/native/TagQRCode';
 import { saveTagSheetsToPhotos, shareTagSheet } from '../../services/tagSharing';
 import { sheetsOf, SHEET_COLUMNS } from '../../lib/tagSheet';
@@ -83,16 +84,11 @@ export default function PrintBlankTagsScreen() {
     }
   };
 
-  const header = (
-    <View style={styles.header}>
-      <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={12} style={styles.headerSide}>
-        <Text style={styles.headerAction}>{made ? 'Done' : 'Cancel'}</Text>
-      </Pressable>
-      <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
-        {PRINT_BLANK_TAGS_TITLE}
-      </Text>
-      <View style={styles.headerSide} />
-    </View>
+  // Once the codes exist there is nothing left to cancel: Done takes the X's place.
+  const header = made ? (
+    <ModalHeader title={PRINT_BLANK_TAGS_TITLE} onSave={() => router.back()} saveLabel="Done" />
+  ) : (
+    <ModalHeader title={PRINT_BLANK_TAGS_TITLE} onClose={() => router.back()} />
   );
 
   if (!made) {
@@ -187,29 +183,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: color.bg,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 52,
-    paddingHorizontal: space.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: color.border,
-  },
-  headerSide: {
-    minWidth: 64,
-  },
-  headerAction: {
-    fontFamily: type.body,
-    fontSize: 16,
-    color: color.text,
-  },
-  headerTitle: {
-    flexShrink: 1,
-    fontFamily: type.bodyBold,
-    fontSize: 17,
-    color: color.text,
   },
   content: {
     padding: space.xl,

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, FlatList, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../store/AppContext.native';
 import {
@@ -14,6 +14,7 @@ import { usePostQuery } from '../features/posts';
 import { useSendMessage } from '../features/messages';
 import { Button, ListRow, Skeleton, TextField } from '../components/native/ui';
 import { SearchIcon } from '../components/native/Icons';
+import ModalHeader from '../components/native/ModalHeader';
 import { firstLine } from '../lib/screens/profile';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { color, space, type } from '../theme/tokens';
@@ -80,6 +81,7 @@ const PostPreview: React.FC<{ post: Post | null | undefined }> = ({ post }) => {
  */
 export default function SharePostScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const { addToast } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -139,8 +141,10 @@ export default function SharePostScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.screen} edges={['bottom']}>
-      <Stack.Screen options={{ headerShown: true, title: 'Send to' }} />
+    // A modal, declared in app/_layout.tsx. Its bar is the one every modal
+    // wears: the native header it used to show had no way to close it.
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+      <ModalHeader title="Send to" onClose={() => router.back()} />
 
       <PostPreview post={post} />
 

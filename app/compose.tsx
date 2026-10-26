@@ -25,6 +25,7 @@ import {
   type MediaPickerResult,
 } from '../services/mediaPicker';
 import { Avatar, Button, IconButton, ICON_BUTTON_SIZE, MonoLabel } from '../components/native/ui';
+import ModalHeader from '../components/native/ModalHeader';
 import ComposeMedia from '../components/native/ComposeMedia';
 import TagPlacer from '../components/native/TagPlacer';
 import TagDestinationPicker from '../components/native/TagDestinationPicker';
@@ -266,24 +267,14 @@ export default function ComposeScreen() {
   return (
     // The modal's presentation is declared once, in app/_layout.tsx.
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          hitSlop={12}
-          style={styles.headerSide}
-        >
-          <Text style={styles.cancel}>Cancel</Text>
-        </Pressable>
-        <Text style={styles.title} accessibilityRole="header">
-          New post
-        </Text>
-        <View style={[styles.headerSide, styles.headerRight]}>
-          <Button size="sm" onPress={handlePost} disabled={!postable && !isPosting} loading={isPosting}>
-            Post
-          </Button>
-        </View>
-      </View>
+      <ModalHeader
+        title="New post"
+        onClose={() => router.back()}
+        onSave={handlePost}
+        canSave={postable}
+        saving={isPosting}
+        saveLabel="Post"
+      />
 
       <KeyboardAvoider style={styles.fill}>
         <FormScrollView
@@ -401,31 +392,6 @@ const styles = StyleSheet.create({
   },
   fill: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 52,
-    paddingHorizontal: space.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: color.border,
-  },
-  headerSide: {
-    minWidth: 72,
-  },
-  headerRight: {
-    alignItems: 'flex-end',
-  },
-  cancel: {
-    fontFamily: type.body,
-    fontSize: 16,
-    color: color.text,
-  },
-  title: {
-    fontFamily: type.bodyBold,
-    fontSize: 17,
-    color: color.text,
   },
   scroll: {
     flexGrow: 1,
