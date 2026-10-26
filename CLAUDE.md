@@ -52,7 +52,8 @@ eslint.config.js           lint: the hooks rules, and the feature-folder rules e
 non-route helper there becomes a navigable blank screen and warns about its missing default
 export on every boot. Screen logic extracted for testing goes in `lib/screens/`; helpers that
 belong to a domain go with that domain (see `services/mediaPicker.ts`). Nothing else goes
-under `app/` (ONE-62).
+under `app/` (ONE-62), save expo-router's own `+` files: `app/+native-intent.tsx` rewrites a
+link before it is routed, so an Expo Go cold start lands on the tag it was opened for.
 
 `store/AppContext.native.tsx` and `services/supabase.native.ts` keep a `.native` suffix left
 over from a web fork deleted in ONE-5. Neither has a non-native twin — import the `.native` one.
