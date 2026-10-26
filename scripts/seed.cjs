@@ -7,6 +7,9 @@
 //   pnpm db:seed:hosted --follow <username>
 //                                      and that account follows every seed
 //                                      profile, so its home feed fills
+//   pnpm db:seed:hosted --demo <username>
+//                                      and the demo seed, supabase/seeds/demo.sql,
+//                                      owned by that account (docs/demo.md)
 //
 // The seed is made-up people and posts, and production will be a separate,
 // empty project. So the hosted run names the dev project's ref on every call
@@ -18,7 +21,7 @@
 /* global __dirname -- a CommonJS script, which the app's lint config doesn't expect */
 
 const { spawnSync } = require('node:child_process');
-const { mkdirSync, writeFileSync } = require('node:fs');
+const { mkdirSync, readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 
 /** The hosted dev project, and the only hosted project the seed may reach. */
@@ -26,6 +29,10 @@ const DEV_PROJECT_REF = 'pyxqcqfpbaaszwmmkryc';
 
 const ROOT = path.join(__dirname, '..');
 const SEED_FILE = 'supabase/seeds/dev.sql';
+/** Content for a walkthrough, owned by the account --demo names. */
+const DEMO_FILE = 'supabase/seeds/demo.sql';
+/** Where demo.sql takes its owner's username. */
+const DEMO_OWNER = '__DEMO_OWNER__';
 /** Scratch SQL goes where the CLI keeps its own state, which git ignores. */
 const SCRATCH_DIR = 'supabase/.temp';
 
@@ -56,6 +63,10 @@ const followSql = (username) => `with me as (
 )
 select (select count(*) from me) as account_found, (select count(*) from followed) as newly_followed`;
 
+/** demo.sql with its owner written in. Only a checked username reaches here. */
+const demoSql = (username, template = readFileSync(path.join(ROOT, DEMO_FILE), 'utf8')) =>
+  template.split(DEMO_OWNER).join(username);
+
 /** The CLI flags that pick the database: never the linked project, always a named one. */
 const targetFlags = (target) => (target === 'hosted' ? `--linked --project-ref ${DEV_PROJECT_REF}` : '--local');
 
@@ -63,7 +74,7 @@ const targetFlags = (target) => (target === 'hosted' ? `--linked --project-ref $
 const queryCommand = (target, file) => `npx supabase db query ${targetFlags(target)} -f ${file}`;
 
 const parseArgs = (argv) => {
-  const args = { target: null, follow: null };
+  const args = { target: null, follow: null, demo: null };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--local' || arg === '--hosted') {
@@ -72,6 +83,9 @@ const parseArgs = (argv) => {
     } else if (arg === '--follow') {
       args.follow = argv[(i += 1)] ?? '';
       if (!USERNAME.test(args.follow)) throw new Error(`--follow takes a username, not "${args.follow}".`);
+    } else if (arg === '--demo') {
+      args.demo = argv[(i += 1)] ?? '';
+      if (!USERNAME.test(args.demo)) throw new Error(`--demo takes a username, not "${args.demo}".`);
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -100,16 +114,17 @@ const main = () => {
   try {
     args = parseArgs(process.argv.slice(2));
   } catch (error) {
-    console.error(`${error.message}\n\nUsage: node scripts/seed.cjs --local|--hosted [--follow <username>]`);
+    console.error(`${error.message}\n\nUsage: node scripts/seed.cjs --local|--hosted [--follow <username>] [--demo <username>]`);
     process.exit(2);
   }
 
   console.log(args.target === 'hosted' ? `Seeding the hosted dev project, ${DEV_PROJECT_REF}.` : 'Seeding the local stack.');
   run(queryCommand(args.target, SEED_FILE));
   if (args.follow) runSql(args.target, 'seed-follow', followSql(args.follow));
+  if (args.demo) runSql(args.target, 'seed-demo', demoSql(args.demo));
   runSql(args.target, 'seed-summary', SUMMARY);
 };
 
 if (require.main === module) main();
 
-module.exports = { DEV_PROJECT_REF, parseArgs, queryCommand, followSql };
+module.exports = { DEV_PROJECT_REF, DEMO_OWNER, parseArgs, queryCommand, followSql, demoSql };

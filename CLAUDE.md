@@ -30,6 +30,7 @@ services/                  supabase client and the shared ground features reach:
                            orderedRows, profileBootstrap, media/story upload, realtime
 supabase/migrations/       schema
 supabase/seeds/dev.sql     made-up people and content for the local stack and the hosted dev project
+supabase/seeds/demo.sql    a demo's content, owned by a real account, on top of dev.sql (docs/demo.md)
 supabase/functions/        edge functions: delete-user-account, tag-resolve (the tag host's web page),
                            and send-push (the database calls it to send push notifications)
 __tests__/                 Jest
@@ -42,6 +43,7 @@ docs/deep-links.md         how tag links reach the app, and how to verify univer
 docs/push-notifications.md how a notification becomes a push, where each one opens, and turning it on
 docs/testing-with-expo-go.md how testers open OneTag in Expo Go, and how to publish for them
 docs/seed-data.md          what the seed holds, loading it, signing in as it, and removing it
+docs/demo.md               the demo walkthrough, and the seed owned by your account behind it
 scripts/                   CI gates
 eslint.config.js           lint: the hooks rules, and the feature-folder rules enforced
 ```
