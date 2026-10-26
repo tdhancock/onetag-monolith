@@ -397,7 +397,12 @@ describe('a live tag', () => {
     const response = await handleRequest(request(`/t/${CODE}`), deps);
     expect(response.status).toBe(200);
     const page = await html(response);
-    expect(page).toContain('Open this tag in OneTag');
+    expect(page).toContain('<h1>This one opens in OneTag</h1>');
+    expect(page).toContain('Unlisted project');
+    expect(page).toContain(escapeHtml("Its owner keeps it off the web. Anyone with this tag can open it in the app."));
+    expect(page).toContain('href="onetag://t/ABC23XYZ">Open in OneTag</a>');
+    // It names nothing, so no initial stands in for a picture.
+    expect(page).not.toContain('class="avatar"');
     expect(page).not.toContain(escapeHtml(FAILURE_COPY['destination-missing'].title));
     expect(readProject).not.toHaveBeenCalled();
     await Promise.all(background);
@@ -411,6 +416,8 @@ describe('a live tag', () => {
     expect(response.status).toBe(200);
     const page = await html(response);
     expect(page).toContain('href="onetag://t/ABC23XYZ">Open in OneTag</a>');
+    // Not the "O" of "Open this tag in OneTag" standing in for a picture.
+    expect(page).not.toContain('class="avatar"');
     expect(logged).toContain(failure);
   });
 });

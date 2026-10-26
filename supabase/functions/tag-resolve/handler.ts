@@ -227,6 +227,10 @@ export interface DestinationCard {
   /** Whose it is: a profile's handle, or who lists the product or runs the project. */
   byline: string | null;
   image: { url: string; shape: 'avatar' | 'cover' } | null;
+  /** A line under the heading, for a card that names nothing. */
+  body?: string;
+  /** The card names nothing, so no initial stands in for a picture. */
+  withheld?: boolean;
 }
 
 const one = <T>(embed: T | T[] | null | undefined): T | null =>
@@ -319,6 +323,20 @@ const unreadCard = (ref: DestinationRef): DestinationCard => ({
   name: 'Open this tag in OneTag',
   byline: null,
   image: null,
+  withheld: true,
+});
+
+/**
+ * An Unlisted project (ONE-137): there, but read only in the app by whoever
+ * opened its tag. It says so, rather than reading as a page that failed.
+ */
+const unlistedCard = (): DestinationCard => ({
+  kindLabel: 'Unlisted project',
+  name: 'This one opens in OneTag',
+  byline: null,
+  image: null,
+  body: "Its owner keeps it off the web. Anyone with this tag can open it in the app.",
+  withheld: true,
 });
 
 // ─── Who is reading ─────────────────────────────────────────────────────
@@ -454,9 +472,9 @@ const destinationPage = (card: DestinationCard, context: PageContext): Page => (
   label: card.kindLabel,
   heading: card.name,
   byline: card.byline,
-  body: null,
+  body: card.body ?? null,
   image: card.image,
-  initial: card.image ? null : card.name.replace(/^@/, '').charAt(0).toUpperCase() || null,
+  initial: card.image || card.withheld ? null : card.name.replace(/^@/, '').charAt(0).toUpperCase() || null,
   actions: [{ label: 'Open in OneTag', href: appLink(context.code, context.android) }],
   stores: storeLinks(context.appStoreId, context.android),
 });
@@ -548,7 +566,7 @@ export const tagPage = async (code: string, request: Request, deps: HandlerDeps)
   // An Unlisted project (ONE-137) is there, but only for someone who opens its
   // tag in the app. The page reads as anon, so it names nothing and offers the
   // app — never "gone", which it isn't.
-  if (row.dest_project_unlisted === true) return destinationPage(unreadCard(ref), context);
+  if (row.dest_project_unlisted === true) return destinationPage(unlistedCard(), context);
 
   let card: DestinationCard | null;
   try {
