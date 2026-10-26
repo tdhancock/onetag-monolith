@@ -70,8 +70,9 @@ house: Unlisted, so it's on no profile, but the sticker opened it. Inside it, th
 water heater. The AC has a tune-up Timberline proposed after scanning its sticker: approve it,
 and Timberline becomes a Contributor.
 
-**5. Without the app.** Scan a sticker with the phone's own camera: the tag host's page, with
-**Open in OneTag**. Scan History has the tags you've opened. Then the tags dashboard, and link
+**5. Without the app.** Scan the Defender's sticker (`DemoRig2`) with the phone's own camera:
+the tag host's page, with what the tag points to and **Open in OneTag**. Use the Defender's:
+the house and what's in it are Unlisted, so their page shows nothing but the button. Scan History has the tags you've opened. Then the tags dashboard, and link
 one of the two blank stickers (`DemoNew2`, `DemoNew3`) to something.
 
 ## What's in it
