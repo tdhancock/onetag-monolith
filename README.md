@@ -8,7 +8,7 @@ The app is the product. The web is only the page a scanned tag opens for someone
 
 ## Stack
 
-Expo SDK 57 · React Native 0.86 · expo-router · NativeWind v4 · TanStack Query and Form ·
+Expo SDK 58 · React Native 0.88 · expo-router · NativeWind v4 · TanStack Query and Form ·
 Supabase (Auth, Postgres with RLS, Storage, Realtime, Edge Functions) · TypeScript
 
 ## Getting started

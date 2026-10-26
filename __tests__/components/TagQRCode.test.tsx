@@ -42,6 +42,7 @@ import TagQRCode, { QR_GROUND, QR_INK, qrModulePath } from '../../components/nat
 import { buildTagUrl, resolveTagBaseUrl } from '../../lib/tagLinks';
 import { TAG_QR_ERROR_CORRECTION, TAG_QR_QUIET_ZONE_MODULES, tagQrLayout } from '../../lib/tagQr';
 import { type } from '../../theme/tokens';
+import { fontFamilyOf } from '../support/reactNativeDom';
 
 // qrcode encodes with TextEncoder, which jsdom leaves out; node has it.
 (globalThis as { TextEncoder?: unknown }).TextEncoder ??= require('util').TextEncoder;
@@ -223,7 +224,7 @@ describe('how it is drawn', () => {
     const el = mount(<TagQRCode shortCode={CODE} size={240} />);
     const text = Array.from(el.querySelectorAll('span')).find((span) => span.textContent === CODE) as HTMLElement;
     expect(text).toBeDefined();
-    expect(text.style.fontFamily).toBe(type.mono);
+    expect(fontFamilyOf(text)).toBe(type.mono);
     // After the code, so beneath it.
     const qr = el.querySelector('svg')!;
     expect(qr.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

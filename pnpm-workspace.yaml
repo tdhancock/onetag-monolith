@@ -8,10 +8,12 @@
 # the app on every PR, which catches what a flat layout still can't.
 nodeLinker: hoisted
 
-# A dependency's install script runs only when it is named below. These are
-# the only two in the tree: fsevents, macOS file watching, which EAS installs
-# when it builds iOS on macOS; and unrs-resolver, which checks that its native
-# binding is in place.
+# A dependency's install script runs only when it is named below. Two run:
+# fsevents, macOS file watching, which EAS installs when it builds iOS on
+# macOS; and unrs-resolver, which checks that its native binding is in place.
+# @parcel/watcher, which Jest 30 brings, doesn't: its script only compiles from
+# source when no prebuilt binary fits, and the binaries come as optional packages.
 allowBuilds:
+  '@parcel/watcher': false
   fsevents: true
   unrs-resolver: true

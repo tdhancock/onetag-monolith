@@ -2,7 +2,6 @@ import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
-  TextInput,
   FlatList,
   ScrollView,
   RefreshControl,
@@ -10,6 +9,7 @@ import {
   Keyboard,
   StyleSheet,
 } from 'react-native';
+import type { TextInputInstance } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useApp } from '../../store/AppContext.native';
@@ -103,7 +103,7 @@ export default function SearchScreen() {
   const { profile: userProfile, profileId } = useCurrentProfile();
   const { isFollowing, isRequested } = useFollowState(profileId);
   const follow = useToggleFollow(profileId);
-  const searchRef = useRef<TextInput>(null);
+  const searchRef = useRef<TextInputInstance>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -403,7 +403,7 @@ export default function SearchScreen() {
             <InterestFilter selected={interest} onSelect={setInterest} />
           </View>
         }
-        ListFooterComponent={explore.isFetchingNextPage ? <GridSkeleton /> : null}
+        ListFooterComponent={explore.isFetchingNextPage ? <GridSkeleton /> : undefined}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

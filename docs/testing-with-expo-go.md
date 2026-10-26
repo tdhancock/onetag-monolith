@@ -13,7 +13,7 @@ local `.env`. They don't get:
 - **Tag links from outside the app.** `https://<tag host>/t/…` opens OneTag's own build, never
   Expo Go. Scanning a tag with the in-app camera works.
 - **Its own icon.** They open Expo Go, then OneTag inside it.
-- **Old SDKs.** Expo Go runs only the SDK it was built for (57). When Expo Go moves to a new SDK,
+- **Old SDKs.** Expo Go runs only the SDK it was built for (58). When Expo Go moves to a new SDK,
   testers can't open OneTag until we upgrade and publish again.
 
 For a real standalone build with push and tag links, use TestFlight. It needs the Apple
@@ -56,7 +56,7 @@ List them with `npx eas-cli@latest env:list --environment preview`, and set or c
 ## Why the runtime is `sdkVersion`
 
 An update only opens in a runtime it was published for. `runtimeVersion: { "policy":
-"sdkVersion" }` in `app.json` publishes as `exposdk:57.0.0`, which is what Expo Go runs. An
+"sdkVersion" }` in `app.json` publishes as `exposdk:58.0.0`, which is what Expo Go runs. An
 update published for an app-version runtime can't be opened in Expo Go at all. When OneTag moves
 to development builds or TestFlight, switch the policy to `appVersion` or `fingerprint`. Expo Go
 then stops opening new updates, which is the point: they're for the builds.

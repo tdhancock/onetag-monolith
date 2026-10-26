@@ -180,7 +180,7 @@ const StoryReel: React.FC<StoryReelProps> = ({ storyGroups, allStories, onViewSt
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.reel}
       ItemSeparatorComponent={Gap}
-      ListHeaderComponent={leading ? <View style={styles.leading}>{leading}</View> : null}
+      ListHeaderComponent={leading ? <View style={styles.leading}>{leading}</View> : undefined}
     />
   );
 };

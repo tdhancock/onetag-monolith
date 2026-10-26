@@ -66,6 +66,11 @@ module.exports = defineConfig([
       ...Object.fromEntries(REACT_COMPILER_RULES.map((rule) => [`react-hooks/${rule}`, 'off'])),
       // Copy is written with apostrophes and quotes, as people read it.
       'react/no-unescaped-entities': 'off',
+      // TypeScript already checks a namespace import's members. This rule
+      // reads them by regex, and skips any built file whose exports follow a
+      // comment on the same line, as Expo 58's do: it reported
+      // Notifications.AndroidImportance missing when it is exported.
+      'import/namespace': 'off',
     },
   },
   {

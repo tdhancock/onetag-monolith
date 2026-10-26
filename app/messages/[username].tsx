@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, TextInput, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
+import type { TextInputInstance } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../store/AppContext.native';
@@ -63,7 +64,7 @@ export default function MessageThreadScreen() {
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   // The message a long press picked, for the options sheet.
   const [messageForOptions, setMessageForOptions] = useState<Message | null>(null);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
 
   // The thread and its unread state are queries (ONE-18), kept live by the
   // realtime hook AppContext mounts for the session.
@@ -201,7 +202,7 @@ export default function MessageThreadScreen() {
             <View style={styles.olderLoading}>
               <ActivityIndicator size="small" color={color.textMuted} accessibilityLabel="Loading earlier messages" />
             </View>
-          ) : null
+          ) : undefined
         }
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.threadList}

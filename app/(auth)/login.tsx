@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import type { TextInput } from 'react-native';
+import type { TextInputInstance } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../services/supabase.native';
 import { ensureCurrentUserProfile } from '../../services/profileBootstrap';
@@ -13,7 +13,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const passwordRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInputInstance>(null);
 
   const canSubmit = loginFormValid(identifier, password);
 

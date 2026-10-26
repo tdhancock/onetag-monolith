@@ -1,6 +1,6 @@
 import React, { forwardRef, useState } from 'react';
 import { Pressable as NativePressable } from 'react-native';
-import type { GestureResponderEvent, PressableProps as NativePressableProps, View } from 'react-native';
+import type { GestureResponderEvent, HostInstance, PressableProps as NativePressableProps } from 'react-native';
 
 export type PressableProps = NativePressableProps;
 
@@ -18,7 +18,7 @@ export type PressableProps = NativePressableProps;
  * Use it wherever the style depends on `pressed`. A react-native Pressable
  * with a style function is rejected by `__tests__/components/ui/Pressable.test.tsx`.
  */
-const Pressable = forwardRef<View, PressableProps>(
+const Pressable = forwardRef<HostInstance, PressableProps>(
   ({ style, children, onPressIn, onPressOut, testOnly_pressed, ...rest }, ref) => {
     const [pressedState, setPressed] = useState(false);
     const pressed = testOnly_pressed ?? pressedState;

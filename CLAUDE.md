@@ -6,7 +6,7 @@ the source of truth when the two disagree. Work is tracked in the Linear team **
 
 ## Stack
 
-Expo SDK 57 · React Native 0.86 · expo-router (file-based routing) · NativeWind v4 · Supabase (Auth, Postgres, Storage, Realtime) · TypeScript
+Expo SDK 58 · React Native 0.88 · expo-router (file-based routing) · NativeWind v4 · Supabase (Auth, Postgres, Storage, Realtime) · TypeScript
 
 The React Native app is the product. Web is a thin surface so a scanned Physical Tag resolves
 for someone without the app — never build full screen parity for web.

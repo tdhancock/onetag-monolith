@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, View } from 'react-native';
-import type { KeyboardEvent, StyleProp, ViewStyle } from 'react-native';
+import type { KeyboardEvent, StyleProp, ViewStyle, HostInstance } from 'react-native';
 import { initialWindowMetrics } from 'react-native-safe-area-context';
 import { useKeyboardHeight } from '../../lib/useKeyboardHeight';
 
@@ -31,7 +31,7 @@ interface KeyboardAvoiderProps {
 }
 
 /** Android's padding: the view measures how much of it the keyboard covers. */
-const useMeasuredOverlap = (ref: React.RefObject<View | null>): number => {
+const useMeasuredOverlap = (ref: React.RefObject<HostInstance | null>): number => {
   const [overlap, setOverlap] = useState(0);
 
   useEffect(() => {
@@ -73,7 +73,7 @@ const useMeasuredOverlap = (ref: React.RefObject<View | null>): number => {
  * itself in the window when the keyboard shows.
  */
 const KeyboardAvoider: React.FC<KeyboardAvoiderProps> = ({ children, style, offsetBelow }) => {
-  const ref = useRef<View>(null);
+  const ref = useRef<HostInstance>(null);
   const keyboardHeight = useKeyboardHeight();
   const measured = useMeasuredOverlap(ref);
   const inset =

@@ -1,6 +1,6 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
 import { Keyboard, Platform, ScrollView, TextInput } from 'react-native';
-import type { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, ScrollViewProps } from 'react-native';
+import type { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, ScrollViewProps, ScrollViewInstance } from 'react-native';
 import { space } from '../../theme/tokens';
 
 /** The room kept around a field brought into view, so its label and hint show too. */
@@ -49,10 +49,10 @@ type WithInnerView = { getInnerViewRef?: () => unknown };
  * measures the field within its own content, so where the screen sits (a
  * modal, under a header) doesn't matter.
  */
-const FormScrollView = forwardRef<ScrollView, ScrollViewProps>(
+const FormScrollView = forwardRef<ScrollViewInstance, ScrollViewProps>(
   ({ onScroll, onLayout, scrollEventThrottle, keyboardShouldPersistTaps = 'handled', ...rest }, forwarded) => {
-    const scroll = useRef<ScrollView>(null);
-    useImperativeHandle(forwarded, () => scroll.current as ScrollView);
+    const scroll = useRef<ScrollViewInstance>(null);
+    useImperativeHandle(forwarded, () => scroll.current as ScrollViewInstance);
 
     const offset = useRef(0);
     const height = useRef(0);
