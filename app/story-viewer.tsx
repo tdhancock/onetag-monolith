@@ -14,7 +14,7 @@ import {
 import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '../store/AppContext.native';
 import { useCurrentProfile } from '../features/profiles';
@@ -50,6 +50,11 @@ const INVERSE_MUTED = withAlpha(color.inverse, 0.7);
 
 export default function StoryViewerScreen() {
   const router = useRouter();
+  // The header and footer pad by the window's insets rather than sit in a
+  // SafeAreaView: absolutely placed inside a sliding full-screen modal and a
+  // view that moves with the swipe, a SafeAreaView measured itself mid-move,
+  // read no top inset, and put the progress bars under the status bar.
+  const insets = useSafeAreaInsets();
   const { index: startIndexParam, storyId: startStoryIdParam } = useLocalSearchParams<{ index?: string; storyId?: string }>();
   const {
     markStoryAsViewed,
@@ -372,7 +377,7 @@ export default function StoryViewerScreen() {
         <LinearGradient colors={[SCRIM_CLEAR, SCRIM]} style={styles.bottomScrim} />
 
         {/* Header */}
-        <SafeAreaView edges={['top']} style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top }]}>
           {/* Progress: one 2pt segment per OneSnap */}
           <View style={styles.progressRow}>
             {stories.map((_, i) => (
@@ -429,12 +434,12 @@ export default function StoryViewerScreen() {
               onPress={handleClose}
             />
           </View>
-        </SafeAreaView>
+        </View>
 
         {/* Footer. KeyboardAvoidingView measured against this footer, which
             starts at its own top, so it never padded and the reply field
             stayed under the keyboard. */}
-        <SafeAreaView edges={['bottom']} style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: insets.bottom }]}>
           <KeyboardAvoider>
             {isOwnStory ? (
               <View style={styles.ownerRow}>
@@ -489,7 +494,7 @@ export default function StoryViewerScreen() {
               </View>
             )}
           </KeyboardAvoider>
-        </SafeAreaView>
+        </View>
       </View>
 
       {/* The owner's viewer list */}
