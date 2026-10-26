@@ -142,3 +142,14 @@ jobs:
         run: |
           supabase db query --local -f supabase/seeds/dev.sql
           supabase db query --local -f supabase/seeds/dev.sql
+
+      # The demo seed (supabase/seeds/demo.sql) sits on the dev seed and is
+      # owned by a real account; a seed account with no business profile
+      # stands in, so the path that makes one is the one checked. Twice, as
+      # above.
+      - name: Apply the demo seed, twice
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          sed 's/__DEMO_OWNER__/casey.makes/g' supabase/seeds/demo.sql > "$RUNNER_TEMP/demo.sql"
+          supabase db query --local -f "$RUNNER_TEMP/demo.sql"
+          supabase db query --local -f "$RUNNER_TEMP/demo.sql"

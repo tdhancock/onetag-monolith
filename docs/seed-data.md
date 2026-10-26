@@ -96,6 +96,12 @@ delete from auth.users where id::text like '5eed0a00-%';
 
 Follows your own account made with `--follow` go with them.
 
+## The demo seed
+
+`supabase/seeds/demo.sql` adds a walkthrough's content on top of this seed, owned by a real
+account so it can be edited during a demo: `pnpm db:seed:hosted --demo <username>`.
+[demo.md](demo.md) has what's in it and the walkthrough it was made for.
+
 ## Changing it
 
 Ids are fixed, with one prefix for each kind: `5eed0a00-` accounts, `5eed0b00-` business
